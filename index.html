@@ -1,275 +1,120 @@
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Kosmos Books — Phone Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  </head>
-  <body class="min-h-screen bg-zinc-50 text-zinc-900 p-4">
-    <div class="max-w-md mx-auto flex flex-col gap-4">
-      <!-- Header -->
-      <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-semibold">Kosmos Books</h1>
-        <button id="refreshBtn" class="px-3 py-2 rounded-xl text-sm shadow bg-white">Refresh</button>
-      </div>
+// supabase/functions/smart-handler/index.ts
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-      <!-- Tiles -->
-      <div class="grid grid-cols-3 gap-3">
-        <div class="bg-white rounded-2xl shadow p-4">
-          <div class="text-xs text-zinc-500">Missing Vendors</div>
-          <div id="missingVendors" class="text-3xl font-bold mt-1">—</div>
-        </div>
-        <div class="bg-white rounded-2xl shadow p-4">
-          <div class="text-xs text-zinc-500">Missing Categories</div>
-          <div id="missingCategories" class="text-3xl font-bold mt-1">—</div>
-        </div>
-        <div class="bg-white rounded-2xl shadow p-4">
-          <div class="text-xs text-zinc-500">Match Candidates</div>
-          <div id="matchCandidates" class="text-3xl font-bold mt-1">—</div>
-        </div>
-      </div>
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 
-      <!-- Big Buttons -->
-      <button id="applyBtn" class="w-full bg-white rounded-2xl shadow p-4 text-left active:scale-[0.99] transition">
-        <div class="flex items-center gap-3">
-          <div class="text-3xl leading-none">🧹</div>
-          <div class="flex-1">
-            <div class="text-lg font-semibold">Apply Rules</div>
-            <div id="applySub" class="text-sm text-zinc-500">Auto-clean vendors & categories</div>
-          </div>
-          <div class="text-sm text-zinc-400">Tap</div>
-        </div>
-      </button>
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const MINDEE_API_KEY = Deno.env.get("MINDEE_API_KEY")!;
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-      <button id="matchBtn" class="w-full bg-white rounded-2xl shadow p-4 text-left active:scale-[0.99] transition">
-        <div class="flex items-center gap-3">
-          <div class="text-3xl leading-none">🔁</div>
-          <div class="flex-1">
-            <div class="text-lg font-semibold">Match Now</div>
-            <div id="matchSub" class="text-sm text-zinc-500">Link receipts ↔ transactions</div>
-          </div>
-          <div class="text-sm text-zinc-400">Tap</div>
-        </div>
-      </button>
+function coalesce<T>(...vals: T[]): T | null {
+  for (const v of vals) {
+    if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+  }
+  return null;
+}
 
-      <!-- Upload -->
-      <div class="bg-white rounded-2xl shadow p-4 mt-2 flex flex-col items-start gap-2">
-        <div class="text-lg font-semibold">📸 Upload Receipt</div>
-        <input type="file" id="receiptFile" accept="image/*" capture="environment" class="text-sm" />
-        <button id="uploadBtn" class="mt-2 px-4 py-2 bg-emerald-600 text-white rounded-xl shadow active:scale-[0.98] transition">
-          Upload & Scan
-        </button>
-        <div id="uploadStatus" class="text-sm text-zinc-500 mt-1"></div>
-      </div>
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-      <!-- Footer -->
-      <div class="mt-6 text-center text-xs text-zinc-500">
-        Best Damn Bookkeeping • <span id="year"></span>
-      </div>
-    </div>
+  try {
+    const form = await req.formData();
+    const file = form.get("file") as File | null;
+    if (!file) {
+      return new Response(JSON.stringify({ error: "Missing file" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    <!-- Review modal -->
-    <div id="modal" class="hidden fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center p-4">
-      <div class="bg-white w-full max-w-md rounded-2xl shadow-lg p-4">
-        <div class="text-lg font-semibold mb-2">Review receipt details</div>
-        <div class="grid grid-cols-1 gap-3">
-          <label class="text-sm">
-            <span class="text-zinc-600">Vendor</span>
-            <input id="fVendor" class="mt-1 w-full border rounded-xl p-2" placeholder="e.g., Wholesale Club" />
-          </label>
-          <div class="grid grid-cols-2 gap-3">
-            <label class="text-sm">
-              <span class="text-zinc-600">Total *</span>
-              <input id="fTotal" type="number" step="0.01" class="mt-1 w-full border rounded-xl p-2" placeholder="0.00" />
-            </label>
-            <label class="text-sm">
-              <span class="text-zinc-600">Tax</span>
-              <input id="fTax" type="number" step="0.01" class="mt-1 w-full border rounded-xl p-2" placeholder="0.00" />
-            </label>
-          </div>
-          <label class="text-sm">
-            <span class="text-zinc-600">Date *</span>
-            <input id="fDate" type="date" class="mt-1 w-full border rounded-xl p-2" />
-          </label>
-          <label class="text-sm">
-            <span class="text-zinc-600">Category</span>
-            <input id="fCategory" class="mt-1 w-full border rounded-xl p-2" placeholder="optional" />
-          </label>
-          <label class="text-sm">
-            <span class="text-zinc-600">Notes</span>
-            <input id="fNotes" class="mt-1 w-full border rounded-xl p-2" placeholder="optional" />
-          </label>
-        </div>
-        <div class="mt-4 flex gap-2">
-          <button id="cancelBtn" class="flex-1 px-4 py-2 rounded-xl border">Cancel</button>
-          <button id="saveBtn" class="flex-1 px-4 py-2 rounded-xl bg-emerald-600 text-white">Save</button>
-        </div>
-      </div>
-    </div>
+    // 1) Upload to Storage (public URL back to client)
+    const bucket = "receipts-warm";
+    const objectPath = `${Date.now()}-${file.name}`;
+    const { error: upErr } = await supabase.storage
+      .from(bucket)
+      .upload(objectPath, file, { contentType: file.type, upsert: false });
+    if (upErr) throw upErr;
 
-    <!-- Toast -->
-    <div id="toast" class="hidden fixed left-1/2 -translate-x-1/2 bottom-5 px-4 py-2 rounded-xl shadow text-sm text-white"></div>
+    const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${objectPath}`;
 
-    <script>
-      /* ===== Config (your real values) ===== */
-      const ORG_ID = "d5a0fdcc-efc8-4097-98f2-f01dc6aa10cb";
-      const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
-      const SUPABASE_ANON_KEY =
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
-      const OCR_URL = "https://advihqhjjlxumgdlbwui.supabase.co/functions/v1/smart-handler"; // your Edge Function
+    // 2) OCR via Mindee
+    const fd = new FormData();
+    fd.append("document", file);
 
-      /* ===== Setup ===== */
-      const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      document.getElementById("year").textContent = new Date().getFullYear();
+    // Try expense_receipts v5 first, then receipt v4 as fallback
+    async function callMindee(url: string) {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { Authorization: `Token ${MINDEE_API_KEY}` },
+        body: fd,
+      });
+      const js = await r.json();
+      return { ok: r.ok, js };
+    }
 
-      const missingVendorsEl = document.getElementById("missingVendors");
-      const missingCategoriesEl = document.getElementById("missingCategories");
-      const matchCandidatesEl = document.getElementById("matchCandidates");
-      const applyBtn = document.getElementById("applyBtn");
-      const matchBtn = document.getElementById("matchBtn");
-      const refreshBtn = document.getElementById("refreshBtn");
-      const applySub = document.getElementById("applySub");
-      const matchSub = document.getElementById("matchSub");
-      const toast = document.getElementById("toast");
-      const fileInput = document.getElementById("receiptFile");
-      const uploadBtn = document.getElementById("uploadBtn");
-      const uploadStatus = document.getElementById("uploadStatus");
+    const urls = [
+      "https://api.mindee.net/v1/products/mindee/expense_receipts/v5/predict",
+      "https://api.mindee.net/v1/products/mindee/receipt/v4/predict",
+    ];
 
-      const modal = document.getElementById("modal");
-      const fVendor = document.getElementById("fVendor");
-      const fTotal = document.getElementById("fTotal");
-      const fTax = document.getElementById("fTax");
-      const fDate = document.getElementById("fDate");
-      const fCategory = document.getElementById("fCategory");
-      const fNotes = document.getElementById("fNotes");
-      let lastPublicUrl = null;
+    let raw: any = null;
+    for (const u of urls) {
+      const { ok, js } = await callMindee(u);
+      if (ok && js) { raw = js; break; }
+      // if not ok, keep trying next
+    }
 
-      function showToast(kind, msg) {
-        toast.textContent = msg;
-        toast.className =
-          "fixed left-1/2 -translate-x-1/2 bottom-5 px-4 py-2 rounded-xl shadow text-sm text-white " +
-          (kind === "success" ? "bg-emerald-600" : "bg-rose-600");
-        toast.classList.remove("hidden");
-        setTimeout(() => toast.classList.add("hidden"), 2200);
-      }
+    // Robust extraction across common Mindee shapes
+    // Shapes seen:
+    //  - document.inference.prediction
+    //  - document.inference.pages[0].prediction
+    const doc = raw?.document?.inference;
+    const pred =
+      doc?.prediction ??
+      (Array.isArray(doc?.pages) && doc.pages.length > 0 ? doc.pages[0]?.prediction : null) ??
+      {};
 
-      async function fetchCounts() {
-        const { data } = await client.from("v_phone_dashboard").select("*").single();
-        if (data) {
-          missingVendorsEl.textContent = data.missing_vendors ?? 0;
-          missingCategoriesEl.textContent = data.missing_categories ?? 0;
-          matchCandidatesEl.textContent = data.match_candidates ?? 0;
-        }
-      }
+    const extracted = {
+      vendor: coalesce(
+        pred?.supplier_name?.value,
+        pred?.merchant_name?.value,
+        pred?.supplier?.value,
+      ),
+      total: coalesce(
+        pred?.total_amount?.value,
+        pred?.total_incl_tax?.value,
+        pred?.total_excl_tax?.value
+      ),
+      tax: coalesce(
+        pred?.total_tax?.value,
+        pred?.taxes?.total?.value
+      ),
+      date: coalesce(
+        pred?.date?.value,
+        pred?.purchase_date?.value
+      ),
+    };
 
-      async function runApply() {
-        applyBtn.disabled = true; applySub.textContent = "Working…";
-        const { data, error } = await client.rpc("run_apply_vendor_rules", { p_org: ORG_ID });
-        applyBtn.disabled = false; applySub.textContent = "Auto-clean vendors & categories";
-        if (error) showToast("error", error.message); else { showToast("success", `Rules applied: ${data ?? 0}`); fetchCounts(); }
-      }
-
-      async function runMatch() {
-        matchBtn.disabled = true; matchSub.textContent = "Working…";
-        const { data, error } = await client.rpc("run_match_now", { p_org: ORG_ID });
-        matchBtn.disabled = false; matchSub.textContent = "Link receipts ↔ transactions";
-        if (error) showToast("error", error.message); else { showToast("success", `Matched: ${data ?? 0}`); fetchCounts(); }
-      }
-
-      function openModal(prefill) {
-        fVendor.value = prefill.vendor ?? "";
-        fTotal.value = prefill.total ?? "";
-        fTax.value = prefill.tax ?? "";
-        fDate.value = prefill.date ?? "";
-        fCategory.value = prefill.category ?? "";
-        fNotes.value = prefill.notes ?? "";
-        modal.classList.remove("hidden");
-      }
-      function closeModal() { modal.classList.add("hidden"); }
-
-      async function uploadAndScan() {
-        const file = fileInput.files[0];
-        if (!file) { showToast("error", "No file selected"); return; }
-
-        try {
-          // send file directly to Edge Function (it uploads + OCRs)
-          uploadStatus.textContent = "Uploading & scanning…";
-          const fd = new FormData();
-          fd.append("file", file);
-
-          const resp = await fetch(OCR_URL, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${SUPABASE_ANON_KEY}` // lets the function know it's from your project
-            },
-            body: fd
-          });
-
-          const json = await resp.json();
-          if (!resp.ok) throw new Error(json?.error || "OCR failed");
-
-          // Keep the public URL returned by the function
-          lastPublicUrl = json.url;
-
-          // Prefill modal with extracted values (format date to YYYY-MM-DD)
-          const extracted = json.extracted || {};
-          const prefill = {
-            vendor: extracted.vendor || "",
-            total: extracted.total || "",
-            tax: extracted.tax || "",
-            date: (extracted.date || "").slice(0,10)
-          };
-          openModal(prefill);
-          uploadStatus.textContent = "";
-        } catch (e) {
-          uploadStatus.textContent = "";
-          openModal({}); // allow manual entry even if OCR fails
-          showToast("error", e.message || String(e));
-        }
-      }
-
-      async function saveReceipt() {
-        if (!fTotal.value || !fDate.value) {
-          showToast("error", "Total and Date are required");
-          return;
-        }
-
-        const payload = {
-          org_id: ORG_ID,
-          image_url: lastPublicUrl,               // from OCR function
-          vendor: fVendor.value || null,
-          total: Number(fTotal.value),
-          tax: fTax.value ? Number(fTax.value) : null,
-          subtotal: fTax.value ? Number(fTotal.value) - Number(fTax.value) : null,
-          category: fCategory.value || null,
-          notes: fNotes.value || null,
-          source: "Manual Upload",
-          entered_by: "Mobile",
-          receipt_date: fDate.value,              // YYYY-MM-DD
-        };
-
-        const { error } = await client.from("receipts").insert(payload);
-        if (error) { showToast("error", "Save failed: " + error.message); return; }
-
-        closeModal();
-        fileInput.value = "";
-        lastPublicUrl = null;
-        showToast("success", "Receipt saved!");
-        fetchCounts();
-      }
-
-      // Wire up
-      refreshBtn.addEventListener("click", fetchCounts);
-      applyBtn.addEventListener("click", runApply);
-      matchBtn.addEventListener("click", runMatch);
-      uploadBtn.addEventListener("click", uploadAndScan);
-      document.getElementById("saveBtn").addEventListener("click", saveReceipt);
-      document.getElementById("cancelBtn").addEventListener("click", () => { closeModal(); lastPublicUrl = null; });
-
-      // Initial load
-      fetchCounts();
-    </script>
-  </body>
-</html>
+    // If everything is null, still return success with url so UI can show manual form
+    return new Response(
+      JSON.stringify({
+        success: true,
+        url: publicUrl,
+        extracted,
+        // Uncomment next line for debugging in Supabase logs only
+        // _debug: { hasRaw: !!raw, keys: Object.keys(pred || {}) }
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (e) {
+    return new Response(JSON.stringify({ error: String(e?.message ?? e) }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
