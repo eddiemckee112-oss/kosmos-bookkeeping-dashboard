@@ -5,12 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Kosmos Books — Phone Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Supabase JS -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
   <body class="min-h-screen bg-zinc-50 text-zinc-900 p-4">
     <div class="max-w-md mx-auto flex flex-col gap-4">
-      <!-- Header -->
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-semibold">Kosmos Books</h1>
         <button id="refreshBtn" class="px-3 py-2 rounded-xl text-sm shadow bg-white">Refresh</button>
@@ -32,7 +30,7 @@
         </div>
       </div>
 
-      <!-- Big Buttons -->
+      <!-- Buttons -->
       <button id="applyBtn" class="w-full bg-white rounded-2xl shadow p-4 text-left active:scale-[0.99] transition">
         <div class="flex items-center gap-3">
           <div class="text-3xl leading-none">🧹</div>
@@ -55,28 +53,57 @@
         </div>
       </button>
 
-      <!-- Receipt Upload -->
+      <!-- Upload block -->
       <div class="bg-white rounded-2xl shadow p-4 mt-2 flex flex-col items-start gap-2">
         <div class="text-lg font-semibold">📸 Upload Receipt</div>
-        <input
-          type="file"
-          id="receiptFile"
-          accept="image/*"
-          capture="environment"
-          class="text-sm"
-        />
-        <button
-          id="uploadBtn"
-          class="mt-2 px-4 py-2 bg-emerald-600 text-white rounded-xl shadow active:scale-[0.98] transition"
-        >
+        <input type="file" id="receiptFile" accept="image/*" capture="environment" class="text-sm" />
+        <button id="uploadBtn" class="mt-2 px-4 py-2 bg-emerald-600 text-white rounded-xl shadow active:scale-[0.98] transition">
           Upload & Scan
         </button>
         <div id="uploadStatus" class="text-sm text-zinc-500 mt-1"></div>
       </div>
 
-      <!-- Footer -->
       <div class="mt-6 text-center text-xs text-zinc-500">
         Best Damn Bookkeeping • <span id="year"></span>
+      </div>
+    </div>
+
+    <!-- Review modal -->
+    <div id="modal" class="hidden fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center p-4">
+      <div class="bg-white w-full max-w-md rounded-2xl shadow-lg p-4">
+        <div class="text-lg font-semibold mb-2">Review receipt details</div>
+        <div class="grid grid-cols-1 gap-3">
+          <label class="text-sm">
+            <span class="text-zinc-600">Vendor</span>
+            <input id="fVendor" class="mt-1 w-full border rounded-xl p-2" placeholder="e.g., Wholesale Club" />
+          </label>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="text-sm">
+              <span class="text-zinc-600">Total *</span>
+              <input id="fTotal" type="number" step="0.01" class="mt-1 w-full border rounded-xl p-2" placeholder="0.00" />
+            </label>
+            <label class="text-sm">
+              <span class="text-zinc-600">Tax</span>
+              <input id="fTax" type="number" step="0.01" class="mt-1 w-full border rounded-xl p-2" placeholder="0.00" />
+            </label>
+          </div>
+          <label class="text-sm">
+            <span class="text-zinc-600">Date *</span>
+            <input id="fDate" type="date" class="mt-1 w-full border rounded-xl p-2" />
+          </label>
+          <label class="text-sm">
+            <span class="text-zinc-600">Category</span>
+            <input id="fCategory" class="mt-1 w-full border rounded-xl p-2" placeholder="optional" />
+          </label>
+          <label class="text-sm">
+            <span class="text-zinc-600">Notes</span>
+            <input id="fNotes" class="mt-1 w-full border rounded-xl p-2" placeholder="optional" />
+          </label>
+        </div>
+        <div class="mt-4 flex gap-2">
+          <button id="cancelBtn" class="flex-1 px-4 py-2 rounded-xl border">Cancel</button>
+          <button id="saveBtn" class="flex-1 px-4 py-2 rounded-xl bg-emerald-600 text-white">Save</button>
+        </div>
       </div>
     </div>
 
@@ -84,7 +111,7 @@
     <div id="toast" class="hidden fixed left-1/2 -translate-x-1/2 bottom-5 px-4 py-2 rounded-xl shadow text-sm text-white"></div>
 
     <script>
-      /* ===== Config (your real values) ===== */
+      /* Config */
       const ORG_ID = "d5a0fdcc-efc8-4097-98f2-f01dc6aa10cb";
       const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
       const SUPABASE_ANON_KEY =
@@ -92,9 +119,9 @@
       const OCR_URL = "https://advihqhjjlxumgdlbwui.supabase.co/functions/v1/smart-handler";
       const BUCKET = "receipts-warm";
 
-      /* ===== Setup ===== */
       const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+      /* Elements */
       const missingVendorsEl = document.getElementById("missingVendors");
       const missingCategoriesEl = document.getElementById("missingCategories");
       const matchCandidatesEl = document.getElementById("matchCandidates");
@@ -103,10 +130,20 @@
       const refreshBtn = document.getElementById("refreshBtn");
       const applySub = document.getElementById("applySub");
       const matchSub = document.getElementById("matchSub");
-      const toast = document.getElementById("toast");
       const fileInput = document.getElementById("receiptFile");
       const uploadBtn = document.getElementById("uploadBtn");
       const uploadStatus = document.getElementById("uploadStatus");
+      const toast = document.getElementById("toast");
+
+      const modal = document.getElementById("modal");
+      const fVendor = document.getElementById("fVendor");
+      const fTotal = document.getElementById("fTotal");
+      const fTax = document.getElementById("fTax");
+      const fDate = document.getElementById("fDate");
+      const fCategory = document.getElementById("fCategory");
+      const fNotes = document.getElementById("fNotes");
+      const cancelBtn = document.getElementById("cancelBtn");
+      const saveBtn = document.getElementById("saveBtn");
 
       document.getElementById("year").textContent = new Date().getFullYear();
 
@@ -121,133 +158,115 @@
 
       async function fetchCounts() {
         const { data, error } = await client.from("v_phone_dashboard").select("*").single();
-        if (error) {
-          showToast("error", "Load failed: " + error.message);
-          return;
-        }
+        if (error) return;
         missingVendorsEl.textContent = data?.missing_vendors ?? 0;
         missingCategoriesEl.textContent = data?.missing_categories ?? 0;
         matchCandidatesEl.textContent = data?.match_candidates ?? 0;
       }
 
       async function runApply() {
-        applyBtn.disabled = true;
-        applySub.textContent = "Working…";
+        applyBtn.disabled = true; applySub.textContent = "Working…";
         const { data, error } = await client.rpc("run_apply_vendor_rules", { p_org: ORG_ID });
-        applyBtn.disabled = false;
-        applySub.textContent = "Auto-clean vendors & categories";
-        if (error) {
-          showToast("error", "Apply failed: " + error.message);
-        } else {
-          const n = typeof data === "number" ? data : 0;
-          showToast("success", "Rules applied: " + n + " row(s)");
-          fetchCounts();
-        }
+        applyBtn.disabled = false; applySub.textContent = "Auto-clean vendors & categories";
+        if (error) showToast("error", error.message); else { showToast("success", `Rules applied: ${data ?? 0}`); fetchCounts(); }
       }
 
       async function runMatch() {
-        matchBtn.disabled = true;
-        matchSub.textContent = "Working…";
+        matchBtn.disabled = true; matchSub.textContent = "Working…";
         const { data, error } = await client.rpc("run_match_now", { p_org: ORG_ID });
-        matchBtn.disabled = false;
-        matchSub.textContent = "Link receipts ↔ transactions";
-        if (error) {
-          showToast("error", "Match failed: " + error.message);
-        } else {
-          const n = typeof data === "number" ? data : 0;
-          showToast("success", "Matched: " + n + " pair(s)");
-          fetchCounts();
-        }
+        matchBtn.disabled = false; matchSub.textContent = "Link receipts ↔ transactions";
+        if (error) showToast("error", error.message); else { showToast("success", `Matched: ${data ?? 0}`); fetchCounts(); }
       }
 
-      async function uploadReceipt() {
+      function openModal(prefill) {
+        fVendor.value = prefill.vendor ?? "";
+        fTotal.value = prefill.total ?? "";
+        fTax.value = prefill.tax ?? "";
+        fDate.value = prefill.receipt_date ?? "";
+        fCategory.value = prefill.category ?? "";
+        fNotes.value = prefill.notes ?? "";
+        modal.classList.remove("hidden");
+      }
+      function closeModal() { modal.classList.add("hidden"); }
+
+      async function uploadAndScan() {
         const file = fileInput.files[0];
-        if (!file) {
-          showToast("error", "No file selected");
-          return;
-        }
+        if (!file) { showToast("error", "No file selected"); return; }
 
         // 1) Upload to storage
+        uploadStatus.textContent = "Uploading…";
         const path = `${ORG_ID}/${Date.now()}_${file.name}`;
-        const { error: uploadError } = await client.storage
-          .from(BUCKET)
-          .upload(path, file, { cacheControl: "31536000", upsert: false });
-        if (uploadError) {
-          showToast("error", "Upload failed: " + uploadError.message);
-          uploadStatus.textContent = "";
-          return;
-        }
+        const { error: uploadError } = await client.storage.from(BUCKET).upload(path, file, { cacheControl: "31536000", upsert: false });
+        if (uploadError) { showToast("error", "Upload failed: " + uploadError.message); uploadStatus.textContent = ""; return; }
         const publicUrl = client.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
 
-        // 2) Insert DB row
-        const { data: inserted, error: insertError } = await client
-          .from("receipts")
-          .insert({
+        // 2) OCR first (no DB insert yet)
+        uploadStatus.textContent = "Scanning…";
+        let ocr = {};
+        try {
+          const resp = await fetch("https://advihqhjjlxumgdlbwui.supabase.co/functions/v1/smart-handler", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+            body: JSON.stringify({ image_url: publicUrl, org_id: ORG_ID })
+          });
+          ocr = await resp.json();
+          if (!resp.ok) throw new Error(ocr?.error || "OCR failed");
+        } catch (e) {
+          // still let the user fill manually
+          ocr = {};
+        }
+
+        // 3) Open modal to confirm/edit before insert
+        openModal({
+          vendor: ocr.vendor || "",
+          total: ocr.total || "",
+          tax: ocr.tax || "",
+          receipt_date: (ocr.receipt_date || "").slice(0,10), // ensure YYYY-MM-DD
+        });
+
+        // Save handler (one-time)
+        const onSave = async () => {
+          // Required fields
+          if (!fTotal.value || !fDate.value) { showToast("error", "Total and Date are required"); return; }
+
+          const payload = {
             org_id: ORG_ID,
             image_url: publicUrl,
-            entered_by: "Mobile",
+            vendor: fVendor.value || null,
+            total: fTotal.value ? Number(fTotal.value) : null,
+            tax: fTax.value ? Number(fTax.value) : null,
+            subtotal: (fTotal.value && fTax.value) ? Number(fTotal.value) - Number(fTax.value) : null,
+            category: fCategory.value || null,
+            notes: fNotes.value || null,
             source: "Manual Upload",
-          })
-          .select("id")
-          .single();
-        if (insertError || !inserted?.id) {
-          showToast("error", "Save failed: " + (insertError?.message || "no id"));
-          uploadStatus.textContent = "";
-          return;
-        }
-        const receiptId = inserted.id;
+            entered_by: "Mobile",
+            receipt_date: fDate.value, // YYYY-MM-DD
+          };
 
-        // 3) OCR
-        uploadStatus.textContent = "Scanning…";
-        try {
-          const resp = await fetch(OCR_URL, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-            },
-            body: JSON.stringify({
-              image_url: publicUrl,
-              receipt_id: receiptId,
-              org_id: ORG_ID,
-            }),
-          });
-          const ocr = await resp.json();
-          if (!resp.ok) {
-            showToast("error", "OCR failed: " + (ocr?.error || "Unknown error"));
-            uploadStatus.textContent = "";
-            return;
-          }
+          const { error: insertError } = await client.from("receipts").insert(payload);
+          if (insertError) { showToast("error", "Save failed: " + insertError.message); return; }
 
-          // 4) Update row with parsed fields
-          await client
-            .from("receipts")
-            .update({
-              vendor: ocr.vendor ?? null,
-              total: ocr.total ?? null,
-              tax: ocr.tax ?? null,
-              receipt_date: ocr.receipt_date ?? null,
-            })
-            .eq("id", receiptId)
-            .eq("org_id", ORG_ID);
-
-          showToast("success", "Receipt uploaded & scanned!");
-          uploadStatus.textContent = "Saved & scanned.";
+          closeModal();
           fileInput.value = "";
+          uploadStatus.textContent = "Saved.";
+          showToast("success", "Receipt saved!");
           fetchCounts();
-        } catch (e) {
-          showToast("error", "OCR error: " + (e?.message || e));
-          uploadStatus.textContent = "";
-        }
+        };
+
+        const onCancel = () => { closeModal(); uploadStatus.textContent = ""; };
+
+        // Clean old listeners then attach
+        saveBtn.replaceWith(saveBtn.cloneNode(true));
+        cancelBtn.replaceWith(cancelBtn.cloneNode(true));
+        document.getElementById("saveBtn").addEventListener("click", onSave);
+        document.getElementById("cancelBtn").addEventListener("click", onCancel);
       }
 
-      // Wire up buttons
       refreshBtn.addEventListener("click", fetchCounts);
       applyBtn.addEventListener("click", runApply);
       matchBtn.addEventListener("click", runMatch);
-      uploadBtn.addEventListener("click", uploadReceipt);
+      uploadBtn.addEventListener("click", uploadAndScan);
 
-      // Initial load
       fetchCounts();
     </script>
   </body>
