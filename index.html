@@ -9,6 +9,7 @@
   </head>
   <body class="min-h-screen bg-zinc-50 text-zinc-900 p-4">
     <div class="max-w-md mx-auto flex flex-col gap-4">
+      <!-- Header -->
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-semibold">Kosmos Books</h1>
         <button id="refreshBtn" class="px-3 py-2 rounded-xl text-sm shadow bg-white">Refresh</button>
@@ -30,7 +31,7 @@
         </div>
       </div>
 
-      <!-- Buttons -->
+      <!-- Big Buttons -->
       <button id="applyBtn" class="w-full bg-white rounded-2xl shadow p-4 text-left active:scale-[0.99] transition">
         <div class="flex items-center gap-3">
           <div class="text-3xl leading-none">🧹</div>
@@ -53,7 +54,7 @@
         </div>
       </button>
 
-      <!-- Upload block -->
+      <!-- Upload -->
       <div class="bg-white rounded-2xl shadow p-4 mt-2 flex flex-col items-start gap-2">
         <div class="text-lg font-semibold">📸 Upload Receipt</div>
         <input type="file" id="receiptFile" accept="image/*" capture="environment" class="text-sm" />
@@ -63,6 +64,7 @@
         <div id="uploadStatus" class="text-sm text-zinc-500 mt-1"></div>
       </div>
 
+      <!-- Footer -->
       <div class="mt-6 text-center text-xs text-zinc-500">
         Best Damn Bookkeeping • <span id="year"></span>
       </div>
@@ -111,17 +113,17 @@
     <div id="toast" class="hidden fixed left-1/2 -translate-x-1/2 bottom-5 px-4 py-2 rounded-xl shadow text-sm text-white"></div>
 
     <script>
-      /* Config */
+      /* ===== Config (your real values) ===== */
       const ORG_ID = "d5a0fdcc-efc8-4097-98f2-f01dc6aa10cb";
       const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
       const SUPABASE_ANON_KEY =
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
-      const OCR_URL = "https://advihqhjjlxumgdlbwui.supabase.co/functions/v1/smart-handler";
-      const BUCKET = "receipts-warm";
+      const OCR_URL = "https://advihqhjjlxumgdlbwui.supabase.co/functions/v1/smart-handler"; // your Edge Function
 
+      /* ===== Setup ===== */
       const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      document.getElementById("year").textContent = new Date().getFullYear();
 
-      /* Elements */
       const missingVendorsEl = document.getElementById("missingVendors");
       const missingCategoriesEl = document.getElementById("missingCategories");
       const matchCandidatesEl = document.getElementById("matchCandidates");
@@ -130,10 +132,10 @@
       const refreshBtn = document.getElementById("refreshBtn");
       const applySub = document.getElementById("applySub");
       const matchSub = document.getElementById("matchSub");
+      const toast = document.getElementById("toast");
       const fileInput = document.getElementById("receiptFile");
       const uploadBtn = document.getElementById("uploadBtn");
       const uploadStatus = document.getElementById("uploadStatus");
-      const toast = document.getElementById("toast");
 
       const modal = document.getElementById("modal");
       const fVendor = document.getElementById("fVendor");
@@ -142,10 +144,7 @@
       const fDate = document.getElementById("fDate");
       const fCategory = document.getElementById("fCategory");
       const fNotes = document.getElementById("fNotes");
-      const cancelBtn = document.getElementById("cancelBtn");
-      const saveBtn = document.getElementById("saveBtn");
-
-      document.getElementById("year").textContent = new Date().getFullYear();
+      let lastPublicUrl = null;
 
       function showToast(kind, msg) {
         toast.textContent = msg;
@@ -157,11 +156,12 @@
       }
 
       async function fetchCounts() {
-        const { data, error } = await client.from("v_phone_dashboard").select("*").single();
-        if (error) return;
-        missingVendorsEl.textContent = data?.missing_vendors ?? 0;
-        missingCategoriesEl.textContent = data?.missing_categories ?? 0;
-        matchCandidatesEl.textContent = data?.match_candidates ?? 0;
+        const { data } = await client.from("v_phone_dashboard").select("*").single();
+        if (data) {
+          missingVendorsEl.textContent = data.missing_vendors ?? 0;
+          missingCategoriesEl.textContent = data.missing_categories ?? 0;
+          matchCandidatesEl.textContent = data.match_candidates ?? 0;
+        }
       }
 
       async function runApply() {
@@ -182,7 +182,7 @@
         fVendor.value = prefill.vendor ?? "";
         fTotal.value = prefill.total ?? "";
         fTax.value = prefill.tax ?? "";
-        fDate.value = prefill.receipt_date ?? "";
+        fDate.value = prefill.date ?? "";
         fCategory.value = prefill.category ?? "";
         fNotes.value = prefill.notes ?? "";
         modal.classList.remove("hidden");
@@ -193,80 +193,82 @@
         const file = fileInput.files[0];
         if (!file) { showToast("error", "No file selected"); return; }
 
-        // 1) Upload to storage
-        uploadStatus.textContent = "Uploading…";
-        const path = `${ORG_ID}/${Date.now()}_${file.name}`;
-        const { error: uploadError } = await client.storage.from(BUCKET).upload(path, file, { cacheControl: "31536000", upsert: false });
-        if (uploadError) { showToast("error", "Upload failed: " + uploadError.message); uploadStatus.textContent = ""; return; }
-        const publicUrl = client.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
-
-        // 2) OCR first (no DB insert yet)
-        uploadStatus.textContent = "Scanning…";
-        let ocr = {};
         try {
-          const resp = await fetch("https://advihqhjjlxumgdlbwui.supabase.co/functions/v1/smart-handler", {
+          // send file directly to Edge Function (it uploads + OCRs)
+          uploadStatus.textContent = "Uploading & scanning…";
+          const fd = new FormData();
+          fd.append("file", file);
+
+          const resp = await fetch(OCR_URL, {
             method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
-            body: JSON.stringify({ image_url: publicUrl, org_id: ORG_ID })
+            headers: {
+              Authorization: `Bearer ${SUPABASE_ANON_KEY}` // lets the function know it's from your project
+            },
+            body: fd
           });
-          ocr = await resp.json();
-          if (!resp.ok) throw new Error(ocr?.error || "OCR failed");
-        } catch (e) {
-          // still let the user fill manually
-          ocr = {};
-        }
 
-        // 3) Open modal to confirm/edit before insert
-        openModal({
-          vendor: ocr.vendor || "",
-          total: ocr.total || "",
-          tax: ocr.tax || "",
-          receipt_date: (ocr.receipt_date || "").slice(0,10), // ensure YYYY-MM-DD
-        });
+          const json = await resp.json();
+          if (!resp.ok) throw new Error(json?.error || "OCR failed");
 
-        // Save handler (one-time)
-        const onSave = async () => {
-          // Required fields
-          if (!fTotal.value || !fDate.value) { showToast("error", "Total and Date are required"); return; }
+          // Keep the public URL returned by the function
+          lastPublicUrl = json.url;
 
-          const payload = {
-            org_id: ORG_ID,
-            image_url: publicUrl,
-            vendor: fVendor.value || null,
-            total: fTotal.value ? Number(fTotal.value) : null,
-            tax: fTax.value ? Number(fTax.value) : null,
-            subtotal: (fTotal.value && fTax.value) ? Number(fTotal.value) - Number(fTax.value) : null,
-            category: fCategory.value || null,
-            notes: fNotes.value || null,
-            source: "Manual Upload",
-            entered_by: "Mobile",
-            receipt_date: fDate.value, // YYYY-MM-DD
+          // Prefill modal with extracted values (format date to YYYY-MM-DD)
+          const extracted = json.extracted || {};
+          const prefill = {
+            vendor: extracted.vendor || "",
+            total: extracted.total || "",
+            tax: extracted.tax || "",
+            date: (extracted.date || "").slice(0,10)
           };
-
-          const { error: insertError } = await client.from("receipts").insert(payload);
-          if (insertError) { showToast("error", "Save failed: " + insertError.message); return; }
-
-          closeModal();
-          fileInput.value = "";
-          uploadStatus.textContent = "Saved.";
-          showToast("success", "Receipt saved!");
-          fetchCounts();
-        };
-
-        const onCancel = () => { closeModal(); uploadStatus.textContent = ""; };
-
-        // Clean old listeners then attach
-        saveBtn.replaceWith(saveBtn.cloneNode(true));
-        cancelBtn.replaceWith(cancelBtn.cloneNode(true));
-        document.getElementById("saveBtn").addEventListener("click", onSave);
-        document.getElementById("cancelBtn").addEventListener("click", onCancel);
+          openModal(prefill);
+          uploadStatus.textContent = "";
+        } catch (e) {
+          uploadStatus.textContent = "";
+          openModal({}); // allow manual entry even if OCR fails
+          showToast("error", e.message || String(e));
+        }
       }
 
+      async function saveReceipt() {
+        if (!fTotal.value || !fDate.value) {
+          showToast("error", "Total and Date are required");
+          return;
+        }
+
+        const payload = {
+          org_id: ORG_ID,
+          image_url: lastPublicUrl,               // from OCR function
+          vendor: fVendor.value || null,
+          total: Number(fTotal.value),
+          tax: fTax.value ? Number(fTax.value) : null,
+          subtotal: fTax.value ? Number(fTotal.value) - Number(fTax.value) : null,
+          category: fCategory.value || null,
+          notes: fNotes.value || null,
+          source: "Manual Upload",
+          entered_by: "Mobile",
+          receipt_date: fDate.value,              // YYYY-MM-DD
+        };
+
+        const { error } = await client.from("receipts").insert(payload);
+        if (error) { showToast("error", "Save failed: " + error.message); return; }
+
+        closeModal();
+        fileInput.value = "";
+        lastPublicUrl = null;
+        showToast("success", "Receipt saved!");
+        fetchCounts();
+      }
+
+      // Wire up
       refreshBtn.addEventListener("click", fetchCounts);
       applyBtn.addEventListener("click", runApply);
       matchBtn.addEventListener("click", runMatch);
       uploadBtn.addEventListener("click", uploadAndScan);
+      document.getElementById("saveBtn").addEventListener("click", saveReceipt);
+      document.getElementById("cancelBtn").addEventListener("click", () => { closeModal(); lastPublicUrl = null; });
 
+      // Initial load
       fetchCounts();
     </script>
   </body>
