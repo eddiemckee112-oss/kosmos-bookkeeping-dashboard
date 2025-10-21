@@ -140,5 +140,75 @@
 
       fetchCounts();
     </script>
-  </body>
+ <!-- Receipt Upload -->
+<div class="bg-white rounded-2xl shadow p-4 mt-6 flex flex-col items-start gap-2">
+  <div class="text-lg font-semibold">📸 Upload Receipt</div>
+  <input
+    type="file"
+    id="receiptFile"
+    accept="image/*"
+    capture="environment"
+    class="text-sm"
+  />
+  <button
+    id="uploadBtn"
+    class="mt-2 px-4 py-2 bg-emerald-600 text-white rounded-xl shadow active:scale-[0.98] transition"
+  >
+    Upload
+  </button>
+  <div id="uploadStatus" class="text-sm text-zinc-500 mt-1"></div>
+</div>
+
+<script>
+  const uploadBtn = document.getElementById("uploadBtn");
+  const fileInput = document.getElementById("receiptFile");
+  const uploadStatus = document.getElementById("uploadStatus");
+
+  async function uploadReceipt() {
+    const file = fileInput.files[0];
+    if (!file) {
+      showToast("error", "No file selected");
+      return;
+    }
+
+    const fileName = `${Date.now()}_${file.name}`;
+    const { data, error } = await client.storage
+      .from("receipts-warm")
+      .upload(fileName, file, {
+        cacheControl: "31536000",
+        upsert: false,
+      });
+
+    if (error) {
+      showToast("error", "Upload failed: " + error.message);
+      uploadStatus.textContent = "";
+      return;
+    }
+
+    const publicUrl = client.storage.from("receipts-warm").getPublicUrl(fileName)
+      .data.publicUrl;
+
+    // insert metadata into receipts table
+    const { error: insertError } = await client.from("receipts").insert({
+      org_id: ORG_ID,
+      image_url: publicUrl,
+      entered_by: "Mobile",
+      source: "Manual Upload",
+    });
+
+    if (insertError) {
+      showToast("error", "Save failed: " + insertError.message);
+      uploadStatus.textContent = "";
+      return;
+    }
+
+    showToast("success", "Receipt uploaded!");
+    uploadStatus.textContent = "Saved to receipts-warm.";
+    fileInput.value = "";
+    fetchCounts(); // refresh dashboard counts
+  }
+
+  uploadBtn.addEventListener("click", uploadReceipt);
+</script>
+ </body>
 </html>
