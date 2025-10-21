@@ -1,0 +1,144 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kosmos Books — Phone Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Supabase JS (UMD build for simple <script> usage) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  </head>
+  <body class="min-h-screen bg-zinc-50 text-zinc-900 p-4">
+    <div class="max-w-md mx-auto flex flex-col gap-4">
+      <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-semibold">Kosmos Books</h1>
+        <button id="refreshBtn" class="px-3 py-2 rounded-xl text-sm shadow bg-white">Refresh</button>
+      </div>
+
+      <!-- Tiles -->
+      <div class="grid grid-cols-3 gap-3">
+        <div class="bg-white rounded-2xl shadow p-4">
+          <div class="text-xs text-zinc-500">Missing Vendors</div>
+          <div id="missingVendors" class="text-3xl font-bold mt-1">—</div>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-4">
+          <div class="text-xs text-zinc-500">Missing Categories</div>
+          <div id="missingCategories" class="text-3xl font-bold mt-1">—</div>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-4">
+          <div class="text-xs text-zinc-500">Match Candidates</div>
+          <div id="matchCandidates" class="text-3xl font-bold mt-1">—</div>
+        </div>
+      </div>
+
+      <!-- Buttons -->
+      <button id="applyBtn" class="w-full bg-white rounded-2xl shadow p-4 text-left active:scale-[0.99] transition">
+        <div class="flex items-center gap-3">
+          <div class="text-3xl leading-none">🧹</div>
+          <div class="flex-1">
+            <div class="text-lg font-semibold">Apply Rules</div>
+            <div id="applySub" class="text-sm text-zinc-500">Auto-clean vendors & categories</div>
+          </div>
+          <div class="text-sm text-zinc-400">Tap</div>
+        </div>
+      </button>
+
+      <button id="matchBtn" class="w-full bg-white rounded-2xl shadow p-4 text-left active:scale-[0.99] transition">
+        <div class="flex items-center gap-3">
+          <div class="text-3xl leading-none">🔁</div>
+          <div class="flex-1">
+            <div class="text-lg font-semibold">Match Now</div>
+            <div id="matchSub" class="text-sm text-zinc-500">Link receipts ↔ transactions</div>
+          </div>
+          <div class="text-sm text-zinc-400">Tap</div>
+        </div>
+      </button>
+
+      <div class="mt-8 text-center text-xs text-zinc-500">
+        Best Damn Bookkeeping • <span id="year"></span>
+      </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="hidden fixed left-1/2 -translate-x-1/2 bottom-5 px-4 py-2 rounded-xl shadow text-sm text-white"></div>
+
+    <script>
+      const ORG_ID = "d5a0fdcc-efc8-4097-98f2-f01dc6aa10cb";
+      const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
+      const SUPABASE_ANON_KEY =
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
+
+      const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+      const missingVendorsEl = document.getElementById("missingVendors");
+      const missingCategoriesEl = document.getElementById("missingCategories");
+      const matchCandidatesEl = document.getElementById("matchCandidates");
+      const applyBtn = document.getElementById("applyBtn");
+      const matchBtn = document.getElementById("matchBtn");
+      const refreshBtn = document.getElementById("refreshBtn");
+      const applySub = document.getElementById("applySub");
+      const matchSub = document.getElementById("matchSub");
+      const toast = document.getElementById("toast");
+
+      document.getElementById("year").textContent = new Date().getFullYear();
+
+      function showToast(kind, msg) {
+        toast.textContent = msg;
+        toast.className =
+          "fixed left-1/2 -translate-x-1/2 bottom-5 px-4 py-2 rounded-xl shadow text-sm text-white " +
+          (kind === "success" ? "bg-emerald-600" : "bg-rose-600");
+        toast.classList.remove("hidden");
+        setTimeout(() => {
+          toast.classList.add("hidden");
+        }, 2200);
+      }
+
+      async function fetchCounts() {
+        const { data, error } = await client.from("v_phone_dashboard").select("*").single();
+        if (error) {
+          showToast("error", "Load failed: " + error.message);
+          return;
+        }
+        missingVendorsEl.textContent = data?.missing_vendors ?? 0;
+        missingCategoriesEl.textContent = data?.missing_categories ?? 0;
+        matchCandidatesEl.textContent = data?.match_candidates ?? 0;
+      }
+
+      async function runApply() {
+        applyBtn.disabled = true;
+        applySub.textContent = "Working…";
+        const { data, error } = await client.rpc("run_apply_vendor_rules", { p_org: ORG_ID });
+        applyBtn.disabled = false;
+        applySub.textContent = "Auto-clean vendors & categories";
+        if (error) {
+          showToast("error", "Apply failed: " + error.message);
+        } else {
+          const n = typeof data === "number" ? data : 0;
+          showToast("success", "Rules applied: " + n + " row(s)");
+          fetchCounts();
+        }
+      }
+
+      async function runMatch() {
+        matchBtn.disabled = true;
+        matchSub.textContent = "Working…";
+        const { data, error } = await client.rpc("run_match_now", { p_org: ORG_ID });
+        matchBtn.disabled = false;
+        matchSub.textContent = "Link receipts ↔ transactions";
+        if (error) {
+          showToast("error", "Match failed: " + error.message);
+        } else {
+          const n = typeof data === "number" ? data : 0;
+          showToast("success", "Matched: " + n + " pair(s)");
+          fetchCounts();
+        }
+      }
+
+      refreshBtn.addEventListener("click", fetchCounts);
+      applyBtn.addEventListener("click", runApply);
+      matchBtn.addEventListener("click", runMatch);
+
+      fetchCounts();
+    </script>
+  </body>
+</html>
