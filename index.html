@@ -33,7 +33,6 @@
         <input id="file" type="file" accept="image/*,.pdf" />
       </div>
 
-      <!-- minimal manual fields (all optional) -->
       <div class="row">
         <label>Vendor
           <input id="vendor" type="text" placeholder="e.g., Wholesale Club" />
@@ -47,6 +46,12 @@
       <div class="row">
         <label>Total
           <input id="total" type="number" step="0.01" placeholder="0.00" />
+        </label>
+      </div>
+      <!-- ✅ NEW: Tax field -->
+      <div class="row">
+        <label>Tax
+          <input id="tax" type="number" step="0.01" placeholder="0.00" />
         </label>
       </div>
       <div class="row">
@@ -89,8 +94,6 @@
         const { count, error } = await sb.from("receipts").select("*", { count:"exact", head:true });
         if (!error) countEl.textContent = (count ?? 0).toString();
       }
-
-      // initial count
       refreshCount().then(() => statusEl.textContent = "Connected.");
 
       async function handleUpload() {
@@ -110,23 +113,24 @@
         const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(objectPath)}`;
 
         // 2) Collect manual fields
-        const vendor = document.getElementById("vendor").value || null;
-        const rdate  = document.getElementById("rdate").value || null;
-        const total  = document.getElementById("total").value;
+        const vendor   = document.getElementById("vendor").value || null;
+        const rdate    = document.getElementById("rdate").value || null;
+        const totalVal = document.getElementById("total").value;
+        const taxVal   = document.getElementById("tax").value;        // NEW
         const category = document.getElementById("category").value || null;
-        const source = document.getElementById("source").value || null;
-        const notes  = document.getElementById("notes").value || null;
+        const source   = document.getElementById("source").value || null;
+        const notes    = document.getElementById("notes").value || null;
 
-        // Convert total to number or null
-        const totalNum = total === "" ? null : Number(total);
+        const totalNum = totalVal === "" ? null : Number(totalVal);
+        const taxNum   = taxVal === "" ? 0.00 : Number(taxVal);        // NEW
 
-        // 3) Insert DB row (manual-only, no OCR)
+        // 3) Insert DB row
         const { error: insErr } = await sb.from("receipts").insert([{
           image_url: publicUrl,
           vendor: vendor,
-          receipt_date: rdate,   // expects YYYY-MM-DD or null
-          total: totalNum,       // REQUIRED by your schema; leave null if you want to fill later
-          tax: 0.00,
+          receipt_date: rdate,
+          total: totalNum,
+          tax: taxNum,               // NEW
           subtotal: null,
           category: category,
           source: source,
