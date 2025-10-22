@@ -1,311 +1,457 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Kosmos Bookkeeping</title>
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-    <style>
-      :root { --bg:#fafafa; --card:#fff; --border:#e5e7eb; --muted:#6b7280; --ok:#0a7a33; --err:#b00020; }
-      * { box-sizing: border-box; }
-      body { font-family: system-ui, Arial, sans-serif; margin: 2rem; background: var(--bg); color:#111; }
-      h1 { font-size: 1.6rem; margin: 0 0 .75rem 0; }
-      h3 { margin: 0 0 .25rem 0; }
-      .wrap { display: grid; grid-template-columns: 520px 1fr; gap: 24px; align-items: start; }
-      .card { background: var(--card); border:1px solid var(--border); border-radius: 12px; padding: 16px; }
-      label { display:block; margin-top:.65rem; font-weight:600; }
-      input { width:100%; padding:.6rem .7rem; border:1px solid #cfcfcf; border-radius:8px; margin-top:.35rem; }
-      input[readonly] { background:#f6f6f6; }
-      button { margin-top:.6rem; padding:.6rem 1rem; border-radius:8px; border:1px solid #bbb; background:#111; color:#fff; cursor:pointer; }
-      button:hover { background:#333; }
-      small.muted { color:var(--muted); display:block; margin-top:.25rem; }
-      .ok { color:var(--ok); }
-      .err { color:var(--err); }
-      .row { margin-top:.35rem; }
-      table { width:100%; border-collapse: collapse; }
-      th, td { padding: 8px 10px; border-bottom:1px solid var(--border); text-align: left; font-size: 14px; }
-      th { background:#f6f7f8; position: sticky; top:0; z-index:1; }
-      .chip { font-size:12px; background:#eef2ff; border:1px solid #c7d2fe; padding:2px 6px; border-radius:999px; }
-      .right { text-align:right; }
-      .rowbtns { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
-      .secondary { background:#f7f7f7; color:#111; border-color:#ccc; }
-      @media (max-width:1100px){ .wrap{ grid-template-columns:1fr; } }
-    </style>
-  </head>
-  <body>
-    <h1>Kosmos Bookkeeping</h1>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Kosmos Bookkeeping</title>
 
-    <div class="wrap">
-      <!-- LEFT SIDE -->
-      <div>
-        <!-- STATUS CARD -->
-        <div class="card">
-          <p id="status">Connecting…</p>
-          <p><strong>Receipts in database:</strong> <span id="receiptCount">—</span></p>
-        </div>
+  <!-- Supabase -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <!-- SheetJS for Excel export -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.20.2/dist/xlsx.full.min.js"></script>
 
-        <!-- UPLOAD RECEIPT -->
-        <div class="card" style="margin-top:16px;">
-          <h3>Upload a receipt (manual-only)</h3>
-          <small class="muted">Uploads image → saves to <code>receipts-warm</code> → inserts row in <code>public.receipts</code>.</small>
+  <style>
+    :root{
+      --bg:#fafafa; --card:#fff; --border:#e5e7eb; --muted:#6b7280;
+      --ok:#0a7a33; --err:#b00020; --ink:#111; --btn:#111; --btnH:#333;
+    }
+    *{ box-sizing:border-box; }
+    body{ font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:24px; background:var(--bg); color:var(--ink); }
+    h1{ font-size:1.6rem; margin:0 0 .75rem; }
+    h3{ margin:0 0 .25rem; }
+    .wrap{ display:grid; grid-template-columns:520px 1fr; gap:24px; align-items:start; }
+    .card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px; }
+    label{ display:block; margin-top:.7rem; font-weight:600; }
+    input{ width:100%; padding:.6rem .7rem; border:1px solid #cfcfcf; border-radius:10px; margin-top:.35rem; background:#fff; }
+    input[readonly]{ background:#f7f7f7; }
+    small.muted{ color:var(--muted); display:block; margin-top:.25rem; }
+    .muted{ color:var(--muted); }
+    .ok{ color:var(--ok); }
+    .err{ color:var(--err); }
+    button{ padding:.6rem 1rem; border-radius:10px; border:1px solid #bbb; background:var(--btn); color:#fff; cursor:pointer; }
+    button:hover{ background:var(--btnH); }
+    .secondary{ background:#f7f7f7; color:#111; border-color:#d0d0d0; }
+    .secondary:hover{ background:#eee; }
+    .rowbtns{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+    table{ width:100%; border-collapse:collapse; font-size:14px; }
+    th, td{ padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; }
+    th{ background:#f6f7f8; position:sticky; top:0; z-index:1; }
+    .right{ text-align:right; }
+    .chip{ font-size:12px; background:#eef2ff; border:1px solid #c7d2fe; padding:2px 6px; border-radius:999px; }
 
-          <div class="row">
-            <input type="file" id="fileInput" accept="image/*,.pdf" />
-          </div>
+    /* Export dropdown */
+    .dropdown{ position:relative; display:inline-block; }
+    .dropdown-btn{ display:inline-flex; align-items:center; gap:6px; }
+    .caret{ width:0; height:0; border-left:5px solid transparent; border-right:5px solid transparent; border-top:5px solid currentColor; }
+    .menu{ position:absolute; top:100%; left:0; background:#fff; border:1px solid var(--border); border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.07); padding:6px; margin-top:6px; min-width:220px; display:none; z-index:10; }
+    .menu.open{ display:block; }
+    .menu button{ width:100%; text-align:left; background:#fff; color:#111; border:0; padding:.55rem .7rem; border-radius:8px; }
+    .menu button:hover{ background:#f3f4f6; }
+    @media (max-width:1100px){ .wrap{ grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <h1>Kosmos Bookkeeping</h1>
 
-          <label>Vendor
-            <input id="vendor" list="vendorList" placeholder="Start typing… e.g., No Frills, Sysco, Costco" />
-            <datalist id="vendorList"></datalist>
-            <small class="muted">Suggestions come from your existing receipts.</small>
-          </label>
-
-          <label>Date
-            <input id="rdate" type="date" />
-          </label>
-
-          <label>Total
-            <input id="total" type="number" step="0.01" />
-          </label>
-
-          <label>Tax
-            <input id="tax" type="number" step="0.01" />
-          </label>
-
-          <label>Subtotal (auto)
-            <input id="subtotal" type="number" step="0.01" readonly />
-          </label>
-
-          <label>Category
-            <input id="category" list="categoryList" placeholder="Pick or type a category…" />
-            <datalist id="categoryList"></datalist>
-            <small class="muted">Master list; you can still type a new one.</small>
-          </label>
-
-          <label>Source
-            <input id="source" list="sourceList" placeholder="e.g., CIBC Chequing, TD Visa, Cash…" />
-            <datalist id="sourceList"></datalist>
-            <small class="muted">Suggestions come from your existing receipts.</small>
-          </label>
-
-          <label>Notes
-            <input id="notes" placeholder="optional" />
-          </label>
-
-          <button id="uploadBtn">Upload & Save</button>
-          <p id="msg" class="muted"></p>
-        </div>
-
-        <!-- AUTOMATION CARD -->
-        <div class="card" style="margin-top:16px;">
-          <h3>Automation</h3>
-          <small class="muted">Run your Supabase bookkeeping functions right from here.</small>
-          <div class="rowbtns" style="margin-top:10px;">
-            <button id="btnApply" class="secondary" title="Automatically categorize receipts">Apply Rules</button>
-            <button id="btnMatch" class="secondary" title="Match receipts with bank transactions">Match Now</button>
-            <button id="btnExport" title="Download a CSV for your accountant">Export Accountant CSV</button>
-          </div>
-          <p id="autoMsg" class="muted" style="margin-top:10px;"></p>
-        </div>
+  <div class="wrap">
+    <!-- LEFT COLUMN -->
+    <div>
+      <div class="card">
+        <p id="status">Connecting…</p>
+        <p><strong>Receipts in database:</strong> <span id="receiptCount">—</span></p>
       </div>
 
-      <!-- RIGHT SIDE: UNMATCHED RECEIPTS TABLE -->
-      <div class="card">
-        <h3>Unmatched receipts</h3>
-        <small class="muted">Newest first • From view <code>v_unmatched_receipts</code> • Last 25</small>
-        <div style="max-height: 540px; overflow:auto; margin-top:8px;">
-          <table id="unmatchedTable">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Vendor</th>
-                <th class="right">Total</th>
-                <th class="right">Tax</th>
-                <th>Category</th>
-                <th>Source</th>
-                <th>Image</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+      <div class="card" style="margin-top:16px;">
+        <h3>Upload a receipt (manual-only)</h3>
+        <small class="muted">Uploads image → saves to <code>receipts-warm</code> → inserts row in <code>public.receipts</code>.</small>
+
+        <div class="row">
+          <input type="file" id="fileInput" accept="image/*,.pdf" />
         </div>
-        <div style="margin-top:8px;">
-          <button id="refreshBtn" class="secondary" title="Reload list">Refresh</button>
+
+        <label>Vendor
+          <input id="vendor" list="vendorList" placeholder="Start typing… e.g., No Frills, Sysco, Costco"/>
+          <datalist id="vendorList"></datalist>
+          <small class="muted">Suggestions come from your existing receipts.</small>
+        </label>
+
+        <label>Date
+          <input id="rdate" type="date"/>
+        </label>
+
+        <label>Total
+          <input id="total" type="number" step="0.01"/>
+        </label>
+
+        <label>Tax
+          <input id="tax" type="number" step="0.01"/>
+        </label>
+
+        <label>Subtotal (auto)
+          <input id="subtotal" type="number" step="0.01" readonly/>
+        </label>
+
+        <label>Category
+          <input id="category" list="categoryList" placeholder="Pick or type a category…"/>
+          <datalist id="categoryList"></datalist>
+          <small class="muted">Master list; you can still type a new one.</small>
+        </label>
+
+        <label>Source
+          <input id="source" list="sourceList" placeholder="e.g., CIBC Chequing, TD Visa, Cash…"/>
+          <datalist id="sourceList"></datalist>
+          <small class="muted">Suggestions come from your existing receipts.</small>
+        </label>
+
+        <label>Notes
+          <input id="notes" placeholder="optional"/>
+        </label>
+
+        <button id="uploadBtn">Upload & Save</button>
+        <p id="msg" class="muted"></p>
+      </div>
+
+      <!-- AUTOMATION -->
+      <div class="card" style="margin-top:16px;">
+        <h3>Automation</h3>
+        <small class="muted">Run your Supabase bookkeeping functions right from here.</small>
+        <div class="rowbtns">
+          <button id="btnApply" class="secondary" title="Auto-categorize receipts">Apply Rules</button>
+          <button id="btnMatch" class="secondary" title="Match receipts ↔ bank txns">Match Now</button>
+
+          <!-- Export dropdown -->
+          <div class="dropdown">
+            <button id="exportBtn" class="dropdown-btn secondary" type="button" aria-haspopup="true" aria-expanded="false">
+              Export <span class="caret"></span>
+            </button>
+            <div id="exportMenu" class="menu" role="menu" aria-label="Export Options">
+              <button id="optCsv"   role="menuitem">CSV (Accountant-ready)</button>
+              <button id="optXlsx"  role="menuitem">Excel (.xlsx)</button>
+            </div>
+          </div>
         </div>
+        <p id="autoMsg" class="muted"></p>
       </div>
     </div>
 
-    <script>
-      // --- SUPABASE SETUP
-      const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
-      const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
-      const BUCKET = "receipts-warm";
-      const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    <!-- RIGHT COLUMN: Unmatched viewer -->
+    <div class="card">
+      <h3>Unmatched receipts</h3>
+      <small class="muted">Newest first • From view <code>v_unmatched_receipts</code> • Last 25</small>
+      <div style="max-height: 540px; overflow:auto; margin-top:8px;">
+        <table id="unmatchedTable">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Vendor</th>
+              <th class="right">Total</th>
+              <th class="right">Tax</th>
+              <th>Category</th>
+              <th>Source</th>
+              <th>Image</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div style="margin-top:8px;">
+        <button id="refreshBtn" class="secondary" title="Reload list">Refresh</button>
+      </div>
+    </div>
+  </div>
 
-      // --- CATEGORY MASTER LIST
-      const PRESET_CATEGORIES = [
-        "Food","Alcohol","Restaurant Supplies","Building Supplies","Tools & Equipment",
-        "Cleaning Supplies","General Supplies","Gas","Delivery Fees","Utilities",
-        "Repairs & Maintenance","Income","Office Supplies","Software","Bank Fees"
-      ];
+  <script>
+    // ---- Supabase config (confirmed)
+    const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
+    const BUCKET = "receipts-warm";
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-      // --- HELPERS
-      const qs = (id) => document.getElementById(id);
-      const statusEl = qs("status");
-      const msgEl = qs("msg");
-      const autoMsg = qs("autoMsg");
-      const countEl = qs("receiptCount");
+    // ---- Elements / helpers
+    const qs = id => document.getElementById(id);
+    const statusEl = qs("status");
+    const msgEl = qs("msg");
+    const autoMsg = qs("autoMsg");
+    const countEl = qs("receiptCount");
+    function uniqueCaseInsensitive(values){
+      const seen = new Map();
+      for(const v of values){ if(!v) continue; const s=String(v).trim(); if(!s) continue; const k=s.toLowerCase(); if(!seen.has(k)) seen.set(k,s); }
+      return Array.from(seen.values()).sort((a,b)=>a.localeCompare(b));
+    }
+    function fillDatalist(id, arr){
+      qs(id).innerHTML = arr.map(v=>`<option value="${String(v).replaceAll('"','&quot;')}"></option>`).join("");
+    }
+    async function refreshCount(){
+      const {count,error} = await sb.from("receipts").select("*",{count:"exact",head:true});
+      if(!error) countEl.textContent = count ?? 0;
+    }
+    function updateSubtotalPreview(){
+      const t = parseFloat(qs("total").value)||0;
+      const x = parseFloat(qs("tax").value)||0;
+      qs("subtotal").value = (t - x).toFixed(2);
+    }
+    qs("total").addEventListener("input", updateSubtotalPreview);
+    qs("tax").addEventListener("input", updateSubtotalPreview);
 
-      function uniqueCaseInsensitive(values) {
-        const seen = new Map();
-        for (const v of values) {
-          if (!v) continue;
-          const k = String(v).trim();
-          if (!k) continue;
-          const lk = k.toLowerCase();
-          if (!seen.has(lk)) seen.set(lk, k);
-        }
-        return Array.from(seen.values()).sort((a,b)=>a.localeCompare(b));
+    // ---- Category master list (base set)
+    const PRESET_CATEGORIES = [
+      "Food","Alcohol","Restaurant Supplies","Building Supplies","Tools & Equipment",
+      "Cleaning Supplies","General Supplies","Gas","Delivery Fees","Utilities",
+      "Repairs & Maintenance","Income","Office Supplies","Software","Bank Fees"
+    ];
+
+    // ---- Load lists
+    async function loadDynamicLists(){
+      const {data, error} = await sb.from("receipts").select("vendor, source, category").limit(5000);
+      let vendors=[], sources=[], dbCats=[];
+      if(!error && Array.isArray(data)){
+        vendors = uniqueCaseInsensitive(data.map(r=>r.vendor));
+        sources = uniqueCaseInsensitive(data.map(r=>r.source));
+        dbCats  = uniqueCaseInsensitive(data.map(r=>r.category));
       }
+      fillDatalist("vendorList", vendors);
+      fillDatalist("sourceList", sources);
+      fillDatalist("categoryList", uniqueCaseInsensitive([...PRESET_CATEGORIES, ...dbCats]));
+    }
 
-      function fillDatalist(id, arr) {
-        const el = qs(id);
-        el.innerHTML = arr.map(v => `<option value="${String(v).replaceAll('"','&quot;')}"></option>`).join("");
+    // ---- Unmatched viewer
+    async function loadUnmatched(){
+      const tbody = qs("unmatchedTable").querySelector("tbody");
+      tbody.innerHTML = `<tr><td colspan="7">Loading…</td></tr>`;
+      const {data, error} = await sb.from("v_unmatched_receipts")
+        .select("id, receipt_date, vendor, total, tax, category, source, image_url, created_at")
+        .order("created_at", {ascending:false})
+        .limit(25);
+
+      if(error){ tbody.innerHTML = `<tr><td colspan="7" class="err">Error: ${error.message}</td></tr>`; return; }
+      if(!data?.length){ tbody.innerHTML = `<tr><td colspan="7" class="muted">All caught up—no unmatched receipts.</td></tr>`; return; }
+
+      const rows = data.map(r=>{
+        const total = (typeof r.total === "number") ? r.total.toFixed(2) : (r.total ?? "");
+        const tax   = (typeof r.tax   === "number") ? r.tax.toFixed(2)   : (r.tax ?? "");
+        const img = r.image_url ? `<a href="${r.image_url}" target="_blank" class="chip">open</a>` : "";
+        return `<tr>
+          <td>${r.receipt_date ?? ""}</td>
+          <td>${r.vendor ?? ""}</td>
+          <td class="right">$${total}</td>
+          <td class="right">$${tax}</td>
+          <td>${r.category ?? ""}</td>
+          <td>${r.source ?? ""}</td>
+          <td>${img}</td>
+        </tr>`;
+      }).join("");
+      tbody.innerHTML = rows;
+    }
+
+    // ---- Init
+    async function init(){
+      await refreshCount();
+      await loadDynamicLists();
+      await loadUnmatched();
+      statusEl.textContent = "Connected.";
+    }
+
+    // ---- Upload handler
+    qs("uploadBtn").addEventListener("click", async ()=>{
+      msgEl.className="muted"; msgEl.textContent="Uploading…";
+      const file = qs("fileInput").files?.[0];
+      if(!file){ msgEl.className="err"; msgEl.textContent="Pick a file first."; return; }
+
+      // 1) Upload to storage
+      const objectPath = `${Date.now()}-${file.name}`;
+      const {error:upErr} = await sb.storage.from(BUCKET).upload(objectPath, file, {
+        contentType:file.type || "application/octet-stream", upsert:false
+      });
+      if(upErr){ msgEl.className="err"; msgEl.textContent="Storage error: "+upErr.message; return; }
+      const {data:pub} = sb.storage.from(BUCKET).getPublicUrl(objectPath);
+      const publicUrl = pub?.publicUrl;
+
+      // 2) Gather fields
+      const vendor = qs("vendor").value || null;
+      const rdate  = qs("rdate").value  || null;
+      const total  = qs("total").value ? Number(qs("total").value) : null;
+      const tax    = qs("tax").value   ? Number(qs("tax").value)   : 0.00;
+      const category = qs("category").value || null;
+      const source   = qs("source").value   || null;
+      const notes    = qs("notes").value    || null;
+
+      // 3) Insert
+      const {error:insErr} = await sb.from("receipts").insert([{
+        image_url: publicUrl, vendor, receipt_date:rdate, total, tax,
+        category, source, notes, entered_by: null
+      }]);
+      if(insErr){ msgEl.className="err"; msgEl.textContent="DB error: "+insErr.message; return; }
+
+      msgEl.className="ok"; msgEl.textContent="Uploaded & saved successfully.";
+      qs("fileInput").value="";
+      await refreshCount();
+      await loadDynamicLists();
+      await loadUnmatched();
+    });
+
+    // ---- RPC buttons
+    qs("btnApply").addEventListener("click", async ()=>{
+      autoMsg.className="muted"; autoMsg.textContent="Applying rules…";
+      const {error} = await sb.rpc("apply_rules");
+      if(error){ autoMsg.className="err"; autoMsg.textContent="Error: "+error.message; return; }
+      autoMsg.className="ok"; autoMsg.textContent="Rules applied.";
+      await loadUnmatched();
+    });
+    qs("btnMatch").addEventListener("click", async ()=>{
+      autoMsg.className="muted"; autoMsg.textContent="Matching now…";
+      const {error} = await sb.rpc("match_now");
+      if(error){ autoMsg.className="err"; autoMsg.textContent="Error: "+error.message; return; }
+      autoMsg.className="ok"; autoMsg.textContent="Matching complete.";
+      await loadUnmatched();
+    });
+
+    // ---- Export helpers (CSV & XLSX)
+    const EXPORT_COLUMNS = [
+      { key:"receipt_date", label:"Date" },
+      { key:"vendor",       label:"Vendor" },
+      { key:"category",     label:"Category" },
+      { key:"source",       label:"Source" },
+      { key:"subtotal",     label:"Subtotal" },
+      { key:"tax",          label:"Tax" },
+      { key:"total",        label:"Total" },
+      { key:"notes",        label:"Notes" },
+      { key:"image_url",    label:"Image URL" },
+      { key:"id",           label:"Receipt ID" },
+    ];
+    function fmtDateISO(d){ if(!d) return ""; const s=String(d).slice(0,10); return /^\d{4}-\d{2}-\d{2}$/.test(s)?s:s; }
+    function to2(n){ if(n===null || n===undefined || n==="") return ""; const v=Number(n); return Number.isNaN(v)?"":v.toFixed(2); }
+    function escCSV(v){ if(v===null || v===undefined) return ""; const s=String(v); return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; }
+
+    async function fetchExportData(){
+      const {data, error} = await sb.from("v_accountant_export_receipts")
+        .select("*")
+        .order("receipt_date",{ascending:true});
+      if(error) throw new Error(error.message);
+      return data||[];
+    }
+
+    async function exportCSV(){
+      autoMsg.className="muted"; autoMsg.textContent="Building CSV…";
+      let data;
+      try{ data = await fetchExportData(); }
+      catch(e){ autoMsg.className="err"; autoMsg.textContent=e.message; return; }
+      if(!data.length){ autoMsg.className="muted"; autoMsg.textContent="No data to export."; return; }
+
+      const header = EXPORT_COLUMNS.map(c=>c.label);
+      const rows = data.map(r => EXPORT_COLUMNS.map(c=>{
+        let val = r[c.key];
+        if(c.key==="receipt_date") return escCSV(fmtDateISO(val));
+        if(["total","tax","subtotal"].includes(c.key)) return escCSV(to2(val));
+        return escCSV(val??"");
+      }).join(","));
+
+      const sum = k => data.reduce((a,r)=>a+(Number(r[k])||0),0);
+      const totalsRow = EXPORT_COLUMNS.map(c=>{
+        if(c.key==="receipt_date") return escCSV("Totals");
+        if(c.key==="subtotal") return escCSV(to2(sum("subtotal")));
+        if(c.key==="tax")      return escCSV(to2(sum("tax")));
+        if(c.key==="total")    return escCSV(to2(sum("total")));
+        return "";
+      }).join(",");
+
+      const csv = [header.join(","), ...rows, totalsRow].join("\n");
+      const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const today = new Date().toISOString().slice(0,10);
+      a.href = url; a.download = `accountant_export_${today}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      autoMsg.className="ok"; autoMsg.textContent="CSV downloaded.";
+    }
+
+    function autosizeCols(sheet, data, headers){
+      const colWidths = headers.map(h => h.length + 2);
+      for(const row of data){
+        row.forEach((cell,i)=>{
+          const len = (cell==null?0:String(cell).length)+2;
+          if(len>colWidths[i]) colWidths[i]=len;
+        });
       }
+      sheet['!cols'] = colWidths.map(w=>({wch: Math.min(50,w)}));
+    }
+    async function exportXLSX(){
+      autoMsg.className="muted"; autoMsg.textContent="Building Excel…";
+      let data;
+      try{ data = await fetchExportData(); }
+      catch(e){ autoMsg.className="err"; autoMsg.textContent=e.message; return; }
+      if(!data.length){ autoMsg.className="muted"; autoMsg.textContent="No data to export."; return; }
 
-      async function refreshCount() {
-        const { count } = await sb.from("receipts").select("*", { count: "exact", head: true });
-        countEl.textContent = count ?? 0;
-      }
+      const headers = EXPORT_COLUMNS.map(c=>c.label);
+      const body = data.map(r => EXPORT_COLUMNS.map(c=>{
+        if(c.key==="receipt_date") return fmtDateISO(r[c.key]);
+        if(["total","tax","subtotal"].includes(c.key)) return Number(r[c.key] ?? 0);
+        return r[c.key] ?? "";
+      }));
 
-      function updateSubtotalPreview() {
-        const t = parseFloat(qs("total").value) || 0;
-        const x = parseFloat(qs("tax").value) || 0;
-        qs("subtotal").value = (t - x).toFixed(2);
-      }
-      qs("total").addEventListener("input", updateSubtotalPreview);
-      qs("tax").addEventListener("input", updateSubtotalPreview);
-
-      async function loadDynamicLists() {
-        const { data } = await sb.from("receipts").select("vendor, source, category").limit(5000);
-        const vendors = uniqueCaseInsensitive(data?.map(r => r.vendor) ?? []);
-        const sources = uniqueCaseInsensitive(data?.map(r => r.source) ?? []);
-        const dbCats = uniqueCaseInsensitive(data?.map(r => r.category) ?? []);
-        fillDatalist("vendorList", vendors);
-        fillDatalist("sourceList", sources);
-        fillDatalist("categoryList", uniqueCaseInsensitive([...PRESET_CATEGORIES, ...dbCats]));
-      }
-
-      async function loadUnmatched() {
-        const tbody = qs("unmatchedTable").querySelector("tbody");
-        tbody.innerHTML = `<tr><td colspan="7">Loading…</td></tr>`;
-        const { data, error } = await sb
-          .from("v_unmatched_receipts")
-          .select("receipt_date, vendor, total, tax, category, source, image_url, created_at")
-          .order("created_at", { ascending: false })
-          .limit(25);
-        if (error) {
-          tbody.innerHTML = `<tr><td colspan="7" class="err">${error.message}</td></tr>`;
-          return;
-        }
-        if (!data?.length) {
-          tbody.innerHTML = `<tr><td colspan="7" class="muted">All caught up — no unmatched receipts.</td></tr>`;
-          return;
-        }
-        tbody.innerHTML = data.map(r => `
-          <tr>
-            <td>${r.receipt_date ?? ""}</td>
-            <td>${r.vendor ?? ""}</td>
-            <td class="right">$${(r.total ?? 0).toFixed(2)}</td>
-            <td class="right">$${(r.tax ?? 0).toFixed(2)}</td>
-            <td>${r.category ?? ""}</td>
-            <td>${r.source ?? ""}</td>
-            <td>${r.image_url ? `<a href="${r.image_url}" target="_blank" class="chip">open</a>` : ""}</td>
-          </tr>
-        `).join("");
-      }
-
-      async function init() {
-        await refreshCount();
-        await loadDynamicLists();
-        await loadUnmatched();
-        statusEl.textContent = "Connected.";
-      }
-
-      qs("uploadBtn").addEventListener("click", async () => {
-        msgEl.className = "muted";
-        msgEl.textContent = "Uploading…";
-        const file = qs("fileInput").files?.[0];
-        if (!file) { msgEl.className = "err"; msgEl.textContent = "Pick a file first."; return; }
-        const objectPath = `${Date.now()}-${file.name}`;
-        const { error: upErr } = await sb.storage.from(BUCKET).upload(objectPath, file, { contentType: file.type, upsert: false });
-        if (upErr) { msgEl.className = "err"; msgEl.textContent = upErr.message; return; }
-        const { data: pub } = sb.storage.from(BUCKET).getPublicUrl(objectPath);
-        const publicUrl = pub?.publicUrl;
-        const record = {
-          image_url: publicUrl,
-          vendor: qs("vendor").value || null,
-          receipt_date: qs("rdate").value || null,
-          total: Number(qs("total").value || 0),
-          tax: Number(qs("tax").value || 0),
-          category: qs("category").value || null,
-          source: qs("source").value || null,
-          notes: qs("notes").value || null,
-          entered_by: null
-        };
-        const { error } = await sb.from("receipts").insert([record]);
-        if (error) { msgEl.className = "err"; msgEl.textContent = error.message; return; }
-        msgEl.className = "ok"; msgEl.textContent = "Uploaded & saved successfully.";
-        qs("fileInput").value = "";
-        await refreshCount();
-        await loadDynamicLists();
-        await loadUnmatched();
+      const totals = {
+        subtotal: data.reduce((a,r)=>a+(Number(r.subtotal)||0),0),
+        tax:      data.reduce((a,r)=>a+(Number(r.tax)||0),0),
+        total:    data.reduce((a,r)=>a+(Number(r.total)||0),0),
+      };
+      const totalsRow = EXPORT_COLUMNS.map(c=>{
+        if(c.key==="receipt_date") return "Totals";
+        if(c.key==="subtotal") return totals.subtotal;
+        if(c.key==="tax")      return totals.tax;
+        if(c.key==="total")    return totals.total;
+        return "";
       });
 
-      // AUTOMATION BUTTONS
-      qs("btnApply").addEventListener("click", async () => {
-        autoMsg.className = "muted"; autoMsg.textContent = "Applying rules…";
-        const { error } = await sb.rpc("apply_rules");
-        if (error) { autoMsg.className = "err"; autoMsg.textContent = error.message; return; }
-        autoMsg.className = "ok"; autoMsg.textContent = "Rules applied.";
-        await loadUnmatched();
-      });
+      const wsData = [headers, ...body, totalsRow];
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
 
-      qs("btnMatch").addEventListener("click", async () => {
-        autoMsg.className = "muted"; autoMsg.textContent = "Matching now…";
-        const { error } = await sb.rpc("match_now");
-        if (error) { autoMsg.className = "err"; autoMsg.textContent = error.message; return; }
-        autoMsg.className = "ok"; autoMsg.textContent = "Matching complete.";
-        await loadUnmatched();
+      // Bold headers
+      headers.forEach((_,i)=>{
+        const cell = ws[XLSX.utils.encode_cell({r:0,c:i})];
+        if(cell) cell.s = { font:{ bold:true } };
       });
-
-      async function exportCSV() {
-        autoMsg.className = "muted"; autoMsg.textContent = "Building CSV…";
-        const { data, error } = await sb
-          .from("v_accountant_export_receipts")
-          .select("*")
-          .order("receipt_date", { ascending: true });
-        if (error) { autoMsg.className = "err"; autoMsg.textContent = error.message; return; }
-        if (!data?.length) { autoMsg.className = "muted"; autoMsg.textContent = "No data to export."; return; }
-        const cols = Object.keys(data[0]);
-        const escape = (v) => {
-          if (v === null || v === undefined) return "";
-          const s = String(v);
-          return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
-        };
-        const csv = [cols.join(",")].concat(data.map(r => cols.map(c => escape(r[c])).join(","))).join("\n");
-        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url; a.download = `accountant_export_${new Date().toISOString().slice(0,10)}.csv`;
-        document.body.appendChild(a); a.click(); a.remove();
-        URL.revokeObjectURL(url);
-        autoMsg.className = "ok"; autoMsg.textContent = "CSV downloaded.";
+      // Currency format
+      const moneyCols = EXPORT_COLUMNS.map((c,i)=>["subtotal","tax","total"].includes(c.key)?i:-1).filter(i=>i>=0);
+      for(let r=1;r<wsData.length;r++){
+        for(const c of moneyCols){
+          const addr = XLSX.utils.encode_cell({r,c});
+          const cell = ws[addr];
+          if(cell && typeof cell.v === "number"){
+            cell.z = '"$"#,##0.00;[Red]-"$"#,##0.00';
+          }
+        }
       }
-      qs("btnExport").addEventListener("click", exportCSV);
+      // Autofit
+      autosizeCols(ws, body, headers);
 
-      qs("refreshBtn").addEventListener("click", loadUnmatched);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Receipts Export");
+      const today = new Date().toISOString().slice(0,10);
+      XLSX.writeFile(wb, `accountant_export_${today}.xlsx`);
+      autoMsg.className="ok"; autoMsg.textContent="Excel downloaded.";
+    }
 
-      init();
-    </script>
-  </body>
+    // ---- Export dropdown behavior
+    const exportBtn  = qs("exportBtn");
+    const exportMenu = qs("exportMenu");
+    exportBtn.addEventListener("click", ()=>{
+      const open = exportMenu.classList.toggle("open");
+      exportBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    document.addEventListener("click", (e)=>{
+      if(!exportMenu.contains(e.target) && !exportBtn.contains(e.target)){
+        exportMenu.classList.remove("open");
+        exportBtn.setAttribute("aria-expanded","false");
+      }
+    });
+    qs("optCsv").addEventListener("click", ()=>{ exportMenu.classList.remove("open"); exportCSV(); });
+    qs("optXlsx").addEventListener("click", ()=>{ exportMenu.classList.remove("open"); exportXLSX(); });
+
+    // Refresh unmatched list
+    qs("refreshBtn").addEventListener("click", loadUnmatched);
+
+    // Start
+    init();
+  </script>
+</body>
 </html>
