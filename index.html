@@ -7,6 +7,46 @@
   </head>
   <body>
     <h1>Kosmos Bookkeeping</h1>
-    <p>Site is live on GitHub Pages.</p>
+    <p id="status">Connecting…</p>
+    <div id="countBox" style="display:none;">
+      <strong>Receipts in database:</strong> <span id="count">0</span>
+    </div>
+
+    <!-- 1) Supabase JS (CDN) -->
+    <script src="https://esm.sh/@supabase/supabase-js@2"></script>
+
+    <script>
+      // 2) TODO: paste YOUR values from Supabase → Project Settings → API
+      const SUPABASE_URL = "https://YOUR-PROJECT-REF.supabase.co";
+      const SUPABASE_ANON_KEY = "YOUR_ANON_PUBLIC_KEY";
+
+      // 3) Init client
+      const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+      // 4) Query the receipts table and show count
+      async function showCount() {
+        const statusEl = document.getElementById("status");
+        const countEl = document.getElementById("count");
+        const boxEl = document.getElementById("countBox");
+
+        statusEl.textContent = "Reading receipts…";
+
+        // Use a light query (rpc count via select with head=false)
+        const { data, error } = await supabase
+          .from("receipts")
+          .select("id", { count: "exact", head: false });
+
+        if (error) {
+          statusEl.textContent = "Error: " + (error.message || String(error));
+          return;
+        }
+
+        statusEl.textContent = "Connected.";
+        countEl.textContent = data.length.toString();
+        boxEl.style.display = "block";
+      }
+
+      showCount();
+    </script>
   </body>
 </html>
