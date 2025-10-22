@@ -1,221 +1,158 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Kosmos Bookkeeping</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <style>
-      body { font-family: system-ui, Arial, sans-serif; margin: 32px; }
-      .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; max-width: 560px; }
-      .muted { color: #555; }
-      .row { margin-top: 12px; }
-      button { padding: 8px 14px; border-radius: 8px; border: 1px solid #ccc; cursor: pointer; }
-      input[type="file"] { display:block; margin-top: 8px; }
-      label { display:block; font-size: 13px; color:#333; margin-top:8px }
-      input[type="text"], input[type="number"], input[type="date"] {
-        width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 8px; margin-top: 4px;
-      }
-      small.hint { color:#777; display:block; margin-top:4px }
+      body { font-family: sans-serif; margin: 2rem; }
+      h1 { font-size: 1.6rem; }
+      .card { border: 1px solid #ccc; padding: 1rem; border-radius: 8px; margin-top: 1rem; width: 450px; }
+      label { display: block; margin-top: 0.5rem; font-weight: bold; }
+      input, select { width: 100%; padding: 6px; margin-top: 4px; border: 1px solid #aaa; border-radius: 4px; }
+      button { margin-top: 1rem; padding: 8px 14px; border-radius: 6px; border: none; background: #222; color: white; cursor: pointer; }
+      button:hover { background: #444; }
+      .readonly { background: #f4f4f4; }
     </style>
   </head>
   <body>
     <h1>Kosmos Bookkeeping</h1>
 
+    <div class="card" id="statusCard">
+      <p id="status">Connecting...</p>
+      <p><strong>Receipts in database:</strong> <span id="receiptCount">—</span></p>
+    </div>
+
     <div class="card">
-      <p id="status" class="muted">Connected.</p>
-      <p><strong>Receipts in database:</strong> <span id="count">0</span></p>
-    </div>
-
-    <div class="card" style="margin-top:16px;">
       <h3>Upload a receipt (manual-only)</h3>
-      <p class="muted">Uploads image → saves to <code>receipts-warm</code> → inserts row in <code>public.receipts</code>.</p>
+      <p><small>Uploads image ➜ saves to <code>receipts-warm</code> ➜ inserts row in <code>public.receipts</code>.</small></p>
+      <input type="file" id="fileInput" accept="image/*" />
 
-      <div class="row">
-        <input id="file" type="file" accept="image/*,.pdf" />
-      </div>
+      <label>Vendor
+        <input id="vendor" list="vendorList" placeholder="e.g. Sysco, Costco..." />
+        <datalist id="vendorList"></datalist>
+      </label>
 
-      <div class="row">
-        <label>Vendor
-          <input id="vendor" type="text" list="vendorList" placeholder="e.g., Wholesale Club" />
-          <datalist id="vendorList"></datalist>
-          <small class="hint">Start typing to pick an existing vendor or enter a new one.</small>
-        </label>
-      </div>
-      <div class="row">
-        <label>Date
-          <input id="rdate" type="date" />
-        </label>
-      </div>
-      <div class="row">
-        <label>Total
-          <input id="total" type="number" step="0.01" placeholder="0.00" />
-        </label>
-      </div>
-      <div class="row">
-        <label>Tax
-          <input id="tax" type="number" step="0.01" placeholder="0.00" />
-        </label>
-      </div>
-      <div class="row">
-        <label>Category
-          <input id="category" type="text" list="categoryList" placeholder="Restaurant Supplies, Building Supplies, etc." />
-          <datalist id="categoryList"></datalist>
-        </label>
-      </div>
-      <div class="row">
-        <label>Source
-          <input id="source" type="text" list="sourceList" placeholder="CIBC Chequing, TD Visa, Cash…" />
-          <datalist id="sourceList"></datalist>
-        </label>
-      </div>
-      <div class="row">
-        <label>Notes
-          <input id="notes" type="text" placeholder="optional" />
-        </label>
-      </div>
+      <label>Date
+        <input id="rdate" type="date" />
+      </label>
 
-      <div class="row">
-        <button id="uploadBtn">Upload & Save</button>
-        <span id="uploadStatus" class="muted" style="margin-left:10px;"></span>
-      </div>
+      <label>Total
+        <input id="total" type="number" step="0.01" />
+      </label>
+
+      <label>Tax
+        <input id="tax" type="number" step="0.01" />
+      </label>
+
+      <label>Subtotal (auto)
+        <input id="subtotal" type="number" step="0.01" class="readonly" readonly />
+      </label>
+
+      <label>Category
+        <input id="category" list="categoryList" placeholder="e.g. Restaurant Supplies..." />
+        <datalist id="categoryList"></datalist>
+      </label>
+
+      <label>Source
+        <input id="source" list="sourceList" placeholder="e.g. TD Visa, CIBC..." />
+        <datalist id="sourceList"></datalist>
+      </label>
+
+      <label>Notes
+        <input id="notes" placeholder="optional" />
+      </label>
+
+      <button id="uploadBtn">Upload & Save</button>
+      <p id="msg"></p>
     </div>
 
-    <!-- Supabase JS (UMD) -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
     <script>
       const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
-      const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
-      const BUCKET = "receipts-warm";
-      const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
+      const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-      // ✅ Your preferred presets (we can tweak anytime)
-      const PRESET_CATEGORIES = [
-        "Restaurant Supplies",
-        "Building Supplies",
-        "Tools & Equipment",
-        "Cleaning Supplies",
-        "General Supplies",
-        "Food",
-        "Gas",
-        "Income",
-        "Alcohol",
-        "Delivery Fees",
-        "Utilities",
-        "Repairs & Maintenance"
-      ];
-      const PRESET_SOURCES = [
-        "CIBC Chequing",
-        "TD Visa",
-        "Capital One",
-        "Cash",
-        "e-Transfer",
-        "Interac",
-        "Square",
-        "Stripe"
-      ];
-      // Vendors: leave empty preset; it learns from your data automatically
-      const PRESET_VENDORS = [];
+      const fileInput = document.getElementById("fileInput");
+      const msg = document.getElementById("msg");
 
-      const statusEl = document.getElementById("status");
-      const countEl  = document.getElementById("count");
-      const uploadBtn = document.getElementById("uploadBtn");
-      const uploadStatus = document.getElementById("uploadStatus");
+      async function init() {
+        const { data, error } = await sb.from("receipts").select("*");
+        if (error) {
+          document.getElementById("status").innerText = "Connection failed.";
+          console.error(error);
+        } else {
+          document.getElementById("status").innerText = "Connected.";
+          document.getElementById("receiptCount").innerText = data.length;
 
-      async function refreshCount() {
-        const { count, error } = await sb.from("receipts").select("*", { count:"exact", head:true });
-        if (!error) countEl.textContent = (count ?? 0).toString();
+          // fill dropdowns
+          const vendors = [...new Set(data.map(r => r.vendor).filter(Boolean))];
+          const cats = [...new Set(data.map(r => r.category).filter(Boolean))];
+          const sources = [...new Set(data.map(r => r.source).filter(Boolean))];
+          fillList("vendorList", vendors);
+          fillList("categoryList", cats);
+          fillList("sourceList", sources);
+        }
       }
 
-      // Build datalist options with presets + DB uniques
-      async function loadLists() {
-        const uniq = (arr) => [...new Set(arr.filter(v => v && String(v).trim() !== ""))];
-        const sort = (arr) => [...arr].sort((a,b)=>String(a).localeCompare(String(b)));
+      function fillList(id, arr) {
+        const el = document.getElementById(id);
+        el.innerHTML = arr.map(v => `<option value="${v}">`).join("");
+      }
 
-        // Start with presets
-        let vendors    = [...PRESET_VENDORS];
-        let categories = [...PRESET_CATEGORIES];
-        let sources    = [...PRESET_SOURCES];
+      function updateSubtotalPreview() {
+        const total = parseFloat(document.getElementById("total").value) || 0;
+        const tax = parseFloat(document.getElementById("tax").value) || 0;
+        document.getElementById("subtotal").value = (total - tax).toFixed(2);
+      }
+      document.getElementById("total").addEventListener("input", updateSubtotalPreview);
+      document.getElementById("tax").addEventListener("input", updateSubtotalPreview);
 
-        // Try to pull existing values from DB (best-effort)
-        const { data, error } = await sb
-          .from("receipts")
-          .select("vendor, category, source")
-          .limit(2000);
+      document.getElementById("uploadBtn").addEventListener("click", async () => {
+        msg.textContent = "Uploading...";
+        const file = fileInput.files[0];
+        if (!file) return alert("Please select a file first.");
 
-        if (!error && data) {
-          vendors    = uniq(vendors.concat(data.map(r => r.vendor)));
-          categories = uniq(categories.concat(data.map(r => r.category)));
-          sources    = uniq(sources.concat(data.map(r => r.source)));
+        // upload image to Supabase bucket
+        const fileName = `${Date.now()}-${file.name}`;
+        const { error: upErr } = await sb.storage.from("receipts-warm").upload(fileName, file);
+        if (upErr) {
+          msg.textContent = "Upload error: " + upErr.message;
+          return;
         }
 
-        // Sort for a clean list
-        vendors = sort(vendors);
-        categories = sort(categories);
-        sources = sort(sources);
+        const { data: { publicUrl } } = sb.storage.from("receipts-warm").getPublicUrl(fileName);
 
-        const fill = (id, values) => {
-          const dl = document.getElementById(id);
-          dl.innerHTML = values.map(v => `<option value="${String(v).replaceAll('"','&quot;')}"></option>`).join("");
-        };
+        const vendor = document.getElementById("vendor").value;
+        const rdate = document.getElementById("rdate").value;
+        const total = parseFloat(document.getElementById("total").value) || 0;
+        const tax = parseFloat(document.getElementById("tax").value) || 0;
+        const category = document.getElementById("category").value;
+        const source = document.getElementById("source").value;
+        const notes = document.getElementById("notes").value;
 
-        fill("vendorList", vendors);
-        fill("categoryList", categories);
-        fill("sourceList", sources);
-      }
-
-      // initial load
-      Promise.all([refreshCount(), loadLists()]).then(() => statusEl.textContent = "Connected.");
-
-      async function handleUpload() {
-        uploadStatus.textContent = "Uploading…";
-        const fileInput = document.getElementById("file");
-        const file = fileInput.files?.[0];
-        if (!file) { uploadStatus.textContent = "Pick a file first."; return; }
-
-        // 1) Upload file to Storage
-        const objectPath = `${Date.now()}-${file.name}`;
-        const { error: upErr } = await sb.storage.from(BUCKET).upload(objectPath, file, {
-          contentType: file.type || "application/octet-stream",
-          upsert: false
-        });
-        if (upErr) { uploadStatus.textContent = "Storage error: " + upErr.message; return; }
-        const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(objectPath)}`;
-
-        // 2) Collect fields
-        const vendor   = document.getElementById("vendor").value || null;
-        const rdate    = document.getElementById("rdate").value || null;
-        const totalVal = document.getElementById("total").value;
-        const taxVal   = document.getElementById("tax").value;
-        const category = document.getElementById("category").value || null;
-        const source   = document.getElementById("source").value || null;
-        const notes    = document.getElementById("notes").value || null;
-
-        const totalNum = totalVal === "" ? null : Number(totalVal);
-        const taxNum   = taxVal   === "" ? 0.00 : Number(taxVal);
-
-        // 3) Insert DB row
         const { error: insErr } = await sb.from("receipts").insert([{
           image_url: publicUrl,
-          vendor: vendor,
+          vendor,
           receipt_date: rdate,
-          total: totalNum,
-          tax: taxNum,
-          subtotal: null,
-          category: category,
-          source: source,
-          notes: notes,
+          total,
+          tax,
+          category,
+          source,
+          notes,
           entered_by: null
         }]);
 
-        if (insErr) { uploadStatus.textContent = "DB error: " + insErr.message; return; }
+        if (insErr) {
+          msg.textContent = "DB error: " + insErr.message;
+          console.error(insErr);
+        } else {
+          msg.textContent = "✅ Uploaded & saved successfully.";
+          init();
+        }
+      });
 
-        uploadStatus.textContent = "Saved ✔";
-        fileInput.value = "";
-        await refreshCount();
-        await loadLists(); // keep suggestions up to date
-      }
-
-      uploadBtn.addEventListener("click", handleUpload);
+      init();
     </script>
   </body>
 </html>
