@@ -36,7 +36,6 @@
 
       <div class="row">
         <label>Vendor
-          <!-- type-ahead from existing vendors -->
           <input id="vendor" type="text" list="vendorList" placeholder="e.g., Wholesale Club" />
           <datalist id="vendorList"></datalist>
           <small class="hint">Start typing to pick an existing vendor or enter a new one.</small>
@@ -59,14 +58,12 @@
       </div>
       <div class="row">
         <label>Category
-          <!-- type-ahead from existing categories -->
           <input id="category" type="text" list="categoryList" placeholder="Restaurant Supplies, Building Supplies, etc." />
           <datalist id="categoryList"></datalist>
         </label>
       </div>
       <div class="row">
         <label>Source
-          <!-- type-ahead from existing sources -->
           <input id="source" type="text" list="sourceList" placeholder="CIBC Chequing, TD Visa, Cash…" />
           <datalist id="sourceList"></datalist>
         </label>
@@ -91,6 +88,34 @@
       const BUCKET = "receipts-warm";
       const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+      // ✅ Your preferred presets (we can tweak anytime)
+      const PRESET_CATEGORIES = [
+        "Restaurant Supplies",
+        "Building Supplies",
+        "Tools & Equipment",
+        "Cleaning Supplies",
+        "General Supplies",
+        "Food",
+        "Gas",
+        "Income",
+        "Alcohol",
+        "Delivery Fees",
+        "Utilities",
+        "Repairs & Maintenance"
+      ];
+      const PRESET_SOURCES = [
+        "CIBC Chequing",
+        "TD Visa",
+        "Capital One",
+        "Cash",
+        "e-Transfer",
+        "Interac",
+        "Square",
+        "Stripe"
+      ];
+      // Vendors: leave empty preset; it learns from your data automatically
+      const PRESET_VENDORS = [];
+
       const statusEl = document.getElementById("status");
       const countEl  = document.getElementById("count");
       const uploadBtn = document.getElementById("uploadBtn");
@@ -101,24 +126,32 @@
         if (!error) countEl.textContent = (count ?? 0).toString();
       }
 
-      // 🧠 Load unique vendors/categories/sources into datalists
+      // Build datalist options with presets + DB uniques
       async function loadLists() {
-        // Pull a reasonable slice and de-dup client-side (simple and safe)
+        const uniq = (arr) => [...new Set(arr.filter(v => v && String(v).trim() !== ""))];
+        const sort = (arr) => [...arr].sort((a,b)=>String(a).localeCompare(String(b)));
+
+        // Start with presets
+        let vendors    = [...PRESET_VENDORS];
+        let categories = [...PRESET_CATEGORIES];
+        let sources    = [...PRESET_SOURCES];
+
+        // Try to pull existing values from DB (best-effort)
         const { data, error } = await sb
           .from("receipts")
           .select("vendor, category, source")
-          .limit(1000); // adjust later if you need more
+          .limit(2000);
 
-        if (error) {
-          console.warn("Could not load lists:", error.message);
-          return;
+        if (!error && data) {
+          vendors    = uniq(vendors.concat(data.map(r => r.vendor)));
+          categories = uniq(categories.concat(data.map(r => r.category)));
+          sources    = uniq(sources.concat(data.map(r => r.source)));
         }
 
-        const uniq = (arr) => [...new Set(arr.filter(v => v && String(v).trim() !== ""))].sort((a,b)=>String(a).localeCompare(String(b)));
-
-        const vendors   = uniq(data.map(r => r.vendor));
-        const categories= uniq(data.map(r => r.category));
-        const sources   = uniq(data.map(r => r.source));
+        // Sort for a clean list
+        vendors = sort(vendors);
+        categories = sort(categories);
+        sources = sort(sources);
 
         const fill = (id, values) => {
           const dl = document.getElementById(id);
@@ -146,7 +179,6 @@
           upsert: false
         });
         if (upErr) { uploadStatus.textContent = "Storage error: " + upErr.message; return; }
-
         const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(objectPath)}`;
 
         // 2) Collect fields
@@ -180,7 +212,7 @@
         uploadStatus.textContent = "Saved ✔";
         fileInput.value = "";
         await refreshCount();
-        await loadLists(); // refresh dropdowns with any new values you just added
+        await loadLists(); // keep suggestions up to date
       }
 
       uploadBtn.addEventListener("click", handleUpload);
