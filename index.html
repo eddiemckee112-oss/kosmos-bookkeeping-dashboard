@@ -4,26 +4,32 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Kosmos Bookkeeping</title>
+    <style>
+      body { font-family: system-ui, Arial, sans-serif; margin: 32px; }
+      .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; max-width: 520px; }
+      .muted { color: #555; }
+    </style>
   </head>
   <body>
     <h1>Kosmos Bookkeeping</h1>
-    <p id="status">Connecting…</p>
-    <div id="countBox" style="display:none;">
-      <strong>Receipts in database:</strong> <span id="count">0</span>
+    <div class="card">
+      <p id="status" class="muted">Connecting…</p>
+      <p id="countBox" style="display:none;">
+        <strong>Receipts in database:</strong> <span id="count">0</span>
+      </p>
     </div>
 
-    <!-- 1) Supabase JS (CDN) -->
+    <!-- Supabase JS v2 (CDN) -->
     <script src="https://esm.sh/@supabase/supabase-js@2"></script>
-
     <script>
-      // 2) TODO: paste YOUR values from Supabase → Project Settings → API
-      const SUPABASE_URL = "https://YOUR-PROJECT-REF.supabase.co";
-      const SUPABASE_ANON_KEY = "YOUR_ANON_PUBLIC_KEY";
+      // Your project credentials
+      const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
+      const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
 
-      // 3) Init client
+      // Init client
       const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-      // 4) Query the receipts table and show count
+      // Read count from public.receipts and show it
       async function showCount() {
         const statusEl = document.getElementById("status");
         const countEl = document.getElementById("count");
@@ -31,10 +37,9 @@
 
         statusEl.textContent = "Reading receipts…";
 
-        // Use a light query (rpc count via select with head=false)
-        const { data, error } = await supabase
+        const { count, error } = await supabase
           .from("receipts")
-          .select("id", { count: "exact", head: false });
+          .select("*", { count: "exact", head: true });
 
         if (error) {
           statusEl.textContent = "Error: " + (error.message || String(error));
@@ -42,7 +47,7 @@
         }
 
         statusEl.textContent = "Connected.";
-        countEl.textContent = data.length.toString();
+        countEl.textContent = (count ?? 0).toString();
         boxEl.style.display = "block";
       }
 
