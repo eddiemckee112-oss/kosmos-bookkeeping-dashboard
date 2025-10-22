@@ -15,6 +15,7 @@
       input[type="text"], input[type="number"], input[type="date"] {
         width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 8px; margin-top: 4px;
       }
+      small.hint { color:#777; display:block; margin-top:4px }
     </style>
   </head>
   <body>
@@ -35,7 +36,10 @@
 
       <div class="row">
         <label>Vendor
-          <input id="vendor" type="text" placeholder="e.g., Wholesale Club" />
+          <!-- type-ahead from existing vendors -->
+          <input id="vendor" type="text" list="vendorList" placeholder="e.g., Wholesale Club" />
+          <datalist id="vendorList"></datalist>
+          <small class="hint">Start typing to pick an existing vendor or enter a new one.</small>
         </label>
       </div>
       <div class="row">
@@ -48,7 +52,6 @@
           <input id="total" type="number" step="0.01" placeholder="0.00" />
         </label>
       </div>
-      <!-- ✅ NEW: Tax field -->
       <div class="row">
         <label>Tax
           <input id="tax" type="number" step="0.01" placeholder="0.00" />
@@ -56,12 +59,16 @@
       </div>
       <div class="row">
         <label>Category
-          <input id="category" type="text" placeholder="Restaurant Supplies, Building Supplies, etc." />
+          <!-- type-ahead from existing categories -->
+          <input id="category" type="text" list="categoryList" placeholder="Restaurant Supplies, Building Supplies, etc." />
+          <datalist id="categoryList"></datalist>
         </label>
       </div>
       <div class="row">
         <label>Source
-          <input id="source" type="text" placeholder="CIBC Chequing, TD Visa, Cash…" />
+          <!-- type-ahead from existing sources -->
+          <input id="source" type="text" list="sourceList" placeholder="CIBC Chequing, TD Visa, Cash…" />
+          <datalist id="sourceList"></datalist>
         </label>
       </div>
       <div class="row">
@@ -82,7 +89,6 @@
       const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
       const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
       const BUCKET = "receipts-warm";
-
       const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
       const statusEl = document.getElementById("status");
@@ -94,7 +100,38 @@
         const { count, error } = await sb.from("receipts").select("*", { count:"exact", head:true });
         if (!error) countEl.textContent = (count ?? 0).toString();
       }
-      refreshCount().then(() => statusEl.textContent = "Connected.");
+
+      // 🧠 Load unique vendors/categories/sources into datalists
+      async function loadLists() {
+        // Pull a reasonable slice and de-dup client-side (simple and safe)
+        const { data, error } = await sb
+          .from("receipts")
+          .select("vendor, category, source")
+          .limit(1000); // adjust later if you need more
+
+        if (error) {
+          console.warn("Could not load lists:", error.message);
+          return;
+        }
+
+        const uniq = (arr) => [...new Set(arr.filter(v => v && String(v).trim() !== ""))].sort((a,b)=>String(a).localeCompare(String(b)));
+
+        const vendors   = uniq(data.map(r => r.vendor));
+        const categories= uniq(data.map(r => r.category));
+        const sources   = uniq(data.map(r => r.source));
+
+        const fill = (id, values) => {
+          const dl = document.getElementById(id);
+          dl.innerHTML = values.map(v => `<option value="${String(v).replaceAll('"','&quot;')}"></option>`).join("");
+        };
+
+        fill("vendorList", vendors);
+        fill("categoryList", categories);
+        fill("sourceList", sources);
+      }
+
+      // initial load
+      Promise.all([refreshCount(), loadLists()]).then(() => statusEl.textContent = "Connected.");
 
       async function handleUpload() {
         uploadStatus.textContent = "Uploading…";
@@ -112,17 +149,17 @@
 
         const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(objectPath)}`;
 
-        // 2) Collect manual fields
+        // 2) Collect fields
         const vendor   = document.getElementById("vendor").value || null;
         const rdate    = document.getElementById("rdate").value || null;
         const totalVal = document.getElementById("total").value;
-        const taxVal   = document.getElementById("tax").value;        // NEW
+        const taxVal   = document.getElementById("tax").value;
         const category = document.getElementById("category").value || null;
         const source   = document.getElementById("source").value || null;
         const notes    = document.getElementById("notes").value || null;
 
         const totalNum = totalVal === "" ? null : Number(totalVal);
-        const taxNum   = taxVal === "" ? 0.00 : Number(taxVal);        // NEW
+        const taxNum   = taxVal   === "" ? 0.00 : Number(taxVal);
 
         // 3) Insert DB row
         const { error: insErr } = await sb.from("receipts").insert([{
@@ -130,7 +167,7 @@
           vendor: vendor,
           receipt_date: rdate,
           total: totalNum,
-          tax: taxNum,               // NEW
+          tax: taxNum,
           subtotal: null,
           category: category,
           source: source,
@@ -143,6 +180,7 @@
         uploadStatus.textContent = "Saved ✔";
         fileInput.value = "";
         await refreshCount();
+        await loadLists(); // refresh dropdowns with any new values you just added
       }
 
       uploadBtn.addEventListener("click", handleUpload);
