@@ -8,6 +8,7 @@
       body { font-family: system-ui, Arial, sans-serif; margin: 32px; }
       .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; max-width: 520px; }
       .muted { color: #555; }
+      code { background:#f6f6f6; padding:2px 4px; border-radius:4px; }
     </style>
   </head>
   <body>
@@ -19,36 +20,40 @@
       </p>
     </div>
 
-    <!-- Supabase JS v2 (CDN) -->
-    <script src="https://esm.sh/@supabase/supabase-js@2"></script>
+    <!-- ✅ UMD build exposes window.supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+
     <script>
-      // Your project credentials
       const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
       const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
 
-      // Init client
-      const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      const statusEl = document.getElementById("status");
+      const countEl  = document.getElementById("count");
+      const boxEl    = document.getElementById("countBox");
 
-      // Read count from public.receipts and show it
       async function showCount() {
-        const statusEl = document.getElementById("status");
-        const countEl = document.getElementById("count");
-        const boxEl = document.getElementById("countBox");
+        try {
+          const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+          statusEl.textContent = "Reading receipts…";
 
-        statusEl.textContent = "Reading receipts…";
+          // Ask only for a count (no rows)
+          const { count, error } = await supabase
+            .from("receipts")
+            .select("*", { count: "exact", head: true });
 
-        const { count, error } = await supabase
-          .from("receipts")
-          .select("*", { count: "exact", head: true });
+          if (error) {
+            statusEl.textContent = "Error: " + (error.message || String(error));
+            console.error(error);
+            return;
+          }
 
-        if (error) {
-          statusEl.textContent = "Error: " + (error.message || String(error));
-          return;
+          statusEl.textContent = "Connected.";
+          countEl.textContent = (count ?? 0).toString();
+          boxEl.style.display = "block";
+        } catch (e) {
+          statusEl.textContent = "Init error: " + String(e);
+          console.error(e);
         }
-
-        statusEl.textContent = "Connected.";
-        countEl.textContent = (count ?? 0).toString();
-        boxEl.style.display = "block";
       }
 
       showCount();
