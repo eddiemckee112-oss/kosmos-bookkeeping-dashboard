@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Kosmos Bookkeeping</title>
 
-  <!-- Supabase -->
+  <!-- Supabase SDK -->
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-  <!-- SheetJS for Excel export -->
+  <!-- SheetJS for CSV/XLSX parsing & export -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.20.2/dist/xlsx.full.min.js"></script>
 
   <style>
@@ -32,7 +32,7 @@
     button:hover{ background:var(--btnH); }
     .secondary{ background:#f7f7f7; color:#111; border-color:#d0d0d0; }
     .secondary:hover{ background:#eee; }
-    .rowbtns{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+    .rowbtns{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; align-items:center; }
     table{ width:100%; border-collapse:collapse; font-size:14px; }
     th, td{ padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; }
     th{ background:#f6f7f8; position:sticky; top:0; z-index:1; }
@@ -139,168 +139,18 @@
         <p id="autoMsg" class="muted"></p>
       </div>
 
-     <script>
-  // ---- Bank CSV import (robust: headerless + headered) ----
-  qs("importCsvBtn").addEventListener("click", async ()=>{
-    const file = qs("bankCsvInput").files?.[0];
-    if(!file){ qs("csvMsg").className="err"; qs("csvMsg").textContent="Pick a CSV first."; return; }
+      <!-- BANK CSV IMPORT -->
+      <div class="card" style="margin-top:16px;">
+        <h3>Import Bank Statement (CSV)</h3>
+        <small class="muted">Drag-drop or choose a .CSV file; rows go into <code>public.transactions</code>.</small>
 
-    qs("csvMsg").className="muted";
-    qs("csvMsg").textContent="Reading CSV…";
-
-    // Parse with SheetJS so we handle quotes, commas-in-text, etc.
-    const ab = await file.arrayBuffer();
-    const wb = XLSX.read(ab, { type: "array" });
-    const sheet = wb.Sheets[wb.SheetNames[0]];
-    if(!sheet){ qs("csvMsg").className="err"; qs("csvMsg").textContent="Could not read first sheet."; return; }
-
-    // rows: array of arrays, no type guessing
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "" });
-    if(!rows.length){ qs("csvMsg").className="err"; qs("csvMsg").textContent="Empty file."; return; }
-
-    // Helper: does a cell look like a date? (YYYY-MM-DD or YYYY/MM/DD or DD/MM/YYYY)
-    const isLikelyDate = (v) => {
-      if(v instanceof Date) return true;
-      const s = String(v).trim();
-      return /^\d{4}[-/]\d{2}[-/]\d{2}$/.test(s) || /^\d{2}[-/]\d{2}[-/]\d{4}$/.test(s);
-    };
-
-    // Decide whether first row is a header or data
-    const first = rows[0] || [];
-    const headerLooksLikeData = isLikelyDate(first[0]) && String(first[1]||"").length > 0;
-
-    let header = [];
-    let dataRows = [];
-    if(headerLooksLikeData) {
-      // Headerless (e.g., CIBC): assume [date, description, debit, credit]
-      header = ["date","description","debit","credit"];
-      dataRows = rows; // all rows are data
-    } else {
-      // Use provided header row; normalize
-      header = first.map(h => String(h).trim().toLowerCase());
-      dataRows = rows.slice(1);
-    }
-
-    // Find columns
-    const idx = (name) => header.findIndex(h => h === name);
-    const findCol = (regex) => header.findIndex(h => regex.test(h));
-
-    let iDate   = idx("date");             if(iDate   < 0) iDate   = findCol(/date/);
-    let iDesc   = idx("description");      if(iDesc   < 0) iDesc   = findCol(/desc|vendor|memo|details?/);
-    let iAmount = idx("amount");           if(iAmount < 0) iAmount = findCol(/amount/);
-    let iDebit  = idx("debit");            if(iDebit  < 0) iDebit  = findCol(/debit|withdrawal/);
-    let iCredit = idx("credit");           if(iCredit < 0) iCredit = findCol(/credit|deposit/);
-    let iType   = idx("type");             if(iType   < 0) iType   = findCol(/type/);
-
-    // For headerless CIBC: enforce default guesses
-    if(headerLooksLikeData){
-      iDate = 0; iDesc = 1; iDebit = 2; iCredit = 3;
-    }
-
-    // Must have date + description and either amount OR (debit/credit)
-    if(iDate < 0 || iDesc < 0 || (iAmount < 0 && iDebit < 0 && iCredit < 0)){
-      qs("csvMsg").className="err";
-      qs("csvMsg").textContent="Missing key columns (need date, description, and amount or debit/credit).";
-      return;
-    }
-
-    // Coerce numbers from strings like "1,234.56" or "($12.34)"
-    const toNum = (v) => {
-      if(v == null) return 0;
-      if(typeof v === "number") return v;
-      let s = String(v).trim();
-      if(!s) return 0;
-      const neg = /^\(.*\)$/.test(s);
-      s = s.replace(/[(),$]/g,"").replace(/\s+/g,"");
-      let n = Number(s.replace(/[^0-9.-]/g,""));
-      if(Number.isNaN(n)) n = 0;
-      return neg ? -Math.abs(n) : n;
-    };
-
-    // Build rows → transactions
-    const txns = [];
-    for(let r = 0; r < dataRows.length; r++){
-      const row = dataRows[r] || [];
-      const rawDate = row[iDate];
-      if(!rawDate) continue;
-
-      // Normalize date (SheetJS might already parse)
-      let isoDate = "";
-      if(rawDate instanceof Date) {
-        isoDate = rawDate.toISOString().slice(0,10);
-      } else {
-        const s = String(rawDate).trim();
-        // support DD/MM/YYYY and YYYY-MM-DD
-        if(/^\d{2}\/\d{2}\/\d{4}$/.test(s)){
-          const [dd,mm,yyyy] = s.split("/");
-          isoDate = `${yyyy}-${mm}-${dd}`;
-        } else {
-          // hope it's parseable
-          const d = new Date(s);
-          if(!isNaN(d.getTime())) isoDate = d.toISOString().slice(0,10);
-        }
-      }
-      if(!isoDate) continue;
-
-      const desc = String(row[iDesc] ?? "").trim();
-      if(!desc) continue;
-
-      // Amount & direction
-      let amount = 0, direction = "debit";
-      if(iAmount >= 0){
-        const a = toNum(row[iAmount]);
-        if(a === 0) continue;
-        direction = a < 0 ? "debit" : "credit";
-        amount = Math.abs(a);
-      } else {
-        const d = iDebit  >= 0 ? toNum(row[iDebit])  : 0;
-        const c = iCredit >= 0 ? toNum(row[iCredit]) : 0;
-        if(d === 0 && c === 0) continue;
-        if(d !== 0){ amount = Math.abs(d); direction = "debit"; }
-        else       { amount = Math.abs(c); direction = "credit"; }
-      }
-
-      txns.push({
-        org_id: null,
-        account_id: null,
-        txn_date: isoDate,
-        post_date: isoDate,
-        description: desc,
-        vendor_clean: desc,
-        amount,
-        direction,
-        currency: "CAD",
-        imported_from: file.name,
-        csv_row: (headerLooksLikeData ? r+1 : r+2) // 1-based, account for header row if present
-      });
-    }
-
-    if(!txns.length){
-      qs("csvMsg").className="err";
-      qs("csvMsg").textContent="No valid rows found (after parsing).";
-      return;
-    }
-
-    qs("csvMsg").textContent=`Uploading ${txns.length} transactions…`;
-
-    const { error } = await sb.from("transactions").insert(txns);
-    if(error){
-      qs("csvMsg").className="err";
-      qs("csvMsg").textContent="DB error: "+error.message;
-      return;
-    }
-
-    qs("csvMsg").className="ok";
-    qs("csvMsg").textContent=`Imported ${txns.length} transactions from ${file.name}.`;
-
-    // Auto-match strictly right after import
-    const { data: matched, error: mErr } = await sb.rpc("match_now");
-    if(!mErr){
-      qs("csvMsg").textContent += `  Auto-matched ${matched ?? 0} receipt(s).`;
-    }
-  });
-</script>
-
+        <input type="file" id="bankCsvInput" accept=".csv" style="margin-top:8px;">
+        <div class="rowbtns">
+          <button id="importCsvBtn">Import CSV</button>
+        </div>
+        <p id="csvMsg" class="muted"></p>
+      </div>
+    </div>
 
     <!-- RIGHT COLUMN: Unmatched viewer -->
     <div class="card">
@@ -478,7 +328,7 @@
       await loadUnmatched();
     });
 
-    // ---- Export helpers (CSV & XLSX)
+    // ---- Accountant Export helpers (CSV & XLSX)
     const EXPORT_COLUMNS = [
       { key:"receipt_date", label:"Date" },
       { key:"vendor",       label:"Vendor" },
@@ -585,7 +435,7 @@
       autoMsg.className="ok"; autoMsg.textContent="Excel downloaded.";
     }
 
-    // ---- Export dropdown behavior
+    // Export dropdown behavior
     const exportBtn  = qs("exportBtn");
     const exportMenu = qs("exportMenu");
     exportBtn.addEventListener("click", ()=>{
@@ -604,7 +454,7 @@
     // Refresh unmatched list
     qs("refreshBtn").addEventListener("click", loadUnmatched);
 
-    // ---- Bank CSV import ----
+    // ---- Bank CSV import (robust: headerless + headered) ----
     qs("importCsvBtn").addEventListener("click", async ()=>{
       const file = qs("bankCsvInput").files?.[0];
       if(!file){ qs("csvMsg").className="err"; qs("csvMsg").textContent="Pick a CSV first."; return; }
@@ -612,52 +462,121 @@
       qs("csvMsg").className="muted";
       qs("csvMsg").textContent="Reading CSV…";
 
-      const text = await file.text();
-      const lines = text.split(/\r?\n/).filter(Boolean);
-      if(!lines.length){ qs("csvMsg").className="err"; qs("csvMsg").textContent="Empty file."; return; }
+      // Parse with SheetJS to handle quoted commas, etc.
+      const ab = await file.arrayBuffer();
+      const wb = XLSX.read(ab, { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      if(!sheet){ qs("csvMsg").className="err"; qs("csvMsg").textContent="Could not read first sheet."; return; }
 
-      const header = lines[0].split(",").map(h=>h.trim().toLowerCase());
-      const dataRows = lines.slice(1);
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "" });
+      if(!rows.length){ qs("csvMsg").className="err"; qs("csvMsg").textContent="Empty file."; return; }
 
-      // Try to guess common column names
-      const colDate = header.find(h=>/date/.test(h));
-      const colDesc = header.find(h=>/desc|vendor|memo/.test(h));
-      const colAmt  = header.find(h=>/amount/.test(h));
-      const colType = header.find(h=>/debit|credit|type/.test(h)); // optional
+      // Heuristic: headerless if first cell looks like a date and second has text
+      const isLikelyDate = (v) => {
+        if(v instanceof Date) return true;
+        const s = String(v).trim();
+        return /^\d{4}[-/]\d{2}[-/]\d{2}$/.test(s) || /^\d{2}[-/]\d{2}[-/]\d{4}$/.test(s);
+      };
+      const first = rows[0] || [];
+      const headerLooksLikeData = isLikelyDate(first[0]) && String(first[1]||"").length > 0;
 
-      if(!colDate || !colDesc || !colAmt){
+      let header = [];
+      let dataRows = [];
+      if(headerLooksLikeData) {
+        // CIBC-style (no header): [date, description, debit, credit]
+        header = ["date","description","debit","credit"];
+        dataRows = rows;
+      } else {
+        header = first.map(h => String(h).trim().toLowerCase());
+        dataRows = rows.slice(1);
+      }
+
+      const idx = (name) => header.findIndex(h => h === name);
+      const findCol = (regex) => header.findIndex(h => regex.test(h));
+
+      let iDate   = idx("date");             if(iDate   < 0) iDate   = findCol(/date/);
+      let iDesc   = idx("description");      if(iDesc   < 0) iDesc   = findCol(/desc|vendor|memo|details?/);
+      let iAmount = idx("amount");           if(iAmount < 0) iAmount = findCol(/amount/);
+      let iDebit  = idx("debit");            if(iDebit  < 0) iDebit  = findCol(/debit|withdrawal/);
+      let iCredit = idx("credit");           if(iCredit < 0) iCredit = findCol(/credit|deposit/);
+      let iType   = idx("type");             if(iType   < 0) iType   = findCol(/type/);
+
+      if(headerLooksLikeData){ iDate = 0; iDesc = 1; iDebit = 2; iCredit = 3; }
+
+      if(iDate < 0 || iDesc < 0 || (iAmount < 0 && iDebit < 0 && iCredit < 0)){
         qs("csvMsg").className="err";
-        qs("csvMsg").textContent="Missing key columns (need date, description, amount).";
+        qs("csvMsg").textContent="Missing key columns (need date, description, and amount or debit/credit).";
         return;
       }
 
-      const toNum = v => Number(String(v).replace(/[^0-9.-]/g,"")) || 0;
+      const toNum = (v) => {
+        if(v == null) return 0;
+        if(typeof v === "number") return v;
+        let s = String(v).trim();
+        if(!s) return 0;
+        const neg = /^\(.*\)$/.test(s); // (12.34) means negative
+        s = s.replace(/[(),$]/g,"").replace(/\s+/g,"");
+        let n = Number(s.replace(/[^0-9.-]/g,""));
+        if(Number.isNaN(n)) n = 0;
+        return neg ? -Math.abs(n) : n;
+      };
 
-      const txns = dataRows.map((line,i)=>{
-        const parts = line.split(",");
-        const obj = Object.fromEntries(header.map((h,j)=>[h, parts[j]??""]));
-        const amount = toNum(obj[colAmt]);
-        const direction = colType && /credit/i.test(String(obj[colType])) ? "credit"
-                          : colType && /debit/i.test(String(obj[colType])) ? "debit"
-                          : (amount < 0 ? "debit" : "credit");
-        return {
-          org_id: null,                 // you can populate later if needed
-          account_id: null,             // same
-          txn_date: obj[colDate] ? new Date(obj[colDate]).toISOString().slice(0,10) : null,
-          post_date: obj[colDate] ? new Date(obj[colDate]).toISOString().slice(0,10) : null,
-          description: obj[colDesc] ?? null,
-          vendor_clean: (obj[colDesc] ?? "").trim(),
-          amount: Math.abs(amount),
+      const txns = [];
+      for(let r = 0; r < dataRows.length; r++){
+        const row = dataRows[r] || [];
+        const rawDate = row[iDate];
+        if(!rawDate) continue;
+
+        let isoDate = "";
+        if(rawDate instanceof Date) {
+          isoDate = rawDate.toISOString().slice(0,10);
+        } else {
+          const s = String(rawDate).trim();
+          if(/^\d{2}\/\d{2}\/\d{4}$/.test(s)){
+            const [dd,mm,yyyy] = s.split("/");
+            isoDate = `${yyyy}-${mm}-${dd}`;
+          } else {
+            const d = new Date(s);
+            if(!isNaN(d.getTime())) isoDate = d.toISOString().slice(0,10);
+          }
+        }
+        if(!isoDate) continue;
+
+        const desc = String(row[iDesc] ?? "").trim();
+        if(!desc) continue;
+
+        let amount = 0, direction = "debit";
+        if(iAmount >= 0){
+          const a = toNum(row[iAmount]);
+          if(a === 0) continue;
+          direction = a < 0 ? "debit" : "credit";
+          amount = Math.abs(a);
+        } else {
+          const d = iDebit  >= 0 ? toNum(row[iDebit])  : 0;
+          const c = iCredit >= 0 ? toNum(row[iCredit]) : 0;
+          if(d === 0 && c === 0) continue;
+          if(d !== 0){ amount = Math.abs(d); direction = "debit"; }
+          else       { amount = Math.abs(c); direction = "credit"; }
+        }
+
+        txns.push({
+          org_id: null,
+          account_id: null,
+          txn_date: isoDate,
+          post_date: isoDate,
+          description: desc,
+          vendor_clean: desc,
+          amount,
           direction,
           currency: "CAD",
           imported_from: file.name,
-          csv_row: i + 2
-        };
-      }).filter(r=>r.txn_date && r.amount);
+          csv_row: (headerLooksLikeData ? r+1 : r+2)
+        });
+      }
 
       if(!txns.length){
         qs("csvMsg").className="err";
-        qs("csvMsg").textContent="No valid rows found.";
+        qs("csvMsg").textContent="No valid rows found (after parsing).";
         return;
       }
 
@@ -673,7 +592,7 @@
       qs("csvMsg").className="ok";
       qs("csvMsg").textContent=`Imported ${txns.length} transactions from ${file.name}.`;
 
-      // Optional: auto-match after import
+      // Auto-match after import (strict)
       const { data: matched, error: mErr } = await sb.rpc("match_now");
       if(!mErr){
         qs("csvMsg").textContent += `  Auto-matched ${matched ?? 0} receipt(s).`;
