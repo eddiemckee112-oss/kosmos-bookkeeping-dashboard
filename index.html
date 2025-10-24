@@ -48,6 +48,7 @@
     .menu button{ width:100%; text-align:left; background:#fff; color:#111; border:0; padding:.55rem .7rem; border-radius:8px; }
     .menu button:hover{ background:#f3f4f6; }
     @media (max-width:1100px){ .wrap{ grid-template-columns:1fr; } }
+    select{ padding:.5rem; border:1px solid #ccc; border-radius:8px; }
   </style>
 </head>
 <body>
@@ -117,7 +118,12 @@
         <small class="muted">Run your Supabase bookkeeping functions right from here.</small>
         <div class="rowbtns">
           <button id="btnApply" class="secondary" title="Auto-categorize receipts">Apply Rules</button>
-          <button id="btnMatch" class="secondary" title="Match receipts ↔ bank txns">Match Now</button>
+
+          <select id="matchMode" aria-label="Match mode">
+            <option value="strict" selected>Strict match</option>
+            <option value="fuzzy">Fuzzy match</option>
+          </select>
+          <button id="btnMatch" class="secondary" title="Match receipts ↔ bank txns">Match</button>
 
           <!-- Export dropdown -->
           <div class="dropdown">
@@ -292,16 +298,21 @@
     // ---- RPC buttons
     qs("btnApply").addEventListener("click", async ()=>{
       autoMsg.className="muted"; autoMsg.textContent="Applying rules…";
-      const {error} = await sb.rpc("apply_rules");
+      const { data, error } = await sb.rpc("apply_rules");
       if(error){ autoMsg.className="err"; autoMsg.textContent="Error: "+error.message; return; }
-      autoMsg.className="ok"; autoMsg.textContent="Rules applied.";
+      const n = (typeof data === "number") ? data : 0;
+      autoMsg.className="ok"; autoMsg.textContent=`Rules applied. Updated ${n} row(s).`;
       await loadUnmatched();
     });
+
     qs("btnMatch").addEventListener("click", async ()=>{
-      autoMsg.className="muted"; autoMsg.textContent="Matching now…";
-      const {error} = await sb.rpc("match_now");
-      if(error){ autoMsg.className="err"; autoMsg.textContent="Error: "+error.message; return; }
-      autoMsg.className="ok"; autoMsg.textContent="Matching complete.";
+      autoMsg.className="muted"; autoMsg.textContent="Matching…";
+      const mode = qs("matchMode").value;          // "strict" | "fuzzy"
+      const fn = mode === "fuzzy" ? "match_now_fuzzy" : "match_now";
+      const { data, error } = await sb.rpc(fn);
+      if(error){ autoMsg.className="err"; autoMsg.textContent=`Error (${mode}): ${error.message}`; return; }
+      const n = (typeof data === "number") ? data : 0;
+      autoMsg.className="ok"; autoMsg.textContent=`Matching complete (${mode}). Inserted ${n} match(es).`;
       await loadUnmatched();
     });
 
@@ -405,25 +416,7 @@
       const wsData = [headers, ...body, totalsRow];
       const ws = XLSX.utils.aoa_to_sheet(wsData);
 
-      // Bold headers
-      headers.forEach((_,i)=>{
-        const cell = ws[XLSX.utils.encode_cell({r:0,c:i})];
-        if(cell) cell.s = { font:{ bold:true } };
-      });
-      // Currency format
-      const moneyCols = EXPORT_COLUMNS.map((c,i)=>["subtotal","tax","total"].includes(c.key)?i:-1).filter(i=>i>=0);
-      for(let r=1;r<wsData.length;r++){
-        for(const c of moneyCols){
-          const addr = XLSX.utils.encode_cell({r,c});
-          const cell = ws[addr];
-          if(cell && typeof cell.v === "number"){
-            cell.z = '"$"#,##0.00;[Red]-"$"#,##0.00';
-          }
-        }
-      }
-      // Autofit
-      autosizeCols(ws, body, headers);
-
+      // Currency columns could be styled here if desired
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Receipts Export");
       const today = new Date().toISOString().slice(0,10);
