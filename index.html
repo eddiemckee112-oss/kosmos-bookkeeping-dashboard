@@ -138,6 +138,18 @@
         </div>
         <p id="autoMsg" class="muted"></p>
       </div>
+
+      <!-- BANK CSV IMPORT -->
+      <div class="card" style="margin-top:16px;">
+        <h3>Import Bank Statement (CSV)</h3>
+        <small class="muted">Drag-drop or choose a .CSV file; rows go into <code>public.transactions</code>.</small>
+
+        <input type="file" id="bankCsvInput" accept=".csv" style="margin-top:8px;">
+        <div class="rowbtns">
+          <button id="importCsvBtn">Import CSV</button>
+        </div>
+        <p id="csvMsg" class="muted"></p>
+      </div>
     </div>
 
     <!-- RIGHT COLUMN: Unmatched viewer -->
@@ -167,7 +179,7 @@
   </div>
 
   <script>
-    // ---- Supabase config (confirmed)
+    // ---- Supabase config
     const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
     const BUCKET = "receipts-warm";
@@ -257,7 +269,7 @@
       statusEl.textContent = "Connected.";
     }
 
-    // ---- Upload handler
+    // ---- Upload handler (receipts)
     qs("uploadBtn").addEventListener("click", async ()=>{
       msgEl.className="muted"; msgEl.textContent="Uploading…";
       const file = qs("fileInput").files?.[0];
@@ -416,7 +428,6 @@
       const wsData = [headers, ...body, totalsRow];
       const ws = XLSX.utils.aoa_to_sheet(wsData);
 
-      // Currency columns could be styled here if desired
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Receipts Export");
       const today = new Date().toISOString().slice(0,10);
@@ -442,6 +453,82 @@
 
     // Refresh unmatched list
     qs("refreshBtn").addEventListener("click", loadUnmatched);
+
+    // ---- Bank CSV import ----
+    qs("importCsvBtn").addEventListener("click", async ()=>{
+      const file = qs("bankCsvInput").files?.[0];
+      if(!file){ qs("csvMsg").className="err"; qs("csvMsg").textContent="Pick a CSV first."; return; }
+
+      qs("csvMsg").className="muted";
+      qs("csvMsg").textContent="Reading CSV…";
+
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      if(!lines.length){ qs("csvMsg").className="err"; qs("csvMsg").textContent="Empty file."; return; }
+
+      const header = lines[0].split(",").map(h=>h.trim().toLowerCase());
+      const dataRows = lines.slice(1);
+
+      // Try to guess common column names
+      const colDate = header.find(h=>/date/.test(h));
+      const colDesc = header.find(h=>/desc|vendor|memo/.test(h));
+      const colAmt  = header.find(h=>/amount/.test(h));
+      const colType = header.find(h=>/debit|credit|type/.test(h)); // optional
+
+      if(!colDate || !colDesc || !colAmt){
+        qs("csvMsg").className="err";
+        qs("csvMsg").textContent="Missing key columns (need date, description, amount).";
+        return;
+      }
+
+      const toNum = v => Number(String(v).replace(/[^0-9.-]/g,"")) || 0;
+
+      const txns = dataRows.map((line,i)=>{
+        const parts = line.split(",");
+        const obj = Object.fromEntries(header.map((h,j)=>[h, parts[j]??""]));
+        const amount = toNum(obj[colAmt]);
+        const direction = colType && /credit/i.test(String(obj[colType])) ? "credit"
+                          : colType && /debit/i.test(String(obj[colType])) ? "debit"
+                          : (amount < 0 ? "debit" : "credit");
+        return {
+          org_id: null,                 // you can populate later if needed
+          account_id: null,             // same
+          txn_date: obj[colDate] ? new Date(obj[colDate]).toISOString().slice(0,10) : null,
+          post_date: obj[colDate] ? new Date(obj[colDate]).toISOString().slice(0,10) : null,
+          description: obj[colDesc] ?? null,
+          vendor_clean: (obj[colDesc] ?? "").trim(),
+          amount: Math.abs(amount),
+          direction,
+          currency: "CAD",
+          imported_from: file.name,
+          csv_row: i + 2
+        };
+      }).filter(r=>r.txn_date && r.amount);
+
+      if(!txns.length){
+        qs("csvMsg").className="err";
+        qs("csvMsg").textContent="No valid rows found.";
+        return;
+      }
+
+      qs("csvMsg").textContent=`Uploading ${txns.length} transactions…`;
+
+      const { error } = await sb.from("transactions").insert(txns);
+      if(error){
+        qs("csvMsg").className="err";
+        qs("csvMsg").textContent="DB error: "+error.message;
+        return;
+      }
+
+      qs("csvMsg").className="ok";
+      qs("csvMsg").textContent=`Imported ${txns.length} transactions from ${file.name}.`;
+
+      // Optional: auto-match after import
+      const { data: matched, error: mErr } = await sb.rpc("match_now");
+      if(!mErr){
+        qs("csvMsg").textContent += `  Auto-matched ${matched ?? 0} receipt(s).`;
+      }
+    });
 
     // Start
     init();
