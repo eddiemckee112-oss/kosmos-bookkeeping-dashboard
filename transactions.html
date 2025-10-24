@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Transactions – Kosmos Bookkeeping</title>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:#fafafa;color:#111;margin:20px;}
+    h1{font-size:1.4rem;margin-bottom:1rem;}
+    .card{background:#fff;border:1px solid #ddd;border-radius:12px;padding:16px;margin-bottom:20px;}
+    label{font-weight:600;margin-right:6px;}
+    table{width:100%;border-collapse:collapse;font-size:14px;}
+    th,td{padding:8px 10px;border-bottom:1px solid #eee;text-align:left;}
+    th{background:#f6f7f8;}
+    .right{text-align:right;}
+    .ok{color:#0a7a33;}
+    .muted{color:#666;}
+  </style>
+</head>
+<body>
+  <h1>Transactions</h1>
+  <div class="card">
+    <label>From <input type="date" id="fromDate"></label>
+    <label>To <input type="date" id="toDate"></label>
+    <button id="loadBtn">Load</button>
+    <span id="status" class="muted"></span>
+  </div>
+  <div class="card">
+    <table id="txnTable">
+      <thead>
+        <tr><th>Date</th><th>Description</th><th class="right">Amount</th><th>Direction</th><th>Source</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p id="totals" class="muted"></p>
+  </div>
+
+  <script>
+    const sb = supabase.createClient(
+      "https://advihqhjjlxumgdlbwui.supabase.co",
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY"
+    );
+
+    const qs=id=>document.getElementById(id);
+    const fmt=(n)=>n?.toLocaleString("en-CA",{style:"currency",currency:"CAD"}) ?? "";
+
+    async function loadTxns(){
+      const from=qs("fromDate").value, to=qs("toDate").value;
+      qs("status").textContent="Loading...";
+      let q=sb.from("transactions").select("*").order("txn_date",{ascending:false});
+      if(from && to) q=q.gte("txn_date",from).lte("txn_date",to);
+      const {data,error}=await q;
+      if(error){qs("status").textContent="Error: "+error.message;return;}
+      const tbody=qs("txnTable").querySelector("tbody");
+      if(!data?.length){tbody.innerHTML=`<tr><td colspan=5 class="muted">No transactions found</td></tr>`;qs("status").textContent="";return;}
+      tbody.innerHTML=data.map(r=>`<tr>
+        <td>${r.txn_date??""}</td>
+        <td>${r.description??""}</td>
+        <td class="right">${fmt(r.amount)}</td>
+        <td>${r.direction}</td>
+        <td>${r.imported_from??""}</td>
+      </tr>`).join("");
+      const total=data.reduce((a,r)=>a+(r.amount||0)*(r.direction==="debit"?-1:1),0);
+      qs("totals").innerHTML=`Total net: <strong>${fmt(total)}</strong> • ${data.length} rows`;
+      qs("status").textContent="Loaded.";
+    }
+
+    qs("loadBtn").addEventListener("click",loadTxns);
+
+    // Defaults to this month
+    const now=new Date(), y=now.getFullYear(), m=String(now.getMonth()+1).padStart(2,"0");
+    qs("fromDate").value=`${y}-${m}-01`;
+    qs("toDate").value=`${y}-${m}-${String(new Date(y,m,0).getDate()).padStart(2,"0")}`;
+    loadTxns();
+  </script>
+</body>
+</html>
