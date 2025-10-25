@@ -12,10 +12,18 @@
     .status-btn{font-size:.8rem;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#fff;cursor:pointer}
     .status-btn.ok{background:#eef8f1;border-color:#cfe9d7;color:var(--ok)}
     .upload-btn{font-size:.8rem;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#f9f9f9;cursor:pointer}
+    .rule-btn{font-size:.75rem;padding:4px 8px;border-radius:999px;border:1px solid var(--border);background:#fff;cursor:pointer}
+    .rule-btn:hover{background:#f6f6f6}
     .right{text-align:right} .muted{color:var(--muted)} .ok{color:var(--ok)} .err{color:var(--err)} .small{font-size:.85rem}
     .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.18);display:none;align-items:flex-start;justify-content:center;padding:40px 12px;z-index:50}
     .modal{background:#fff;width:min(1100px,100%);max-height:85vh;overflow:auto;border:1px solid var(--border);border-radius:16px;padding:16px 16px 18px}
     .hidden{display:none}
+    .cat-select{min-width:150px}
+    .save-mark{font-size:12px;margin-left:6px;opacity:.0;transition:opacity .2s}
+    .save-mark.show{opacity:1}
+    .bulkbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0}
+    .bulkbar .count{font-weight:700}
+    .suggest{font-size:12px;margin-left:8px;padding:2px 8px;border:1px dashed var(--border);border-radius:999px;background:#fff}
   </style>
 </head>
 <body>
@@ -31,8 +39,9 @@
 
   <main class="container">
     <h2>💳 Transactions</h2>
-    <p class="muted">Filter, import, categorize, attach receipts, and track sources.</p>
+    <p class="muted">Filter, import, categorize (single or bulk), attach receipts, and track sources. Now with smart category suggestions + one-click rules.</p>
 
+    <!-- Controls -->
     <div class="card" style="margin-bottom:14px;">
       <div class="toolbar">
         <label>Date Range:</label>
@@ -61,6 +70,7 @@
       </div>
     </div>
 
+    <!-- Totals -->
     <div class="card" style="margin-bottom:14px;">
       <div>Total Transactions: <b id="totalRows">—</b></div>
       <div>Debits: <b id="totalDebits">$0.00</b></div>
@@ -69,10 +79,21 @@
       <small class="muted">Numbers reflect the current filter.</small>
     </div>
 
+    <!-- Bulk bar -->
     <div class="card">
+      <div class="bulkbar">
+        <span>Selected: <span class="count" id="selCount">0</span></span>
+        <select id="bulkCategory" class="cat-select"></select>
+        <button id="applyBulk" class="ghost">Apply category to selected</button>
+        <button id="applySuggestions" class="ghost">Apply suggestions</button>
+        <span id="bulkStatus" class="small muted"></span>
+      </div>
+
+      <!-- Table -->
       <table id="txTable">
         <thead>
           <tr>
+            <th><input type="checkbox" id="checkAll"/></th>
             <th>Date</th>
             <th>Description</th>
             <th class="right">Amount</th>
@@ -102,7 +123,7 @@
         <button id="closeImport" class="ghost">Close</button>
       </div>
 
-      <!-- NEW: Choose source for this file -->
+      <!-- Choose source for this file -->
       <div class="row" style="gap:10px;align-items:center;margin-top:10px">
         <label for="fileSourceSelect"><b>Source for this file:</b></label>
         <select id="fileSourceSelect"></select>
@@ -144,15 +165,149 @@
     // Supabase client
     const sb = supabase.createClient(
       "https://advihqhjjlxumgdlbwui.supabase.co",
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY"
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4PCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY"
     );
 
     const $ = id => document.getElementById(id);
     const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const money = n => (n==null?0:n).toLocaleString(undefined,{style:"currency",currency:"CAD"});
 
+    // ---------- Category options ----------
+    let CATEGORY_OPTIONS = [];
+    async function loadCategoryOptions(){
+      const defaults = [
+        "Uncategorized","Income","Sales","Refunds",
+        "Meals & Entertainment","Supplies","Software","Subscriptions",
+        "Travel","Lodging","Fuel","Utilities","Phone/Internet",
+        "Office","Professional Fees","Bank Fees","Taxes","Insurance","Repairs","Other"
+      ];
+      const set = new Set(defaults);
+
+      const { data: txCats } = await sb.from("transactions").select("category").not("category","is","null");
+      (txCats||[]).forEach(r=>{ if(r.category && String(r.category).trim()) set.add(String(r.category).trim()); });
+
+      const { data: rcCats } = await sb.from("receipts").select("category").not("category","is","null");
+      (rcCats||[]).forEach(r=>{ if(r.category && String(r.category).trim()) set.add(String(r.category).trim()); });
+
+      CATEGORY_OPTIONS = Array.from(set).sort((a,b)=>a.localeCompare(b));
+
+      // populate bulk dropdown
+      $("bulkCategory").innerHTML = CATEGORY_OPTIONS.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");
+      $("bulkCategory").value = "Uncategorized";
+    }
+
+    function renderCategorySelect(value, txnId, desc, suggested){
+      const opts = CATEGORY_OPTIONS.map(c => `<option value="${esc(c)}"${c===value?' selected':''}>${esc(c)}</option>`).join("");
+      const hint = suggested && suggested !== value ? `<span class="suggest">suggested: ${esc(suggested)}</span>` : "";
+      return `<div style="display:flex;align-items:center;gap:6px;">
+        <select class="cat-select" data-txn="${txnId}" data-desc="${esc(desc)}" onchange="updateCategory(this)">
+          ${opts}
+        </select>
+        ${hint}
+        <button class="rule-btn" onclick="makeRule('${txnId}')">Make rule</button>
+        <span class="save-mark" id="sv_${txnId}">✓ saved</span>
+      </div>`;
+    }
+
+    // ---------- Vendor rules (suggestions) ----------
+    let RULES = [];              // [{id, vendor_pattern, category, source, tax}]
+    let SUGGESTIONS = new Map(); // txnId -> suggestedCategory
+
+    function norm(s){ return (s||"").toUpperCase(); }
+    function extractPattern(desc){
+      // Keep letters, numbers, spaces; condense spaces; take first 3 tokens
+      const cleaned = norm(desc).replace(/[^A-Z0-9 ]+/g," ").replace(/\s+/g," ").trim();
+      const tokens = cleaned.split(" ").filter(Boolean);
+      return tokens.slice(0,3).join(" ");
+    }
+    function findRuleForDesc(desc){
+      const nd = norm(desc);
+      for(const r of RULES){
+        const pat = norm(r.vendor_pattern||"").trim();
+        if(!pat) continue;
+        if(nd.includes(pat)) return r;
+      }
+      return null;
+    }
+
+    async function loadRules(){
+      const { data, error } = await sb.from("vendor_rules").select("id,vendor_pattern,category,source,tax").order("created_at",{ascending:false});
+      if(!error) RULES = data || [];
+    }
+
+    async function makeRule(txnId){
+      // Take current row's desc + selected category to create/update a rule
+      const row = CURRENT_ROWS.find(r=> r.id===txnId);
+      if(!row){ alert("Row not found."); return; }
+      const desc = row.description || "";
+      // read currently selected category from DOM
+      const sel = document.querySelector(`select.cat-select[data-txn="${txnId}"]`);
+      const category = sel ? sel.value : (row.category || "Uncategorized");
+      const pattern = extractPattern(desc);
+      if(!pattern){ alert("Could not extract a vendor pattern from description."); return; }
+
+      // If there is an existing rule with very similar pattern (substring both ways), update it
+      const existing = RULES.find(r => norm(r.vendor_pattern).includes(pattern) || pattern.includes(norm(r.vendor_pattern)));
+      try{
+        if(existing){
+          const { error } = await sb.from("vendor_rules").update({ category }).eq("id", existing.id);
+          if(error) throw error;
+        }else{
+          const { error } = await sb.from("vendor_rules").insert({
+            vendor_pattern: pattern,
+            category,
+            source: null,
+            tax: null
+          });
+          if(error) throw error;
+        }
+        await loadRules();
+        alert(`Rule saved: "${pattern}" → ${category}`);
+      }catch(e){
+        alert("Rule error: " + (e.message||e));
+      }
+    }
+    window.makeRule = makeRule;
+
+    async function applySuggestions(){
+      const updates = [];
+      SUGGESTIONS.forEach((cat, id)=>{
+        // Only update if current category is empty/Uncategorized
+        const row = CURRENT_ROWS.find(r=>r.id===id);
+        if(!row) return;
+        if(!row.category || row.category==="Uncategorized"){
+          updates.push({ id, category: cat });
+        }
+      });
+      if(!updates.length){ $("bulkStatus").textContent = "No suggestions to apply."; setTimeout(()=>$("bulkStatus").textContent="",1200); return; }
+      $("bulkStatus").textContent = `Applying ${updates.length} suggestion(s)…`;
+      try{
+        for(let i=0;i<updates.length;i+=300){
+          const chunk = updates.slice(i,i+300);
+          const ids = chunk.map(u=>u.id);
+          const cat = chunk[0].category; // chunk may contain different cats; do one-by-one to be safe
+          // do one by one for correctness
+          for(const u of chunk){
+            const { error } = await sb.from("transactions").update({ category: u.category }).eq("id", u.id);
+            if(error) throw error;
+          }
+        }
+        $("bulkStatus").textContent = "✓ Suggestions applied";
+        await loadTransactions();
+      }catch(e){
+        $("bulkStatus").textContent = "Error: " + (e.message||e);
+      }finally{
+        setTimeout(()=> $("bulkStatus").textContent="", 1500);
+      }
+    }
+
     // ---------- Load + render ----------
+    let CURRENT_ROWS = [];
     async function loadTransactions(){
+      await loadCategoryOptions();
+      await loadRules();
+      SUGGESTIONS = new Map();
+
       const from = $("fromDate").value || null;
       const to   = $("toDate").value || null;
       const q    = $("quickSearch").value.trim().toLowerCase();
@@ -176,323 +331,7 @@
       let rows = data || [];
       if (type === "matched")   rows = rows.filter(r => r.matches && r.matches.length);
       if (type === "unmatched") rows = rows.filter(r => !r.matches || r.matches.length===0);
-      if (type === "uncategorized") rows = rows.filter(r => !r.category);
+      if (type === "uncategorized") rows = rows.filter(r => !r.category || r.category==="Uncategorized");
       if (type === "no_source")     rows = rows.filter(r => !r.source_account_name);
       if (type === "duplicates")    rows = findDuplicates(rows);
 
-      if (q) rows = rows.filter(r =>
-        (r.description||"").toLowerCase().includes(q) ||
-        (r.source_account_name||"").toLowerCase().includes(q) ||
-        (r.category||"").toLowerCase().includes(q)
-      );
-
-      const d = rows.filter(r=>r.direction==='debit').reduce((s,r)=>s+(+r.amount||0),0);
-      const c = rows.filter(r=>r.direction==='credit').reduce((s,r)=>s+(+r.amount||0),0);
-      $("totalRows").textContent   = rows.length;
-      $("totalDebits").textContent = money(d);
-      $("totalCredits").textContent= money(c);
-      $("totalNet").textContent    = money(c-d);
-
-      $("chipUnmatched").textContent = rows.filter(r => !r.matches || r.matches.length===0).length;
-      $("chipUncat").textContent     = rows.filter(r => !r.category).length;
-      $("chipNoSource").textContent  = rows.filter(r => !r.source_account_name).length;
-      $("chipDupes").textContent     = findDuplicates(rows).length;
-
-      $("txBody").innerHTML = rows.map(r=>{
-        const matched = r.matches && r.matches.length;
-        return `<tr>
-          <td>${esc(r.txn_date||"")}</td>
-          <td>${esc(r.description||"")}</td>
-          <td class="right">${money(r.amount)}</td>
-          <td>${esc(r.direction||"")}</td>
-          <td>${esc(r.category||"")}</td>
-          <td>${esc(r.source_account_name||"")}</td>
-          <td><button class="status-btn ${matched?'ok':'ghost'}">${matched?'Matched':'Unmatched'}</button></td>
-          <td><button class="upload-btn" onclick="openUpload('${r.id}','${esc(r.description||'')}', '${esc(r.txn_date||'')}', '${r.amount}')">📷 Upload</button></td>
-        </tr>`;
-      }).join("");
-      $("rowsCount").textContent = `Rows: ${rows.length}`;
-    }
-
-    function findDuplicates(rows){
-      const key = r => `${(r.txn_date||"").slice(0,10)}|${(r.amount||0)}|${(r.description||"").toLowerCase().replace(/\s+/g,' ').trim().slice(0,64)}`;
-      const map = new Map();
-      rows.forEach(r => map.set(key(r), (map.get(key(r))||0)+1));
-      return rows.filter(r => map.get(key(r))>1);
-    }
-
-    $("applyBtn").addEventListener("click", loadTransactions);
-    $("quickSearch").addEventListener("input", ()=>{ clearTimeout(window.__qsT); window.__qsT=setTimeout(loadTransactions,150); });
-
-    $("exportBtn").addEventListener("click", async ()=>{
-      const { data, error } = await sb.from("transactions")
-        .select("txn_date,description,amount,direction,category,source_account_name")
-        .order("txn_date",{ascending:false});
-      if(error){ alert(error.message); return; }
-      const rows = [
-        ["Date","Description","Amount","Type","Category","Source"],
-        ...data.map(r=>[
-          r.txn_date||"",
-          (r.description||"").replace(/[\r\n]+/g," "),
-          r.amount,
-          r.direction,
-          r.category||"",
-          r.source_account_name||""
-        ])
-      ];
-      const csv = rows.map(r=>r.map(cell=>{
-        const s=String(cell??""); return /[",\n;]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;
-      }).join(",")).join("\n");
-      const blob = new Blob([csv],{type:"text/csv;charset=utf-8"});
-      const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="transactions_export.csv"; a.click(); URL.revokeObjectURL(a.href);
-    });
-
-    // ---------- Importer (A/B/C/D) + Source picker ----------
-    $("importBtn").addEventListener("click", ()=>openImporter());
-    $("closeImport").addEventListener("click", ()=>{ $("impBackdrop").style.display="none"; });
-
-    let __valid=[]; let __skipped=[];
-
-    async function openImporter(){
-      $("impStatus").className="muted small";
-      $("impStatus").textContent="Select a CSV to begin.";
-      $("countPill").textContent="Parsed — · Valid — · Skipped — · Debits — · Credits —";
-      $("prevBody").innerHTML=`<tr><td colspan="5" class="muted">No rows yet</td></tr>`;
-      $("impPreview").style.display="none";
-      $("csvFile").value="";
-      $("impBackdrop").style.display="flex";
-      __valid=[]; __skipped=[];
-      await populateSourceOptions();
-    }
-
-    async function populateSourceOptions(){
-      const sel = $("fileSourceSelect");
-      const custom = $("fileSourceCustom");
-      sel.innerHTML = "";
-      // Preferred fixed list first
-      const fixed = ["CIBC Bank Account","PC MasterCard","Rogers MasterCard","Cash"];
-      fixed.forEach(name => sel.insertAdjacentHTML("beforeend", `<option value="${esc(name)}">${esc(name)}</option>`));
-
-      // Also include any existing account names (avoiding duplicates)
-      const { data: accs } = await sb.from("accounts").select("name").order("name");
-      const have = new Set(fixed.map(x=>x));
-      (accs||[]).forEach(a=>{
-        if(a?.name && !have.has(a.name)){
-          sel.insertAdjacentHTML("beforeend", `<option value="${esc(a.name)}">${esc(a.name)} (seen)</option>`);
-          have.add(a.name);
-        }
-      });
-
-      // Custom option
-      sel.insertAdjacentHTML("beforeend", `<option value="__custom__">Custom…</option>`);
-      custom.classList.add("hidden");
-      sel.onchange = ()=>{ if(sel.value==="__custom__") custom.classList.remove("hidden"); else custom.classList.add("hidden"); };
-      sel.value = "CIBC Bank Account"; // sensible default
-    }
-
-    function detectDelimiterBlock(sample){
-      const c=(sample.match(/,/g)||[]).length, s=(sample.match(/;/g)||[]).length, t=(sample.match(/\t/g)||[]).length;
-      if(Math.max(c,s,t)===s) return ";"; if(Math.max(c,s,t)===t) return "\t"; return ",";
-    }
-    function parseLine(line, delim){
-      const out=[]; let cur='', q=false;
-      for(let i=0;i<line.length;i++){
-        const ch=line[i];
-        if(ch==='"'){ if(q && line[i+1]==='"'){cur+='"';i++;} else q=!q; }
-        else if(ch===delim && !q){ out.push(cur); cur=''; }
-        else cur+=ch;
-      }
-      out.push(cur);
-      return out.map(x=>x.trim());
-    }
-    function parseCSV(text){
-      const sample = text.split(/\r?\n/).slice(0,8).join("\n");
-      const delim = detectDelimiterBlock(sample);
-      const lines = text.replace(/\r\n/g,"\n").replace(/\r/g,"\n").split("\n");
-      const rows = lines.map(l=> l.trim()==="" ? null : parseLine(l,delim));
-      return { rows, delim };
-    }
-    function isDateLike(s){
-      if(!s) return false;
-      const t=String(s).trim();
-      if(/^\d{4}[-/]\d{2}[-/]\d{2}$/.test(t)) return true;
-      const d=new Date(t); return !isNaN(d.valueOf());
-    }
-    function toISO(s){
-      if(!s) return null;
-      const t=String(s).trim();
-      if(/^\d{4}[-/]\d{2}[-/]\d{2}$/.test(t)) return t.replace(/\//g,"-");
-      const d=new Date(t); if(isNaN(d.valueOf())) return null;
-      return d.toISOString().slice(0,10);
-    }
-    function parseNum(s){
-      if(s==null) return null;
-      let v=String(s).trim();
-      if(!v) return null;
-      const paren = /^\(.*\)$/.test(v); if(paren) v=v.replace(/[()]/g,"");
-      v = v.replace(/\$/g,"").replace(/,/g,"");
-      const n = Number(v); if(Number.isNaN(n)) return null;
-      return paren ? -Math.abs(n) : n;
-    }
-
-    $("csvFile").addEventListener("change", async (e)=>{
-      __valid=[]; __skipped=[];
-      const f=e.target.files?.[0]; if(!f) return;
-
-      $("impStatus").textContent="Reading file…";
-      const text = await f.text();
-      const { rows } = parseCSV(text);
-
-      const parsedLines = rows.filter(r=>r!==undefined).length;
-      const nonBlank = rows.filter(r=> r && r.some(x=>String(x).trim().length));
-      if(nonBlank.length===0){
-        $("impStatus").className="err small"; $("impStatus").textContent="No rows detected.";
-        $("countPill").textContent=`Parsed ${parsedLines} · Valid 0 · Skipped ${parsedLines} · Debits 0 · Credits 0`;
-        $("impPreview").style.display="none"; return;
-      }
-
-      let start=0;
-      if(nonBlank[0] && !isDateLike(nonBlank[0][0])) start=1;
-
-      const DATE_COL = 0, DESC_COL = 1, DEBIT_COL = 2, CREDIT_COL = 3;
-
-      let debSum=0, credSum=0, valid=0;
-
-      // current chosen source (can be empty during preview; we re-check on import)
-      const srcSel = $("fileSourceSelect");
-      const srcCustom = $("fileSourceCustom");
-      const chosenPreviewSource = srcSel.value==="__custom__" ? srcCustom.value.trim() : srcSel.value;
-
-      for(let i=start;i<nonBlank.length;i++){
-        const r=nonBlank[i];
-        const date = toISO(r[DATE_COL]);
-        const desc = String(r[DESC_COL]||"").trim();
-        if(!date || !desc){ __skipped.push({line:i+1,reason:'bad date/desc'}); continue; }
-
-        const dVal = parseNum(r[DEBIT_COL]);
-        const cVal = parseNum(r[CREDIT_COL]);
-
-        let amount=null, direction=null;
-
-        if(cVal!=null && cVal>0){ amount = Math.abs(cVal); direction='credit'; credSum+=amount; }
-        else if(dVal!=null && dVal!==0){ amount = Math.abs(dVal); direction='debit'; debSum+=amount; }
-        else { __skipped.push({line:i+1,reason:'no debit/credit'}); continue; }
-
-        __valid.push({date, desc, amount, direction, source: chosenPreviewSource || null}); valid++;
-      }
-
-      const skippedCount = Math.max(parsedLines - (start>0?1:0) - valid, 0);
-      $("countPill").textContent = `Parsed ${parsedLines} · Valid ${valid} · Skipped ${skippedCount} · Debits ${debSum.toFixed(2)} · Credits ${credSum.toFixed(2)}`;
-
-      if(valid===0){
-        $("impStatus").className="err small";
-        $("impStatus").textContent="No valid rows after parsing. Check column positions.";
-        $("impPreview").style.display="none"; return;
-      }
-
-      const first20 = __valid.slice(0,20);
-      $("prevBody").innerHTML = first20.map(v=>`
-        <tr>
-          <td>${esc(v.date)}</td>
-          <td>${esc(v.desc)}</td>
-          <td class="right">${money(v.amount)}</td>
-          <td>${v.direction}</td>
-          <td>${esc(v.source||"")}</td>
-        </tr>`).join("");
-      $("impPreview").style.display="block";
-      $("impStatus").className="muted small";
-      $("impStatus").textContent=`Ready to import ${valid} transactions.`;
-    });
-
-    $("importGo").addEventListener("click", async ()=>{
-      if(!__valid.length){ alert("No valid rows."); return; }
-
-      // Require a source
-      const sel = $("fileSourceSelect");
-      const custom = $("fileSourceCustom");
-      let chosenSource = sel.value === "__custom__" ? custom.value.trim() : sel.value;
-      if(!chosenSource){
-        alert("Please choose a Source (bank/account) for this file.");
-        sel.focus();
-        return;
-      }
-      // Stamp final source on all rows
-      __valid = __valid.map(v => ({...v, source: chosenSource}));
-
-      $("impStatus").className="muted small";
-      $("impStatus").textContent=`Importing ${__valid.length} transactions…`;
-
-      const rows = __valid.map(v=>({
-        txn_date: v.date,
-        post_date: v.date,
-        description: v.desc,
-        amount: v.amount,
-        direction: v.direction,
-        source_account_name: v.source,
-        currency: "CAD",
-        imported_via: "csv"
-      }));
-
-      try{
-        for(let i=0;i<rows.length;i+=300){
-          const chunk = rows.slice(i,i+300);
-          const { error } = await sb.from("transactions").insert(chunk);
-          if(error) throw error;
-          $("impStatus").textContent = `Importing ${rows.length}… ${Math.min(i+300,rows.length)}/${rows.length}`;
-        }
-        $("impStatus").className="ok small"; $("impStatus").textContent=`✅ Imported ${rows.length} transactions.`;
-        $("impBackdrop").style.display="none"; await loadTransactions();
-      }catch(err){
-        $("impStatus").className="err small"; $("impStatus").textContent=String(err.message||err);
-      }
-    });
-
-    // ---------- Upload Receipt ----------
-    let currentTxn = null;
-    function openUpload(id, desc, date, amt){
-      currentTxn = { id, desc, date, amt };
-      $("upDesc").textContent = `${desc} — ${money(amt)} on ${date}`;
-      $("uploadFile").value = "";
-      $("uploadStatus").textContent = "";
-      $("uploadBackdrop").style.display = "flex";
-    }
-    window.openUpload = openUpload;
-
-    $("cancelUpload").onclick = ()=>{ $("uploadBackdrop").style.display="none"; };
-
-    $("confirmUpload").onclick = async ()=>{
-      const file = $("uploadFile").files[0];
-      if(!file){ alert("Select a file first."); return; }
-      $("uploadStatus").textContent = "Uploading…";
-
-      const filename = `${Date.now()}_${file.name}`;
-      const { error } = await sb.storage.from("receipts-warm").upload(filename, file);
-      if(error){ $("uploadStatus").textContent = "Error: " + error.message; return; }
-
-      const imageUrl = `https://advihqhjjlxumgdlbwui.supabase.co/storage/v1/object/public/receipts-warm/${filename}`;
-
-      const { data: orgRow } = await sb.from("orgs").select("id").limit(1).single();
-      const org_id = orgRow?.id || null;
-
-      const { error: err2 } = await sb.from("receipts").insert({
-        org_id,
-        account_id: null,
-        image_url: imageUrl,
-        receipt_date: currentTxn.date,
-        total: currentTxn.amt,
-        vendor: currentTxn.desc,
-        source: "Manual Upload",
-        notes: "Uploaded from transaction view",
-        entered_by: "You"
-      });
-      if(err2){ $("uploadStatus").textContent = "Insert failed: "+err2.message; return; }
-
-      $("uploadStatus").textContent = "✅ Uploaded!";
-      setTimeout(()=>{ $("uploadBackdrop").style.display="none"; },800);
-    };
-
-    // Boot
-    loadTransactions();
-  </script>
-</body>
-</html>
