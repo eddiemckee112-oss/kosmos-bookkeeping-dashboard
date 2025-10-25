@@ -57,7 +57,11 @@
       padding:10px; border:1px dashed var(--border); border-radius:12px; background:#fff;
     }
     .bulkbar.show{ display:flex; }
-    .chip{ display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--border); border-radius:999px; background:#fff; font-weight:600; }
+    .chip{ display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--border); border-radius:999px; background:#fff; font-weight:600; cursor:pointer; }
+    .chip:hover{ filter:brightness(.98); }
+
+    /* Health chips row */
+    .chips{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
   </style>
 </head>
 <body>
@@ -106,6 +110,14 @@
       </div>
       <div class="hint">Status is clickable when matched and jumps to the receipt. “Source” prefers the account name (or falls back to institution).</div>
       <p id="status" class="muted" style="margin-top:6px;"></p>
+
+      <!-- Health chips -->
+      <div class="chips">
+        <span id="chipUnmatched" class="chip">Unmatched: <b id="countUnmatched">0</b></span>
+        <span id="chipUncategorized" class="chip">Uncategorized: <b id="countUncat">0</b></span>
+        <span id="chipNoSource" class="chip">No Source: <b id="countNoSource">0</b></span>
+        <span id="chipDupes" class="chip">Duplicates: <b id="countDupes">0</b></span>
+      </div>
 
       <!-- Bulk actions bar -->
       <div id="bulkbar" class="bulkbar">
@@ -302,7 +314,7 @@
     const upNotes = $("upNotes");
     const upMsg = $("upMsg");
 
-    // Bulk bar refs
+    // Bulk bar & chips refs
     const bulkbar = $("bulkbar");
     const selCount = $("selCount");
     const bulkCategory = $("bulkCategory");
@@ -311,6 +323,15 @@
     const applySourceBtn = $("applySource");
     const clearCategoryBtn = $("clearCategory");
     const selectAllCb = $("selectAll");
+
+    const chipUnmatched = $("chipUnmatched");
+    const chipUncategorized = $("chipUncategorized");
+    const chipNoSource = $("chipNoSource");
+    const chipDupes = $("chipDupes");
+    const countUnmatched = $("countUnmatched");
+    const countUncat = $("countUncat");
+    const countNoSource = $("countNoSource");
+    const countDupes = $("countDupes");
 
     // ===== Load & Filter =====
     async function loadTransactions() {
@@ -340,7 +361,36 @@
       selectAllCb.checked = false;
       updateBulkbar();
 
+      refreshHealthChips();
       applyAllFilters();
+    }
+
+    function refreshHealthChips(){
+      // Unmatched
+      let unmatched = 0, uncat = 0, noSrc = 0;
+      for (const r of allRows) {
+        const hasMatch = txToReceipts.has(r.id);
+        const hasCat = !!(r.category && String(r.category).trim().length);
+        const src = r.source_account_name || r.institution || "";
+        const hasSrc = !!String(src).trim().length;
+        if (!hasMatch) unmatched++;
+        if (!hasCat) uncat++;
+        if (!hasSrc) noSrc++;
+      }
+      countUnmatched.textContent = unmatched;
+      countUncat.textContent = uncat;
+      countNoSource.textContent = noSrc;
+
+      // Simple duplicate detector: key by (date, amount, vendor_clean or description)
+      const seen = new Map();
+      let dupes = 0;
+      for (const r of allRows) {
+        const key = `${r.txn_date}|${Number(r.amount)||0}|${(r.vendor_clean||r.description||"").trim().toUpperCase()}`;
+        const c = (seen.get(key) || 0) + 1;
+        seen.set(key, c);
+        if (c === 2) dupes++; // count only additional groups once
+      }
+      countDupes.textContent = dupes;
     }
 
     function applyAllFilters(){
@@ -551,7 +601,7 @@
       await loadTransactions();
     }
 
-    // ===== CSV Import Modal logic (unchanged core) =====
+    // ===== CSV Import Modal logic =====
     const backdrop = $("modalBackdrop");
     const importBtn = $("importBtn");
     const closeModal = $("closeModal");
@@ -717,7 +767,7 @@
         const ch = text[i];
         if (inQuotes) {
           if (ch === '"') {
-            if (text[i+1] === '"'){ field += '"'; i+=2; continue; }
+            if (text[i+1] === '"'){ field += '"'; i+=2; continue; } // escaped quote
             inQuotes = false; i++; continue;
           } else { field += ch; i++; continue; }
         } else {
@@ -750,13 +800,17 @@
     // Backfill Sources (RPC)
     $("backfillBtn").addEventListener("click", backfillSources);
 
-    // Events
+    // Filters & search
     $("filterBtn").addEventListener("click", loadTransactions);
-    $("exportBtn").addEventListener("click", exportCSV);
-    quickSearch.addEventListener("input", applyAllFilters);
+    // Debounced quick search
+    let qd;
+    quickSearch.addEventListener("input", () => {
+      clearTimeout(qd);
+      qd = setTimeout(applyAllFilters, 200);
+    });
 
     // Select all
-    selectAllCb.addEventListener("change", (e) => {
+    $("selectAll").addEventListener("change", (e) => {
       if (!viewRows.length) return;
       if (e.target.checked) {
         viewRows.forEach(r => selected.add(r.id));
@@ -768,11 +822,10 @@
     });
 
     // Bulk apply: Category
-    applyCategoryBtn.addEventListener("click", async ()=>{
+    $("applyCategory").addEventListener("click", async ()=>{
       const val = (bulkCategory.value || "").trim();
       if (!val || selected.size===0) return;
       const ids = Array.from(selected);
-      // Batch in chunks to be safe
       const chunkSize = 300;
       for (let i=0;i<ids.length;i+=chunkSize){
         const chunk = ids.slice(i,i+chunkSize);
@@ -785,7 +838,7 @@
     });
 
     // Bulk apply: Source
-    applySourceBtn.addEventListener("click", async ()=>{
+    $("applySource").addEventListener("click", async ()=>{
       const val = (bulkSource.value || "").trim();
       if (!val || selected.size===0) return;
       const ids = Array.from(selected);
@@ -801,7 +854,7 @@
     });
 
     // Bulk clear: Category
-    clearCategoryBtn.addEventListener("click", async ()=>{
+    $("clearCategory").addEventListener("click", async ()=>{
       if (selected.size===0) return;
       const ids = Array.from(selected);
       const chunkSize = 300;
@@ -812,6 +865,25 @@
       await loadTransactions();
       statusEl.textContent = `Cleared category on ${ids.length} transactions.`;
       statusEl.className = "ok";
+    });
+
+    // Health chips → set filter and apply
+    chipUnmatched.addEventListener("click", ()=>{ $("filterMode").value="unmatched"; applyAllFilters(); });
+    chipUncategorized.addEventListener("click", ()=>{ $("filterMode").value="uncategorized"; applyAllFilters(); });
+    chipNoSource.addEventListener("click", ()=>{ $("filterMode").value="without_source"; applyAllFilters(); });
+    chipDupes.addEventListener("click", ()=>{ // simple dupe filter
+      // show only duplicates in current date range
+      const seen = new Map();
+      const dups = new Set();
+      for (const r of allRows) {
+        const key = `${r.txn_date}|${Number(r.amount)||0}|${(r.vendor_clean||r.description||"").trim().toUpperCase()}`;
+        const arr = seen.get(key) || [];
+        arr.push(r.id);
+        seen.set(key, arr);
+      }
+      for (const [,arr] of seen) if (arr.length>1) arr.forEach(id=>dups.add(id));
+      viewRows = allRows.filter(r => dups.has(r.id));
+      renderTable(viewRows);
     });
 
     // ===== Upload Receipt: open + save =====
@@ -898,11 +970,40 @@
       await loadTransactions();
     });
 
+    // ===== Keyboard Shortcuts =====
+    document.addEventListener("keydown", (e) => {
+      if (e.target && ["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName)) return;
+
+      if (e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        quickSearch.focus(); quickSearch.select();
+      }
+      if (e.key.toLowerCase() === "u") {
+        e.preventDefault();
+        const firstSel = selected.values().next().value;
+        if (firstSel) openUploadFor(firstSel);
+      }
+      if (e.key.toLowerCase() === "e") {
+        e.preventDefault();
+        const firstSel = selected.values().next().value;
+        if (!firstSel) return;
+        const tr = tbody.querySelector(`tr[data-id="${firstSel}"]`);
+        const catTd = tr?.querySelector('td[data-field="category"]');
+        if (catTd) makeEditable(catTd, firstSel, catTd.textContent.trim(), "category");
+      }
+      if (e.key.toLowerCase() === "r") {
+        e.preventDefault();
+        const firstSel = selected.values().next().value;
+        if (!firstSel) return;
+        const rid = (txToReceipts.get(firstSel) || [])[0];
+        if (rid) window.location.href = `receipts.html?focus=${encodeURIComponent(rid)}`;
+      }
+    });
+
     // Initial
     $("filterBtn").addEventListener("click", loadTransactions);
     $("exportBtn").addEventListener("click", exportCSV);
     $("backfillBtn").addEventListener("click", backfillSources);
-    quickSearch.addEventListener("input", applyAllFilters);
 
     loadTransactions();
   </script>
