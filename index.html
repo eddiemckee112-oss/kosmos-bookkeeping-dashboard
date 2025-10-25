@@ -2,56 +2,25 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Kosmos Bookkeeping — Dashboard</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Kosmos — Dashboard</title>
+
+  <!-- Shared theme -->
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Supabase -->
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
   <style>
-    :root {
-      --bg:#fafafa; --card:#fff; --border:#e5e7eb;
-      --muted:#6b7280; --ok:#0a7a33; --err:#b00020;
-      --ink:#111; --btn:#111; --btnH:#333;
-    }
-    *{box-sizing:border-box;}
-    body{
-      font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      margin:0; background:var(--bg); color:var(--ink);
-    }
-    header{
-      background:#fff; border-bottom:1px solid var(--border);
-      padding:14px 24px; display:flex; justify-content:space-between; align-items:center;
-      position:sticky; top:0; z-index:10;
-    }
-    header h1{ font-size:1.2rem; margin:0; }
-    nav a{
-      margin-left:16px; color:var(--ink); text-decoration:none; font-weight:500;
-      padding:6px 10px; border-radius:8px;
-    }
-    nav a:hover, nav a.active{ background:#111; color:#fff; }
-    main{ padding:32px; max-width:1000px; margin:auto; }
-    h2{ margin-top:0; }
-    .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; }
-    .card{
-      background:var(--card); border:1px solid var(--border);
-      border-radius:14px; padding:20px; text-align:center;
-      box-shadow:0 2px 6px rgba(0,0,0,0.04);
-    }
-    .value{ font-size:2rem; font-weight:700; margin:8px 0; }
-    .muted{ color:var(--muted); }
-    .ok{ color:var(--ok); }
-    .err{ color:var(--err); }
-    .actions{ margin-top:30px; text-align:center; }
-    button{
-      padding:.7rem 1.2rem; border-radius:10px; border:1px solid #bbb;
-      background:var(--btn); color:#fff; cursor:pointer;
-      margin:0 8px; font-size:15px;
-    }
-    button:hover{ background:var(--btnH); }
-    footer{ margin-top:60px; text-align:center; color:var(--muted); font-size:13px; }
+    /* page-local */
+    .actions{ display:flex; gap:12px; flex-wrap:wrap; justify-content:center; }
+    .hero{ text-align:center; margin-bottom:16px; }
   </style>
 </head>
 <body>
+  <!-- Header -->
   <header>
-    <h1>📊 Kosmos Bookkeeping</h1>
+    <h1>Kosmos Bookkeeping</h1>
     <nav>
       <a href="index.html" class="active">Dashboard</a>
       <a href="receipts.html">Receipts</a>
@@ -60,66 +29,71 @@
     </nav>
   </header>
 
-  <main>
-    <h2>Dashboard Overview</h2>
-    <p class="muted">Snapshot of your bookkeeping data. Auto-refresh coming soon.</p>
+  <!-- Main -->
+  <main class="container">
+    <div class="hero">
+      <h2>Dashboard Overview</h2>
+      <p class="muted">Snapshot of your bookkeeping data. Auto-refresh coming soon.</p>
+    </div>
 
-    <div class="grid" style="margin-top:24px;">
-      <div class="card">
-        <div class="muted">Total Receipts</div>
-        <div id="receiptCount" class="value">—</div>
+    <!-- Stats -->
+    <section class="stats">
+      <div class="card stat">
+        <small>Total Receipts</small>
+        <h3 id="statReceipts">—</h3>
       </div>
-      <div class="card">
-        <div class="muted">Total Transactions</div>
-        <div id="txnCount" class="value">—</div>
+      <div class="card stat">
+        <small>Total Transactions</small>
+        <h3 id="statTxns">—</h3>
       </div>
-      <div class="card">
-        <div class="muted">Matched Pairs</div>
-        <div id="matchCount" class="value">—</div>
+      <div class="card stat">
+        <small>Matched Pairs</small>
+        <h3 id="statMatches">—</h3>
       </div>
-      <div class="card">
-        <div class="muted">Last Updated</div>
-        <div id="lastUpdated" class="value" style="font-size:1.1rem;">—</div>
+      <div class="card stat">
+        <small>Last Updated</small>
+        <h3 id="statUpdated">—</h3>
+      </div>
+    </section>
+
+    <!-- Shortcuts -->
+    <div class="card" style="margin-top:16px;">
+      <div class="actions">
+        <a class="ghost" href="receipts.html"><button class="ghost">🧾 Go to Receipts</button></a>
+        <a class="ghost" href="transactions.html"><button class="ghost">💳 Go to Transactions</button></a>
+        <a class="ghost" href="reports.html"><button class="ghost">📁 Accountant Report</button></a>
       </div>
     </div>
 
-    <div class="actions">
-      <button onclick="window.location='receipts.html'">📸 Go to Receipts</button>
-      <button onclick="window.location='transactions.html'">💳 Go to Transactions</button>
-      <button onclick="window.location='reports.html'">📁 Accountant Report</button>
-    </div>
-
-    <footer>
+    <p class="muted" style="text-align:center;margin-top:16px;">
       Kosmos Bookkeeping v3 • Audit-ready foundation • Powered by Supabase
-    </footer>
+    </p>
   </main>
 
+  <!-- Script -->
   <script>
     const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
     const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    async function loadStats() {
-      try {
-        const [r1, r2, r3] = await Promise.all([
-          sb.from("receipts").select("*", { count: "exact", head: true }),
-          sb.from("transactions").select("*", { count: "exact", head: true }),
-          sb.from("matches").select("*", { count: "exact", head: true })
-        ]);
-        const receipts = r1.count ?? 0;
-        const txns = r2.count ?? 0;
-        const matches = r3.count ?? 0;
+    const $ = (id) => document.getElementById(id);
 
-        document.getElementById("receiptCount").textContent = receipts;
-        document.getElementById("txnCount").textContent = txns;
-        document.getElementById("matchCount").textContent = matches;
+    async function loadStats(){
+      // receipts count
+      const r = await sb.from("receipts").select("id", { count: "exact", head: true });
+      // transactions count
+      const t = await sb.from("transactions").select("id", { count: "exact", head: true });
+      // matches count
+      const m = await sb.from("matches").select("id", { count: "exact", head: true });
 
-        const now = new Date().toLocaleString();
-        document.getElementById("lastUpdated").textContent = now;
-      } catch (err) {
-        console.error(err);
-        document.getElementById("lastUpdated").textContent = "Error loading stats";
-      }
+      $("statReceipts").textContent = r.count ?? "0";
+      $("statTxns").textContent     = t.count ?? "0";
+      $("statMatches").textContent  = m.count ?? "0";
+
+      const d = new Date();
+      const time = d.toLocaleString([], { year:"numeric", month:"2-digit", day:"2-digit",
+                                          hour:"2-digit", minute:"2-digit", hour12:true });
+      $("statUpdated").textContent = time.replace(",", "");
     }
 
     loadStats();
