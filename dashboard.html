@@ -3,41 +3,43 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Kosmos Dashboard</title>
+  <title>Kosmos Dashboard v2</title>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.20.2/dist/xlsx.full.min.js"></script>
   <style>
     :root {
-      --bg: #fafafa; --card: #fff; --border: #e5e7eb; --muted: #6b7280;
-      --ok: #0a7a33; --err: #b00020; --ink: #111; --btn:#111; --btnH:#333;
+      --bg:#fafafa; --card:#fff; --border:#e5e7eb; --muted:#6b7280;
+      --ok:#0a7a33; --err:#b00020; --ink:#111; --btn:#111; --btnH:#333;
     }
     *{box-sizing:border-box;}
-    body{
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      margin:24px; background:var(--bg); color:var(--ink);
-    }
-    h1{font-size:1.7rem; margin:0 0 1rem;}
-    .tabs{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px;}
-    .tab-btn{
-      padding:.5rem 1rem; border-radius:10px; border:1px solid #bbb;
-      background:var(--btn); color:#fff; cursor:pointer;
-    }
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+         margin:24px; background:var(--bg); color:var(--ink);}
+    h1{font-size:1.7rem;margin:0 0 1rem;}
+    .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;}
+    .tab-btn{padding:.5rem 1rem;border-radius:10px;border:1px solid #bbb;
+             background:var(--btn);color:#fff;cursor:pointer;}
     .tab-btn.active{background:#2563eb;}
     .tab-btn:hover{background:var(--btnH);}
-    .card{background:var(--card); border:1px solid var(--border);
-      border-radius:14px; padding:16px; margin-bottom:18px;}
-    table{width:100%; border-collapse:collapse; font-size:14px;}
-    th,td{padding:8px 10px; border-bottom:1px solid var(--border); text-align:left;}
-    th{background:#f6f7f8; position:sticky; top:0;}
+    .card{background:var(--card);border:1px solid var(--border);
+          border-radius:14px;padding:16px;margin-bottom:18px;}
+    table{width:100%;border-collapse:collapse;font-size:14px;}
+    th,td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;}
+    th{background:#f6f7f8;position:sticky;top:0;}
     .right{text-align:right;}
     .muted{color:var(--muted);} .ok{color:var(--ok);} .err{color:var(--err);}
-    button.secondary{background:#f7f7f7; color:#111; border-color:#d0d0d0;}
-    input{padding:.5rem .7rem; border:1px solid #ccc; border-radius:8px;}
+    button.secondary{background:#f7f7f7;color:#111;border-color:#d0d0d0;}
+    button{padding:.5rem 1rem;border-radius:10px;border:1px solid #bbb;
+           background:var(--btn);color:#fff;cursor:pointer;}
+    button:hover{background:var(--btnH);}
+    input{padding:.5rem .7rem;border:1px solid #ccc;border-radius:8px;}
+    .filter-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px;}
     @media(max-width:900px){table{font-size:12px;}}
   </style>
 </head>
 <body>
   <h1>Kosmos Bookkeeping Dashboard</h1>
+
   <div class="tabs">
     <button class="tab-btn active" data-tab="transactions">Transactions</button>
     <button class="tab-btn" data-tab="matched">Matched</button>
@@ -48,154 +50,153 @@
 
   <div class="card">
     <h3>Filters</h3>
-    <label>Date from <input type="date" id="fromDate"></label>
-    <label>Date to <input type="date" id="toDate"></label>
-    <button id="loadBtn">Load Data</button>
+    <div class="filter-row">
+      <label>Date from <input type="date" id="fromDate"></label>
+      <label>Date to <input type="date" id="toDate"></label>
+      <button id="loadBtn">Load</button>
+
+      <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
+        <button id="btnWeek" class="secondary">This Week</button>
+        <button id="btnMonth" class="secondary">This Month</button>
+        <button id="btnYear" class="secondary">This Year</button>
+        <button id="btnAll" class="secondary">All Time</button>
+        <button id="exportAcc" class="secondary">Export Accountant-Ready CSV</button>
+      </div>
+    </div>
     <p id="msg" class="muted"></p>
   </div>
 
   <div id="viewArea"></div>
 
   <script>
-    // Supabase setup
-    const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
-    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
-    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-    const qs = id => document.getElementById(id);
-    const msg = qs("msg");
-    let activeTab = "transactions";
-    let chart = null;
+    const SUPABASE_URL="https://advihqhjjlxumgdlbwui.supabase.co";
+    const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
+    const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+    const qs=id=>document.getElementById(id); const msg=qs("msg"); let activeTab="transactions"; let chart=null;
 
-    const tabs = document.querySelectorAll(".tab-btn");
-    tabs.forEach(btn=>{
-      btn.addEventListener("click",()=>{
-        tabs.forEach(b=>b.classList.remove("active"));
-        btn.classList.add("active");
-        activeTab = btn.dataset.tab;
-        loadData();
-      });
+    // --- date helpers ---
+    const today=new Date();
+    function fmt(d){return d.toISOString().slice(0,10);}
+    function setRange(days){
+      if(days==="all"){qs("fromDate").value="1900-01-01";qs("toDate").value="2100-12-31";return;}
+      let from=new Date(today);
+      if(days==="week"){from.setDate(today.getDate()-7);}
+      if(days==="month"){from.setMonth(today.getMonth()-1);}
+      if(days==="year"){from.setFullYear(today.getFullYear()-1);}
+      qs("fromDate").value=fmt(from); qs("toDate").value=fmt(today);
+    }
+    qs("btnWeek").onclick=()=>{setRange("week");loadData();}
+    qs("btnMonth").onclick=()=>{setRange("month");loadData();}
+    qs("btnYear").onclick=()=>{setRange("year");loadData();}
+    qs("btnAll").onclick=()=>{setRange("all");loadData();}
+
+    // --- tab switching ---
+    document.querySelectorAll(".tab-btn").forEach(b=>{
+      b.onclick=()=>{document.querySelectorAll(".tab-btn").forEach(x=>x.classList.remove("active"));
+                     b.classList.add("active");activeTab=b.dataset.tab;loadData();}
     });
 
     async function loadData(){
-      msg.textContent = "Loading...";
-      const from = qs("fromDate").value || "1900-01-01";
-      const to = qs("toDate").value || "2100-12-31";
-      let data = [];
-      let error = null;
-
-      try {
+      msg.textContent="Loading...";
+      const from=qs("fromDate").value||"1900-01-01"; const to=qs("toDate").value||"2100-12-31";
+      let data=[]; let error=null;
+      try{
         if(activeTab==="transactions"){
           ({data,error}=await sb.from("transactions").select("*").gte("txn_date",from).lte("txn_date",to).order("txn_date",{ascending:false}));
         } else if(activeTab==="matched"){
-          ({data,error}=await sb.from("matches").select("*, receipts(vendor,total,receipt_date,image_url), transactions(description,amount,txn_date)").order("created_at",{ascending:false}));
+          ({data,error}=await sb.from("matches").select("*, receipts(vendor,total,receipt_date), transactions(description,amount,txn_date)").order("created_at",{ascending:false}));
         } else if(activeTab==="unmatchedTx"){
-          // all txns - those with matches
           const {data:allTx}=await sb.from("transactions").select("*").gte("txn_date",from).lte("txn_date",to);
           const {data:match}=await sb.from("matches").select("transaction_id");
-          const matchedIds = new Set(match.map(m=>m.transaction_id));
-          data = allTx.filter(t=>!matchedIds.has(t.id));
+          const matchedIds=new Set(match.map(m=>m.transaction_id)); data=allTx.filter(t=>!matchedIds.has(t.id));
         } else if(activeTab==="unmatchedRc"){
           const {data:allRc}=await sb.from("receipts").select("*").gte("receipt_date",from).lte("receipt_date",to);
           const {data:match}=await sb.from("matches").select("receipt_id");
-          const matchedIds = new Set(match.map(m=>m.receipt_id));
-          data = allRc.filter(r=>!matchedIds.has(r.id));
+          const matchedIds=new Set(match.map(m=>m.receipt_id)); data=allRc.filter(r=>!matchedIds.has(r.id));
         } else if(activeTab==="totals"){
-          const {data:tx}=await sb.from("transactions").select("amount,direction,txn_date").gte("txn_date",from).lte("txn_date",to);
+          const {data:tx}=await sb.from("transactions").select("amount,txn_date").gte("txn_date",from).lte("txn_date",to);
           const {data:rc}=await sb.from("receipts").select("total,tax,receipt_date").gte("receipt_date",from).lte("receipt_date",to);
-          renderTotals(tx,rc);
-          msg.textContent = "";
-          return;
+          renderTotals(tx,rc); msg.textContent=""; return;
         }
-      } catch(e){
-        error = e;
-      }
-
-      if(error){ msg.className="err"; msg.textContent = "Error: " + error.message; return; }
-      msg.className="ok"; msg.textContent = `${data?.length||0} rows loaded.`;
-      renderTable(data);
+      }catch(e){error=e;}
+      if(error){msg.className="err";msg.textContent="Error: "+error.message;return;}
+      msg.className="ok";msg.textContent=`${data?.length||0} rows loaded.`; renderTable(data);
     }
 
     function renderTable(rows){
-      const v = qs("viewArea");
-      if(!rows || !rows.length){ v.innerHTML = "<p class='muted'>No data found.</p>"; if(chart){chart.destroy();} return; }
-
+      const v=qs("viewArea"); if(!rows||!rows.length){v.innerHTML="<p class='muted'>No data found.</p>";if(chart)chart.destroy();return;}
       if(activeTab==="transactions"){
-        v.innerHTML = `<div class='card'><h3>Transactions</h3><div style='overflow:auto;max-height:500px'>
-          <table><thead><tr><th>Date</th><th>Description</th><th class='right'>Amount</th><th>Direction</th></tr></thead><tbody>
-          ${rows.map(r=>`<tr><td>${r.txn_date||""}</td><td>${r.description||""}</td><td class='right'>$${Number(r.amount||0).toFixed(2)}</td><td>${r.direction||""}</td></tr>`).join("")}
+        v.innerHTML=`<div class='card'><h3>Transactions</h3><div style='overflow:auto;max-height:500px'>
+          <table><thead><tr><th>Date</th><th>Description</th><th class='right'>Amount</th></tr></thead><tbody>
+          ${rows.map(r=>`<tr><td>${r.txn_date||""}</td><td>${r.description||""}</td><td class='right'>$${Number(r.amount||0).toFixed(2)}</td></tr>`).join("")}
           </tbody></table></div></div>`;
-        renderChart(rows.map(r=>({x:r.txn_date,y:r.amount})), "Transactions $");
+        renderChart(rows.map(r=>({x:r.txn_date,y:r.amount})),"Transactions $");
       }
-
       if(activeTab==="matched"){
-        v.innerHTML = `<div class='card'><h3>Matched Receipts ↔ Transactions</h3><div style='overflow:auto;max-height:500px'>
-          <table><thead><tr><th>Date</th><th>Vendor</th><th class='right'>Receipt $</th><th class='right'>Txn $</th><th>Match Type</th><th>Confidence</th></tr></thead><tbody>
-          ${rows.map(r=>{
-            const rc=r.receipts||{}; const tx=r.transactions||{};
-            return `<tr><td>${rc.receipt_date||tx.txn_date||""}</td><td>${rc.vendor||tx.description||""}</td><td class='right'>$${Number(rc.total||0).toFixed(2)}</td><td class='right'>$${Number(tx.amount||0).toFixed(2)}</td><td>${r.match_type||""}</td><td>${r.confidence!=null?(r.confidence*100).toFixed(0)+"%":""}</td></tr>`;
-          }).join("")}
+        v.innerHTML=`<div class='card'><h3>Matched Receipts ↔ Transactions</h3><div style='overflow:auto;max-height:500px'>
+          <table><thead><tr><th>Date</th><th>Vendor</th><th class='right'>Receipt $</th><th class='right'>Txn $</th><th>Confidence</th></tr></thead><tbody>
+          ${rows.map(r=>{const rc=r.receipts||{};const tx=r.transactions||{};
+            return `<tr><td>${rc.receipt_date||tx.txn_date||""}</td><td>${rc.vendor||tx.description||""}</td><td class='right'>$${Number(rc.total||0).toFixed(2)}</td><td class='right'>$${Number(tx.amount||0).toFixed(2)}</td><td>${r.confidence!=null?(r.confidence*100).toFixed(0)+"%":""}</td></tr>`;}).join("")}
           </tbody></table></div></div>`;
-        renderChart(rows.map(r=>({x:r.created_at,y:r.confidence||1})), "Match Confidence");
+        renderChart(rows.map(r=>({x:r.created_at,y:r.confidence||1})),"Match Confidence");
       }
-
       if(activeTab==="unmatchedTx"){
-        v.innerHTML = `<div class='card'><h3>Unmatched Transactions</h3><div style='overflow:auto;max-height:500px'>
-          <table><thead><tr><th>Date</th><th>Description</th><th class='right'>Amount</th><th>Direction</th></tr></thead><tbody>
-          ${rows.map(r=>`<tr><td>${r.txn_date||""}</td><td>${r.description||""}</td><td class='right'>$${Number(r.amount||0).toFixed(2)}</td><td>${r.direction||""}</td></tr>`).join("")}
+        v.innerHTML=`<div class='card'><h3>Unmatched Transactions</h3><div style='overflow:auto;max-height:500px'>
+          <table><thead><tr><th>Date</th><th>Description</th><th class='right'>Amount</th></tr></thead><tbody>
+          ${rows.map(r=>`<tr><td>${r.txn_date||""}</td><td>${r.description||""}</td><td class='right'>$${Number(r.amount||0).toFixed(2)}</td></tr>`).join("")}
           </tbody></table></div></div>`;
-        renderChart(rows.map(r=>({x:r.txn_date,y:r.amount})), "Unmatched Txn $");
+        renderChart(rows.map(r=>({x:r.txn_date,y:r.amount})),"Unmatched Txn $");
       }
-
       if(activeTab==="unmatchedRc"){
-        v.innerHTML = `<div class='card'><h3>Unmatched Receipts</h3><div style='overflow:auto;max-height:500px'>
-          <table><thead><tr><th>Date</th><th>Vendor</th><th class='right'>Total</th><th class='right'>Tax</th><th>Category</th></tr></thead><tbody>
-          ${rows.map(r=>`<tr><td>${r.receipt_date||""}</td><td>${r.vendor||""}</td><td class='right'>$${Number(r.total||0).toFixed(2)}</td><td class='right'>$${Number(r.tax||0).toFixed(2)}</td><td>${r.category||""}</td></tr>`).join("")}
+        v.innerHTML=`<div class='card'><h3>Unmatched Receipts</h3><div style='overflow:auto;max-height:500px'>
+          <table><thead><tr><th>Date</th><th>Vendor</th><th class='right'>Total</th><th class='right'>Tax</th></tr></thead><tbody>
+          ${rows.map(r=>`<tr><td>${r.receipt_date||""}</td><td>${r.vendor||""}</td><td class='right'>$${Number(r.total||0).toFixed(2)}</td><td class='right'>$${Number(r.tax||0).toFixed(2)}</td></tr>`).join("")}
           </tbody></table></div></div>`;
-        renderChart(rows.map(r=>({x:r.receipt_date,y:r.total})), "Unmatched Receipt $");
+        renderChart(rows.map(r=>({x:r.receipt_date,y:r.total})),"Unmatched Receipt $");
       }
     }
 
-    function renderTotals(tx, rc){
-      const v = qs("viewArea");
-      const txTotal = tx.reduce((a,b)=>a+(Number(b.amount)||0),0);
-      const rcTotal = rc.reduce((a,b)=>a+(Number(b.total)||0),0);
-      const diff = txTotal - rcTotal;
-      const matchRate = ((rcTotal/txTotal)*100)||0;
-
-      v.innerHTML = `
-      <div class='card'>
+    function renderTotals(tx,rc){
+      const v=qs("viewArea");
+      const txTot=tx.reduce((a,b)=>a+(Number(b.amount)||0),0);
+      const rcTot=rc.reduce((a,b)=>a+(Number(b.total)||0),0);
+      const diff=txTot-rcTot; const matchPct=((rcTot/txTot)*100)||0;
+      v.innerHTML=`<div class='card'>
         <h3>Totals Summary</h3>
-        <p><strong>Transactions Total:</strong> $${txTotal.toFixed(2)}</p>
-        <p><strong>Receipts Total:</strong> $${rcTotal.toFixed(2)}</p>
+        <p><strong>Transactions Total:</strong> $${txTot.toFixed(2)}</p>
+        <p><strong>Receipts Total:</strong> $${rcTot.toFixed(2)}</p>
         <p><strong>Difference:</strong> $${diff.toFixed(2)}</p>
-        <p><strong>Matched % (by total):</strong> ${matchRate.toFixed(1)}%</p>
+        <p><strong>Matched %:</strong> ${matchPct.toFixed(1)}%</p>
       </div>
       <div class='card'><canvas id='chart'></canvas></div>`;
-      renderChart([
-        {label:"Transactions",value:txTotal},
-        {label:"Receipts",value:rcTotal},
-        {label:"Difference",value:diff}
-      ],"Totals Comparison","bar");
+      renderChart([{label:"Transactions",value:txTot},{label:"Receipts",value:rcTot},{label:"Difference",value:diff}],"Totals Comparison","bar");
     }
 
     function renderChart(data,label,type="line"){
-      const ctx = document.getElementById("chart") || document.createElement("canvas");
-      if(chart){chart.destroy();}
-      if(!ctx){return;}
-      chart = new Chart(ctx,{
-        type:type,
-        data:{
-          labels:data.map(d=>d.x||d.label),
-          datasets:[{label:label,data:data.map(d=>d.y||d.value),borderWidth:2,backgroundColor:"#2563eb80"}]
-        },
-        options:{scales:{y:{beginAtZero:true}}}
-      });
+      const ctx=document.getElementById("chart")||document.createElement("canvas");
+      if(chart)chart.destroy(); if(!ctx)return;
+      chart=new Chart(ctx,{type:type,data:{labels:data.map(d=>d.x||d.label),
+        datasets:[{label:label,data:data.map(d=>d.y||d.value),borderWidth:2,backgroundColor:"#2563eb80"}]},
+        options:{scales:{y:{beginAtZero:true}}}});
     }
 
-    const today = new Date().toISOString().slice(0,10);
-    qs("fromDate").value = today.slice(0,8)+"01";
-    qs("toDate").value = today;
-    qs("loadBtn").addEventListener("click",loadData);
+    async function exportAccountant(){
+      msg.textContent="Building accountant-ready CSV…";
+      const {data,error}=await sb.from("v_accountant_export_receipts").select("*");
+      if(error){msg.className="err";msg.textContent="Export error: "+error.message;return;}
+      if(!data?.length){msg.className="muted";msg.textContent="No data to export.";return;}
+      const keys=Object.keys(data[0]);
+      const csv=[keys.join(","),...data.map(r=>keys.map(k=>JSON.stringify(r[k]??"")).join(","))].join("\n");
+      const blob=new Blob([csv],{type:"text/csv"});
+      const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+      a.download=`accountant_export_${new Date().toISOString().slice(0,10)}.csv`;a.click();
+      msg.className="ok";msg.textContent="Accountant-ready CSV downloaded.";
+    }
+
+    qs("exportAcc").onclick=exportAccountant;
+    qs("fromDate").value=fmt(new Date(today.getFullYear(),today.getMonth(),1));
+    qs("toDate").value=fmt(today);
+    qs("loadBtn").onclick=loadData;
     loadData();
   </script>
 </body>
