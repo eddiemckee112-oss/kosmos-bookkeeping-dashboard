@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Kosmos — Transactions</title>
 
   <!-- Shared theme -->
@@ -12,6 +12,7 @@
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 </head>
 <body>
+  <!-- Consistent header/nav (same as Dashboard) -->
   <header>
     <h1>Kosmos Bookkeeping</h1>
     <nav>
@@ -24,21 +25,24 @@
 
   <main class="container">
     <h2>💳 Transactions Overview</h2>
-    <p class="muted">View, filter, and export all transactions. CSV imports work great; bank sync is hidden for now.</p>
+    <p class="muted">View, filter, and export your transactions. CSV import stays as-is; bank sync is hidden for now.</p>
 
     <!-- Filters -->
     <div class="card">
-      <div class="row">
-        <label>Date Range:</label>
+      <div class="row" style="gap:12px; align-items:center;">
+        <label for="fromDate">Date Range:</label>
         <input type="date" id="fromDate" />
         <span>–</span>
         <input type="date" id="toDate" />
-        <select id="filterMode">
+
+        <select id="filterMode" aria-label="Filter by match status">
           <option value="all">All</option>
           <option value="matched">Matched</option>
           <option value="unmatched">Unmatched</option>
         </select>
+
         <button id="filterBtn">Apply</button>
+        <span style="flex:1 1 auto"></span>
         <button id="exportBtn" class="ghost">📁 Export CSV</button>
       </div>
     </div>
@@ -56,19 +60,26 @@
 
     <!-- Table -->
     <div class="card">
-      <table id="txnTable">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Description</th>
-            <th class="right">Amount</th>
-            <th>Type</th>
-            <th>Source</th>
-            <th>Institution</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+      <div style="overflow:auto;">
+        <table id="txnTable">
+          <thead>
+            <tr>
+              <th style="min-width:110px;">Date</th>
+              <th style="min-width:380px;">Description</th>
+              <th class="right" style="min-width:120px;">Amount</th>
+              <th style="min-width:90px;">Type</th>
+              <th style="min-width:160px;">Source</th>
+              <th style="min-width:140px;">Institution</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Hidden bank sync panel kept for later (but not visible) -->
+    <div class="card syncbox">
+      <!-- existing bank sync content would live here -->
     </div>
   </main>
 
@@ -78,76 +89,83 @@
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
     const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // ===== DOM helpers =====
-    const qs = (id) => document.getElementById(id);
-    const tableBody = qs("txnTable").querySelector("tbody");
+    // ===== DOM =====
+    const $ = (id) => document.getElementById(id);
+    const tbody = document.querySelector("#txnTable tbody");
 
-    // ===== Data loading =====
+    // ===== Load & render =====
     async function loadTransactions() {
-      const from = qs("fromDate").value || "1900-01-01";
-      const to   = qs("toDate").value   || "2999-12-31";
-      const mode = qs("filterMode").value;
+      const from = $("fromDate").value || "1900-01-01";
+      const to   = $("toDate").value   || "2999-12-31";
+      const mode = $("filterMode").value;
 
-      let query = sb
+      // base query
+      let q = sb
         .from("transactions")
         .select("*")
         .gte("txn_date", from)
         .lte("txn_date", to)
         .order("txn_date", { ascending: false });
 
-      // Matched/unmatched via matches table
-      if (mode === "matched") {
-        const ids = (await sb.from("matches").select("transaction_id")).data?.map(x => x.transaction_id) || [];
-        query = query.in("id", ids);
-      }
-      if (mode === "unmatched") {
-        const ids = (await sb.from("matches").select("transaction_id")).data?.map(x => x.transaction_id) || [];
-        query = query.not("id", "in", ids);
+      // matched/unmatched via matches
+      if (mode !== "all") {
+        const { data: matchRows, error: mErr } = await sb.from("matches").select("transaction_id");
+        if (mErr) {
+          renderError(mErr.message);
+          return;
+        }
+        const ids = (matchRows || []).map(r => r.transaction_id);
+
+        if (mode === "matched") q = q.in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
+        if (mode === "unmatched") q = q.not("id", "in", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
       }
 
-      const { data, error } = await query;
-      if (error) {
-        console.error(error);
-        tableBody.innerHTML = `<tr><td colspan="6" class="err">${error.message}</td></tr>`;
-        qs("txnCount").textContent = "—";
-        qs("debits").textContent   = "—";
-        qs("credits").textContent  = "—";
-        qs("net").textContent      = "—";
-        return;
-      }
-      renderTable(data);
+      const { data, error } = await q;
+      if (error) { renderError(error.message); return; }
+      renderTable(data || []);
     }
 
-    function renderTable(data) {
-      if (!data?.length) {
-        tableBody.innerHTML = `<tr><td colspan="6" class="muted">No transactions found.</td></tr>`;
-        qs("txnCount").textContent = 0;
-        qs("debits").textContent   = "$0.00";
-        qs("credits").textContent  = "$0.00";
-        qs("net").textContent      = "$0.00";
+    function renderError(msg) {
+      tbody.innerHTML = `<tr><td colspan="6" class="err">${msg}</td></tr>`;
+      $("txnCount").textContent = "—";
+      $("debits").textContent   = "$0.00";
+      $("credits").textContent  = "$0.00";
+      $("net").textContent      = "$0.00";
+    }
+
+    function renderTable(rows) {
+      if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="6" class="muted">No transactions found.</td></tr>`;
+        $("txnCount").textContent = 0;
+        $("debits").textContent   = "$0.00";
+        $("credits").textContent  = "$0.00";
+        $("net").textContent      = "$0.00";
         return;
       }
 
-      let debitSum = 0, creditSum = 0;
-      const rows = data.map(t => {
+      let debit = 0, credit = 0;
+      const html = rows.map(t => {
         const amt = Number(t.amount) || 0;
-        if (t.direction === "debit") debitSum += amt; else creditSum += amt;
+        if (t.direction === "debit") debit += amt; else credit += amt;
 
-        return `<tr>
-          <td>${t.txn_date ?? ""}</td>
-          <td>${t.description ?? ""}</td>
-          <td class="right">$${amt.toFixed(2)}</td>
-          <td>${t.direction ?? ""}</td>
-          <td>${t.source_account_name ?? ""}</td>
-          <td>${t.institution ?? ""}</td>
-        </tr>`;
+        // escape basic text to avoid accidental HTML
+        const esc = (s) => String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+        return `
+          <tr>
+            <td>${esc(t.txn_date)}</td>
+            <td>${esc(t.description)}</td>
+            <td class="right">$${amt.toFixed(2)}</td>
+            <td>${esc(t.direction)}</td>
+            <td>${esc(t.source_account_name)}</td>
+            <td>${esc(t.institution)}</td>
+          </tr>`;
       }).join("");
 
-      tableBody.innerHTML = rows;
-      qs("txnCount").textContent = data.length;
-      qs("debits").textContent   = `$${debitSum.toFixed(2)}`;
-      qs("credits").textContent  = `$${creditSum.toFixed(2)}`;
-      qs("net").textContent      = `$${(creditSum - debitSum).toFixed(2)}`;
+      tbody.innerHTML = html;
+      $("txnCount").textContent = rows.length;
+      $("debits").textContent   = `$${debit.toFixed(2)}`;
+      $("credits").textContent  = `$${credit.toFixed(2)}`;
+      $("net").textContent      = `$${(credit - debit).toFixed(2)}`;
     }
 
     // ===== Export receipts CSV (uses accountant view) =====
@@ -156,23 +174,26 @@
       if (error || !data?.length) { alert("No export data."); return; }
 
       const header = Object.keys(data[0]);
-      const rows = data.map(r => header.map(h => JSON.stringify(r[h] ?? "")).join(","));
-      const csv = [header.join(","), ...rows].join("\n");
-
-      const blob = new Blob([csv], { type: "text/csv" });
+      const lines = [header.join(",")];
+      for (const row of data) {
+        const line = header.map(h => {
+          const v = row[h] ?? "";
+          // quote if needed
+          return /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g,'""')}"` : v;
+        }).join(",");
+        lines.push(line);
+      }
+      const blob = new Blob([lines.join("\n")], { type: "text/csv" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = "accountant_export.csv";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      a.href = url; a.download = "accountant_export.csv";
+      document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
     }
 
-    // ===== Events =====
-    qs("filterBtn").addEventListener("click", loadTransactions);
-    qs("exportBtn").addEventListener("click", exportCSV);
+    // Events
+    $("filterBtn").addEventListener("click", loadTransactions);
+    $("exportBtn").addEventListener("click", exportCSV);
 
     // Initial load
     loadTransactions();
