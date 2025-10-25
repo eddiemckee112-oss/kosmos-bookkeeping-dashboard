@@ -7,1236 +7,965 @@
 
   <!-- Shared theme -->
   <link rel="stylesheet" href="style.css" />
+
   <!-- Supabase -->
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 
   <style>
-    td.editable{ cursor:text } td.editing{ background:#fffbe6 }
-    .hint{ font-size:.85rem; color:var(--muted); margin-top:6px }
-    .toolbar{ display:flex; gap:10px; flex-wrap:wrap; align-items:center }
-    .spacer{ flex:1 1 auto }
-    .badge{ display:inline-block; padding:4px 8px; border-radius:999px; border:1px solid var(--border); font-weight:600; font-size:.82rem; text-decoration:none }
-    .badge.ok{ background:#eef9f1; color:var(--ok); border-color:#cfe7d6 }
-    .badge.muted{ background:#f6f7f8; color:var(--muted) }
+    td.editable{cursor:text} td.editing{background:#fffbe6}
+    .hint{font-size:.85rem;color:var(--muted);margin-top:6px}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .spacer{flex:1 1 auto}
+    .badge{display:inline-block;padding:4px 8px;border-radius:999px;border:1px solid var(--border);font-weight:600;font-size:.82rem;text-decoration:none}
+    .badge.ok{background:#eef9f1;color:var(--ok);border-color:#cfe7d6}
+    .badge.muted{background:#f6f7f8;color:var(--muted)}
 
-    .modal-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; align-items:center; justify-content:center; z-index:50 }
-    .modal{ width:min(920px,92vw); max-height:85vh; overflow:auto; background:#fff; border:1px solid var(--border); border-radius:14px; padding:16px; box-shadow:0 10px 35px rgba(0,0,0,.18) }
-    .map-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px }
-    @media (max-width:760px){ .map-grid{ grid-template-columns:1fr } }
-    .preview{ border:1px solid var(--border); border-radius:10px; overflow:auto; background:#fff; max-height:320px }
-    .sticky-footer{ position:sticky; bottom:0; background:#fff; border-top:1px solid var(--border); padding:10px 12px; display:flex; gap:12px; flex-wrap:wrap; justify-content:flex-end }
-
-    .upgrid{ display:grid; grid-template-columns:1fr 1fr; gap:14px }
-    @media (max-width:860px){ .upgrid{ grid-template-columns:1fr } }
-    .imgbox{ border:1px solid var(--border); border-radius:12px; background:#fff; padding:10px; text-align:center }
-    .imgbox img{ max-width:100%; height:auto; border-radius:8px }
-
-    .bulkbar{ display:none; align-items:center; gap:10px; margin-top:12px; padding:10px; border:1px dashed var(--border); border-radius:12px; background:#fff }
-    .bulkbar.show{ display:flex }
-    .chip{ display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--border); border-radius:999px; background:#fff; font-weight:600; cursor:pointer }
-    .chips{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px }
-
-    .viewsbar{ display:flex; align-items:center; gap:8px }
-    .viewsbar select{ min-width:200px }
+    .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:50}
+    .modal{width:min(920px,92vw);max-height:85vh;overflow:auto;background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:0 10px 35px rgba(0,0,0,.18)}
+    .map-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    @media (max-width:760px){.map-grid{grid-template-columns:1fr}}
+    .preview{border:1px solid var(--border);border-radius:10px;overflow:auto;background:#fff;max-height:320px}
+    .sticky-footer{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--border);padding:10px 12px;display:flex;gap:12px;flex-wrap:wrap;justify-content:flex-end}
+    .upgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    @media (max-width:860px){.upgrid{grid-template-columns:1fr}}
+    .imgbox{border:1px solid var(--border);border-radius:12px;background:#fff;padding:10px;text-align:center}
+    .imgbox img{max-width:100%;height:auto;border-radius:8px}
+    .bulkbar{display:none;align-items:center;gap:10px;margin-top:12px;padding:10px;border:1px dashed var(--border);border-radius:12px;background:#fff}
+    .bulkbar.show{display:flex}
+    .chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:#fff;font-weight:600;cursor:pointer}
+    .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .viewsbar{display:flex;align-items:center;gap:8px}
+    .viewsbar select{min-width:200px}
   </style>
 </head>
 <body>
-  <header>
-    <h1>Kosmos Bookkeeping</h1>
-    <nav>
-      <a href="index.html">Dashboard</a>
-      <a href="receipts.html">Receipts</a>
-      <a href="transactions.html" class="active">Transactions</a>
-      <a href="reports.html">Reports</a>
-    </nav>
-  </header>
+<header>
+  <h1>Kosmos Bookkeeping</h1>
+  <nav>
+    <a href="index.html">Dashboard</a>
+    <a href="receipts.html">Receipts</a>
+    <a href="transactions.html" class="active">Transactions</a>
+    <a href="reports.html">Reports</a>
+  </nav>
+</header>
 
-  <main class="container">
-    <h2>💳 Transactions</h2>
-    <p class="muted">Filter, import, categorize, save views, attach receipts, create vendor rules, and use bulk actions for speed.</p>
+<main class="container">
+  <h2>💳 Transactions</h2>
+  <p class="muted">Filter, import, categorize, save views, attach receipts, create vendor rules, and use bulk actions for speed.</p>
 
-    <!-- Filters / Actions -->
-    <div class="card">
-      <div class="toolbar">
-        <label>Date Range:</label>
-        <input type="date" id="fromDate" />
-        <span>–</span>
-        <input type="date" id="toDate" />
+  <div class="card">
+    <div class="toolbar">
+      <label>Date Range:</label>
+      <input type="date" id="fromDate" /><span>–</span><input type="date" id="toDate" />
+      <select id="filterMode">
+        <option value="all">All</option>
+        <option value="matched">Matched</option>
+        <option value="unmatched">Unmatched</option>
+        <option value="categorized">Categorized</option>
+        <option value="uncategorized">Uncategorized</option>
+        <option value="with_source">With Source</option>
+        <option value="without_source">Without Source</option>
+        <option value="debits">Debits only</option>
+        <option value="credits">Credits only</option>
+      </select>
+      <button id="filterBtn">Apply</button>
+      <span class="spacer"></span>
+      <input id="quickSearch" placeholder="Search description/category/source…" style="padding:.5rem .7rem;border:1px solid #cfcfcf;border-radius:10px;min-width:260px" />
+      <button id="importBtn" class="ghost">⬆️ Import CSV</button>
+      <button id="backfillBtn" class="ghost">↺ Backfill Sources</button>
+      <button id="exportBtn" class="ghost">📁 Export CSV</button>
+    </div>
 
-        <select id="filterMode" title="Filter">
-          <option value="all">All</option>
-          <option value="matched">Matched</option>
-          <option value="unmatched">Unmatched</option>
-          <option value="categorized">Categorized</option>
-          <option value="uncategorized">Uncategorized</option>
-          <option value="with_source">With Source</option>
-          <option value="without_source">Without Source</option>
-          <option value="debits">Debits only</option>
-          <option value="credits">Credits only</option>
-        </select>
-        <button id="filterBtn">Apply</button>
+    <div class="viewsbar" style="margin-top:8px;">
+      <label>Saved View:</label>
+      <select id="viewsSelect"></select>
+      <button id="saveViewBtn" class="ghost">💾 Save Current</button>
+      <button id="setDefaultViewBtn" class="ghost">⭐ Set Default</button>
+      <button id="deleteViewBtn" class="ghost">🗑️ Delete</button>
+      <span class="muted" id="viewsMsg"></span>
+    </div>
+
+    <div class="hint">Status is clickable when matched and jumps to the receipt. “Source” prefers the account name (fallback: institution). Your last filters auto-restore.</div>
+    <p id="status" class="muted" style="margin-top:6px;"></p>
+
+    <div class="chips">
+      <span id="chipUnmatched" class="chip">Unmatched: <b id="countUnmatched">0</b></span>
+      <span id="chipUncategorized" class="chip">Uncategorized: <b id="countUncat">0</b></span>
+      <span id="chipNoSource" class="chip">No Source: <b id="countNoSource">0</b></span>
+      <span id="chipDupes" class="chip">Duplicates: <b id="countDupes">0</b></span>
+    </div>
+
+    <div id="bulkbar" class="bulkbar">
+      <span class="chip">Selected: <b id="selCount">0</b></span>
+      <input id="bulkCategory" placeholder="Set category…" />
+      <button id="applyCategory">Apply Category</button>
+      <input id="bulkSource" placeholder="Set source…" />
+      <button id="applySource">Apply Source</button>
+      <button id="clearCategory" class="ghost">Clear Category</button>
+      <button id="bulkMakeRule" title="Create a rule from the first selected row">⚙️ Create Rule from Selection</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="grid-2">
+      <div><strong>Total Transactions:</strong> <span id="txnCount">—</span></div>
+      <div><strong>Debits:</strong> <span id="debits">—</span></div>
+      <div><strong>Credits:</strong> <span id="credits">—</span></div>
+      <div><strong>Net:</strong> <span id="net">—</span></div>
+    </div>
+    <p class="muted" style="margin-top:8px;">Numbers reflect the current filter. Use Quick Search to instantly narrow the table.</p>
+  </div>
+
+  <div class="card" style="overflow:auto;">
+    <table id="txnTable">
+      <thead>
+      <tr>
+        <th style="width:40px;"><input type="checkbox" id="selectAll" /></th>
+        <th style="min-width:110px;">Date</th>
+        <th style="min-width:320px;">Description</th>
+        <th class="right" style="min-width:120px;">Amount</th>
+        <th style="min-width:90px;">Type</th>
+        <th style="min-width:140px;">Status</th>
+        <th style="min-width:160px;">Category</th>
+        <th style="min-width:180px;">Source</th>
+        <th style="min-width:240px;">Actions</th>
+      </tr>
+      </thead>
+      <tbody></tbody>
+      <tfoot>
+      <tr>
+        <td colspan="9">
+          <div class="sticky-footer">
+            <span class="kpill">Rows: <b id="ftRows">0</b></span>
+            <span class="kpill">Debits: <b id="ftDebits">$0.00</b></span>
+            <span class="kpill">Credits: <b id="ftCredits">$0.00</b></span>
+            <span class="kpill">Net: <b id="ftNet">$0.00</b></span>
+          </div>
+        </td>
+      </tr>
+      </tfoot>
+    </table>
+  </div>
+</main>
+
+<!-- Import Modal -->
+<div id="modalBackdrop" class="modal-backdrop">
+  <div class="modal">
+    <h3>Import Transactions (CSV)</h3>
+    <p class="muted">Select your CSV, map the columns, preview, then import. We’ll skip blank rows.</p>
+
+    <div class="card" style="margin-bottom:10px;">
+      <div class="row" style="align-items:center; gap:12px;">
+        <input id="csvFile" type="file" accept=".csv,text/csv" />
+        <span class="muted">Max ~5MB</span>
+
+        <label class="row" style="gap:8px; align-items:center; margin-left:12px;">
+          <input type="checkbox" id="hasHeader" checked />
+          <span>CSV has header row</span>
+        </label>
 
         <span class="spacer"></span>
-
-        <input id="quickSearch" placeholder="Search description/category/source…" style="padding:.5rem .7rem; border:1px solid #cfcfcf; border-radius:10px; min-width:260px;" />
-
-        <button id="importBtn" class="ghost">⬆️ Import CSV</button>
-        <button id="backfillBtn" class="ghost" title="Fill missing Source from Accounts">↺ Backfill Sources</button>
-        <button id="exportBtn" class="ghost">📁 Export CSV</button>
-      </div>
-
-      <!-- Views row -->
-      <div class="viewsbar" style="margin-top:8px;">
-        <label>Saved View:</label>
-        <select id="viewsSelect"></select>
-        <button id="saveViewBtn" class="ghost" title="Save current filters as a preset">💾 Save Current</button>
-        <button id="setDefaultViewBtn" class="ghost" title="Make selected view the default">⭐ Set Default</button>
-        <button id="deleteViewBtn" class="ghost" title="Delete selected view">🗑️ Delete</button>
-        <span class="muted" id="viewsMsg"></span>
-      </div>
-
-      <div class="hint">Status is clickable when matched and jumps to the receipt. “Source” prefers the account name (fallback: institution). Your last filters auto-restore.</div>
-      <p id="status" class="muted" style="margin-top:6px;"></p>
-
-      <!-- Health chips -->
-      <div class="chips">
-        <span id="chipUnmatched" class="chip">Unmatched: <b id="countUnmatched">0</b></span>
-        <span id="chipUncategorized" class="chip">Uncategorized: <b id="countUncat">0</b></span>
-        <span id="chipNoSource" class="chip">No Source: <b id="countNoSource">0</b></span>
-        <span id="chipDupes" class="chip">Duplicates: <b id="countDupes">0</b></span>
-      </div>
-
-      <!-- Bulk actions bar -->
-      <div id="bulkbar" class="bulkbar">
-        <span class="chip">Selected: <b id="selCount">0</b></span>
-        <input id="bulkCategory" placeholder="Set category…" />
-        <button id="applyCategory">Apply Category</button>
-        <input id="bulkSource" placeholder="Set source…" />
-        <button id="applySource">Apply Source</button>
-        <button id="clearCategory" class="ghost">Clear Category</button>
-        <button id="bulkMakeRule" title="Create a rule from the first selected row">⚙️ Create Rule from Selection</button>
+        <button id="closeModal" class="ghost">Close</button>
       </div>
     </div>
 
-    <!-- Summary -->
+    <div class="card" style="margin-bottom:10px;">
+      <h4 style="margin:0 0 8px 0;">Column Mapping</h4>
+      <div class="map-grid">
+        <div>
+          <label>Transaction Date</label>
+          <select id="mapDate"></select>
+        </div>
+        <div>
+          <label>Description</label>
+          <select id="mapDesc"></select>
+        </div>
+        <div>
+          <label>Amount</label>
+          <select id="mapAmount"></select>
+        </div>
+        <div>
+          <label>Direction (debit/credit) <span class="muted">(optional)</span></label>
+          <select id="mapDir"></select>
+        </div>
+        <div>
+          <label>Source <span class="muted">(optional)</span></label>
+          <select id="mapSource"></select>
+        </div>
+        <div>
+          <label>Category <span class="muted">(optional)</span></label>
+          <select id="mapCategory"></select>
+        </div>
+      </div>
+      <p class="muted" style="margin-top:8px;">If “Direction” is empty, we’ll infer it from the Amount sign (negative = debit, positive = credit).</p>
+    </div>
+
     <div class="card">
-      <div class="grid-2">
-        <div><strong>Total Transactions:</strong> <span id="txnCount">—</span></div>
-        <div><strong>Debits:</strong> <span id="debits">—</span></div>
-        <div><strong>Credits:</strong> <span id="credits">—</span></div>
-        <div><strong>Net:</strong> <span id="net">—</span></div>
+      <h4 style="margin:0 0 8px 0;">Preview (first 50 rows)</h4>
+      <div class="preview">
+        <table id="previewTable">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
       </div>
-      <p class="muted" style="margin-top:8px;">Numbers reflect the current filter. Use Quick Search to instantly narrow the table.</p>
-    </div>
-
-    <!-- Table -->
-    <div class="card" style="overflow:auto;">
-      <table id="txnTable">
-        <thead>
-          <tr>
-            <th style="width:40px;"><input type="checkbox" id="selectAll" /></th>
-            <th style="min-width:110px;">Date</th>
-            <th style="min-width:320px;">Description</th>
-            <th class="right" style="min-width:120px;">Amount</th>
-            <th style="min-width:90px;">Type</th>
-            <th style="min-width:140px;">Status</th>
-            <th style="min-width:160px;">Category</th>
-            <th style="min-width:180px;">Source</th>
-            <th style="min-width:220px;">Actions</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-        <tfoot>
-          <tr>
-            <td colspan="9">
-              <div class="sticky-footer">
-                <span class="kpill">Rows: <b id="ftRows">0</b></span>
-                <span class="kpill">Debits: <b id="ftDebits">$0.00</b></span>
-                <span class="kpill">Credits: <b id="ftCredits">$0.00</b></span>
-                <span class="kpill">Net: <b id="ftNet">$0.00</b></span>
-              </div>
-            </td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-  </main>
-
-  <!-- Import Modal -->
-  <div id="modalBackdrop" class="modal-backdrop">
-    <div class="modal">
-      <h3>Import Transactions (CSV)</h3>
-      <p class="muted">Select your CSV, map the columns, preview, then import. We’ll skip blank rows.</p>
-
-      <div class="card" style="margin-bottom:10px;">
+      <div class="row" style="margin-top:10px; justify-content:space-between;">
+        <span id="importStatus" class="muted"></span>
         <div class="row">
-          <input id="csvFile" type="file" accept=".csv,text/csv" />
-          <span class="muted">Max ~5MB</span>
-          <span class="spacer"></span>
-          <button id="closeModal" class="ghost">Close</button>
-        </div>
-      </div>
-
-      <div class="card" style="margin-bottom:10px;">
-        <h4 style="margin:0 0 8px 0;">Column Mapping</h4>
-        <div class="map-grid">
-          <div>
-            <label>Transaction Date</label>
-            <select id="mapDate"></select>
-          </div>
-          <div>
-            <label>Description</label>
-            <select id="mapDesc"></select>
-          </div>
-          <div>
-            <label>Amount</label>
-            <select id="mapAmount"></select>
-          </div>
-          <div>
-            <label>Direction (debit/credit) <span class="muted">(optional)</span></label>
-            <select id="mapDir"></select>
-          </div>
-          <div>
-            <label>Source <span class="muted">(optional)</span></label>
-            <select id="mapSource"></select>
-          </div>
-          <div>
-            <label>Category <span class="muted">(optional)</span></label>
-            <select id="mapCategory"></select>
-          </div>
-        </div>
-        <p class="muted" style="margin-top:8px;">If “Direction” is empty, we’ll infer it from the Amount sign (negative = debit, positive = credit).</p>
-      </div>
-
-      <div class="card">
-        <h4 style="margin:0 0 8px 0;">Preview (first 50 rows)</h4>
-        <div class="preview">
-          <table id="previewTable">
-            <thead></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-        <div class="row" style="margin-top:10px; justify-content:space-between;">
-          <span id="importStatus" class="muted"></span>
-          <div class="row">
-            <button id="startImport">Import</button>
-          </div>
+          <button id="startImport">Import</button>
         </div>
       </div>
     </div>
   </div>
+</div>
 
-  <!-- Upload Receipt Modal -->
-  <div id="uploadBackdrop" class="modal-backdrop">
-    <div class="modal">
-      <h3>Upload Receipt</h3>
-      <p class="muted">Attach a receipt image to this transaction. We’ll prefill date and total — you can add vendor, tax, and notes.</p>
+<!-- Upload Receipt Modal -->
+<div id="uploadBackdrop" class="modal-backdrop">
+  <div class="modal">
+    <h3>Upload Receipt</h3>
+    <p class="muted">Attach a receipt image to this transaction. We’ll prefill date and total — you can add vendor, tax, and notes.</p>
 
-      <div class="upgrid">
-        <div class="imgbox">
-          <input id="upFile" type="file" accept="image/*" />
-          <div style="margin-top:10px;">
-            <img id="upPreview" alt="" />
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="grid grid-2">
-            <div>
-              <label>Vendor</label>
-              <input id="upVendor" placeholder="e.g., NO FRILLS" />
-            </div>
-            <div>
-              <label>Date</label>
-              <input id="upDate" type="date" />
-            </div>
-            <div>
-              <label>Total</label>
-              <input id="upTotal" type="number" step="0.01" />
-            </div>
-            <div>
-              <label>Tax</label>
-              <input id="upTax" type="number" step="0.01" value="0.00" />
-            </div>
-          </div>
-          <div style="margin-top:8px;">
-            <label>Notes</label>
-            <input id="upNotes" placeholder="Optional notes" />
-          </div>
-          <p id="upMsg" class="muted" style="margin-top:8px;"></p>
-          <div class="row" style="justify-content:flex-end; margin-top:8px;">
-            <button id="upCancel" class="ghost">Cancel</button>
-            <button id="upSave">Save & Attach</button>
-          </div>
+    <div class="upgrid">
+      <div class="imgbox">
+        <input id="upFile" type="file" accept="image/*" />
+        <div style="margin-top:10px;">
+          <img id="upPreview" alt="" />
         </div>
       </div>
-    </div>
-  </div>
-
-  <!-- Create Rule Modal -->
-  <div id="ruleBackdrop" class="modal-backdrop">
-    <div class="modal">
-      <h3>Create Vendor Rule</h3>
-      <p class="muted">Use a pattern that matches how the vendor appears in your statements (e.g., “SQUARE”, “AMAZON”).</p>
 
       <div class="card">
         <div class="grid grid-2">
           <div>
-            <label>Vendor Pattern</label>
-            <input id="rulePattern" placeholder="e.g., SQUARE" />
+            <label>Vendor</label>
+            <input id="upVendor" placeholder="e.g., NO FRILLS" />
           </div>
           <div>
-            <label>Category <span class="muted">(optional)</span></label>
-            <input id="ruleCategory" placeholder="e.g., Income" />
+            <label>Date</label>
+            <input id="upDate" type="date" />
           </div>
           <div>
-            <label>Source <span class="muted">(optional)</span></label>
-            <input id="ruleSource" placeholder="e.g., CIBC Chequing" />
+            <label>Total</label>
+            <input id="upTotal" type="number" step="0.01" />
           </div>
           <div>
-            <label>Tax <span class="muted">(optional)</span></label>
-            <input id="ruleTax" type="number" step="0.01" placeholder="0.00" />
-          </div>
-          <div>
-            <label>Apply to</label>
-            <select id="ruleDirection">
-              <option value="">Any (debit or credit)</option>
-              <option value="credit">Credits only</option>
-              <option value="debit">Debits only</option>
-            </select>
-          </div>
-          <div class="row" style="align-items:center;gap:8px;margin-top:6px">
-            <input type="checkbox" id="ruleAutoMatch" />
-            <label for="ruleAutoMatch">Auto-match (create virtual receipt)</label>
+            <label>Tax</label>
+            <input id="upTax" type="number" step="0.01" value="0.00" />
           </div>
         </div>
-        <p id="ruleMsg" class="muted" style="margin-top:8px;"></p>
+        <div style="margin-top:8px;">
+          <label>Notes</label>
+          <input id="upNotes" placeholder="Optional notes" />
+        </div>
+        <p id="upMsg" class="muted" style="margin-top:8px;"></p>
         <div class="row" style="justify-content:flex-end; margin-top:8px;">
-          <button id="ruleCancel" class="ghost">Cancel</button>
-          <button id="ruleSave">Save Rule</button>
-          <button id="ruleSaveApply">Save & Apply Now</button>
+          <button id="upCancel" class="ghost">Cancel</button>
+          <button id="upSave">Save & Attach</button>
         </div>
       </div>
     </div>
   </div>
+</div>
 
-  <script>
-    // ===== Supabase =====
-    const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
-    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
-    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+<!-- Create Rule Modal -->
+<div id="ruleBackdrop" class="modal-backdrop">
+  <div class="modal">
+    <h3>Create Vendor Rule</h3>
+    <p class="muted">Use a pattern that matches how the vendor appears in your statements (e.g., “SQUARE”, “AMAZON”).</p>
 
-    const $ = (id) => document.getElementById(id);
-    const tbody = document.querySelector("#txnTable tbody");
-    const statusEl = $("status");
-    const quickSearch = $("quickSearch");
+    <div class="card">
+      <div class="grid grid-2">
+        <div>
+          <label>Vendor Pattern</label>
+          <input id="rulePattern" placeholder="e.g., SQUARE" />
+        </div>
+        <div>
+          <label>Category <span class="muted">(optional)</span></label>
+          <input id="ruleCategory" placeholder="e.g., Income" />
+        </div>
+        <div>
+          <label>Source <span class="muted">(optional)</span></label>
+          <input id="ruleSource" placeholder="e.g., CIBC Chequing" />
+        </div>
+        <div>
+          <label>Tax <span class="muted">(optional)</span></label>
+          <input id="ruleTax" type="number" step="0.01" placeholder="0.00" />
+        </div>
 
-    // ===== State =====
-    let allRows = [];                     // transactions in date range
-    let txToReceipts = new Map();         // transaction_id -> [receipt_id,...]
-    let viewRows = [];                    // filtered rows
-    const selected = new Set();           // selected transaction ids
+        <div>
+          <label>Apply to</label>
+          <select id="ruleDirection">
+            <option value="">Any (debit or credit)</option>
+            <option value="credit">Credits only</option>
+            <option value="debit">Debits only</option>
+          </select>
+        </div>
+        <div class="row" style="align-items:center;gap:8px;margin-top:6px">
+          <input type="checkbox" id="ruleAutoMatch" />
+          <label for="ruleAutoMatch">Auto-match (create virtual receipt)</label>
+        </div>
+      </div>
 
-    // Upload Receipt state
-    let activeTxn = null;
-    const uploadBackdrop = $("uploadBackdrop");
-    const upFile = $("upFile");
-    const upPreview = $("upPreview");
-    const upVendor = $("upVendor");
-    const upDate = $("upDate");
-    const upTotal = $("upTotal");
-    const upTax = $("upTax");
-    const upNotes = $("upNotes");
-    const upMsg = $("upMsg");
+      <p id="ruleMsg" class="muted" style="margin-top:8px;"></p>
+      <div class="row" style="justify-content:flex-end; margin-top:8px;">
+        <button id="ruleCancel" class="ghost">Cancel</button>
+        <button id="ruleSave">Save Rule</button>
+        <button id="ruleSaveApply">Save & Apply Now</button>
+      </div>
+    </div>
+  </div>
+</div>
 
-    // Bulk bar & chips refs
-    const bulkbar = $("bulkbar");
-    const selCount = $("selCount");
-    const bulkCategory = $("bulkCategory");
-    const bulkSource = $("bulkSource");
-    const applyCategoryBtn = $("applyCategory");
-    const applySourceBtn = $("applySource");
-    const clearCategoryBtn = $("clearCategory");
-    const selectAllCb = $("selectAll");
+<script>
+/* ===== Supabase client ===== */
+const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    const chipUnmatched = $("chipUnmatched");
-    const chipUncategorized = $("chipUncategorized");
-    const chipNoSource = $("chipNoSource");
-    const chipDupes = $("chipDupes");
-    const countUnmatched = $("countUnmatched");
-    const countUncat = $("countUncat");
-    const countNoSource = $("countNoSource");
-    const countDupes = $("countDupes");
+/* ===== DOM refs ===== */
+const $ = (id) => document.getElementById(id);
+const tbody = document.querySelector("#txnTable tbody");
+const statusEl = $("status");
+const quickSearch = $("quickSearch");
 
-    // Views (localStorage)
-    const VIEWS_KEY = "kosmos_tx_views";
-    const LAST_STATE_KEY = "kosmos_tx_last_state";
-    const DEFAULT_VIEW_KEY = "kosmos_tx_default_view";
-    const viewsSelect = $("viewsSelect");
-    const viewsMsg = $("viewsMsg");
+/* ===== State ===== */
+let allRows = [];
+let txToReceipts = new Map();
+let viewRows = [];
+const selected = new Set();
 
-    // Rule modal refs
-    const ruleBackdrop = $("ruleBackdrop");
-    const rulePattern = $("rulePattern");
-    const ruleCategory = $("ruleCategory");
-    const ruleSource = $("ruleSource");
-    const ruleTax = $("ruleTax");
-    const ruleMsg = $("ruleMsg");
-    const ruleDirection = $("ruleDirection");
-    const ruleAutoMatch = $("ruleAutoMatch");
+/* ===== Utilities ===== */
+function escapeHtml(s){ return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function money(n){ const v=Number(n)||0; return `$${v.toFixed(2)}`; }
 
-    // ===== Utility =====
-    function escapeHtml(s){ return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+/* ===== Load data ====== */
+async function loadTransactions() {
+  const from = $("fromDate").value || "1900-01-01";
+  const to   = $("toDate").value   || "2999-12-31";
 
-    // ===== Load =====
-    async function loadTransactions() {
-      const from = $("fromDate").value || "1900-01-01";
-      const to   = $("toDate").value   || "2999-12-31";
+  let { data: txns, error: tErr } = await sb.from("transactions")
+    .select("*")
+    .gte("txn_date", from)
+    .lte("txn_date", to)
+    .order("txn_date", { ascending: false });
 
-      // Transactions
-      let { data: txns, error: tErr } = await sb.from("transactions")
-        .select("*")
-        .gte("txn_date", from)
-        .lte("txn_date", to)
-        .order("txn_date", { ascending: false });
-      if (tErr) return renderError(tErr.message);
-      allRows = txns || [];
+  if (tErr) return renderError(tErr.message);
+  allRows = txns || [];
 
-      // Matches
-      const { data: mx, error: mErr } = await sb.from("matches").select("transaction_id, receipt_id");
-      if (mErr) return renderError(mErr.message);
-      txToReceipts.clear();
-      (mx || []).forEach(({transaction_id, receipt_id}) => {
-        if (!txToReceipts.has(transaction_id)) txToReceipts.set(transaction_id, []);
-        txToReceipts.get(transaction_id).push(receipt_id);
-      });
+  const { data: mx, error: mErr } = await sb.from("matches").select("transaction_id, receipt_id");
+  if (mErr) return renderError(mErr.message);
 
-      // Clear selection on reload
-      selected.clear();
-      selectAllCb.checked = false;
-      updateBulkbar();
+  txToReceipts.clear();
+  (mx || []).forEach(({transaction_id, receipt_id}) => {
+    if (!txToReceipts.has(transaction_id)) txToReceipts.set(transaction_id, []);
+    txToReceipts.get(transaction_id).push(receipt_id);
+  });
 
-      refreshHealthChips();
-      applyAllFilters();
+  selected.clear();
+  $("selectAll").checked = false;
+  updateBulkbar();
+
+  refreshHealthChips();
+  applyAllFilters();
+}
+function renderError(msg) {
+  tbody.innerHTML = `<tr><td colspan="9" class="err">${msg}</td></tr>`;
+  ["txnCount","debits","credits","net","ftRows","ftDebits","ftCredits","ftNet"].forEach(id=>$(id).textContent="—");
+}
+
+/* ===== Health chips ===== */
+function refreshHealthChips(){
+  let unmatched = 0, uncat = 0, noSrc = 0;
+  for (const r of allRows) {
+    const hasMatch = txToReceipts.has(r.id);
+    const hasCat = !!(r.category && String(r.category).trim().length);
+    const src = r.source_account_name || r.institution || "";
+    const hasSrc = !!String(src).trim().length;
+    if (!hasMatch) unmatched++;
+    if (!hasCat) uncat++;
+    if (!hasSrc) noSrc++;
+  }
+  $("countUnmatched").textContent = unmatched;
+  $("countUncat").textContent = uncat;
+  $("countNoSource").textContent = noSrc;
+
+  const seen = new Map(); let dupes = 0;
+  for (const r of allRows) {
+    const key = `${r.txn_date}|${Number(r.amount)||0}|${(r.vendor_clean||r.description||"").trim().toUpperCase()}`;
+    const c = (seen.get(key) || 0) + 1; seen.set(key, c);
+    if (c === 2) dupes++;
+  }
+  $("countDupes").textContent = dupes;
+}
+
+/* ===== Filters & search ===== */
+function applyAllFilters(){
+  const mode = $("filterMode").value;
+  const q = (quickSearch.value || "").trim().toLowerCase();
+  let rows = allRows.slice();
+
+  rows = rows.filter(r => {
+    const hasMatch = txToReceipts.has(r.id);
+    const hasCategory = !!(r.category && String(r.category).trim().length);
+    const sourceDisplay = r.source_account_name || r.institution || "";
+    const hasSource = !!String(sourceDisplay).trim().length;
+    switch(mode){
+      case "matched":        return hasMatch;
+      case "unmatched":      return !hasMatch;
+      case "categorized":    return hasCategory;
+      case "uncategorized":  return !hasCategory;
+      case "with_source":    return hasSource;
+      case "without_source": return !hasSource;
+      case "debits":         return r.direction === "debit";
+      case "credits":        return r.direction === "credit";
+      default:               return true;
     }
+  });
 
-    function refreshHealthChips(){
-      let unmatched = 0, uncat = 0, noSrc = 0;
-      for (const r of allRows) {
-        const hasMatch = txToReceipts.has(r.id);
-        const hasCat = !!(r.category && String(r.category).trim().length);
-        const src = r.source_account_name || r.institution || "";
-        const hasSrc = !!String(src).trim().length;
-        if (!hasMatch) unmatched++;
-        if (!hasCat) uncat++;
-        if (!hasSrc) noSrc++;
-      }
-      countUnmatched.textContent = unmatched;
-      countUncat.textContent = uncat;
-      countNoSource.textContent = noSrc;
-
-      const seen = new Map();
-      let dupes = 0;
-      for (const r of allRows) {
-        const key = `${r.txn_date}|${Number(r.amount)||0}|${(r.vendor_clean||r.description||"").trim().toUpperCase()}`;
-        const c = (seen.get(key) || 0) + 1;
-        seen.set(key, c);
-        if (c === 2) dupes++;
-      }
-      countDupes.textContent = dupes;
-    }
-
-    function renderError(msg) {
-      tbody.innerHTML = `<tr><td colspan="9" class="err">${escapeHtml(msg)}</td></tr>`;
-      $("txnCount").textContent = "—";
-      $("debits").textContent = "$0.00";
-      $("credits").textContent = "$0.00";
-      $("net").textContent = "$0.00";
-      $("ftRows").textContent = "0";
-      $("ftDebits").textContent = "$0.00";
-      $("ftCredits").textContent = "$0.00";
-      $("ftNet").textContent = "$0.00";
-    }
-
-    // ===== Filters =====
-    function applyAllFilters(){
-      const mode = $("filterMode").value;
-      const q = (quickSearch.value || "").trim().toLowerCase();
-
-      let rows = allRows.slice();
-
-      rows = rows.filter(r => {
-        const hasMatch = txToReceipts.has(r.id);
-        const hasCategory = !!(r.category && String(r.category).trim().length);
-        const sourceDisplay = r.source_account_name || r.institution || "";
-        const hasSource = !!String(sourceDisplay).trim().length;
-
-        switch(mode){
-          case "matched":        return hasMatch;
-          case "unmatched":      return !hasMatch;
-          case "categorized":    return hasCategory;
-          case "uncategorized":  return !hasCategory;
-          case "with_source":    return hasSource;
-          case "without_source": return !hasSource;
-          case "debits":         return r.direction === "debit";
-          case "credits":        return r.direction === "credit";
-          default:               return true;
-        }
-      });
-
-      if (q) {
-        rows = rows.filter(r => {
-          const sourceDisplay = r.source_account_name || r.institution || "";
-          return (
-            String(r.description || "").toLowerCase().includes(q) ||
-            String(r.category || "").toLowerCase().includes(q) ||
-            String(sourceDisplay).toLowerCase().includes(q)
-          );
-        });
-      }
-
-      viewRows = rows;
-      renderTable(viewRows);
-      persistLastState();
-    }
-
-    $("filterBtn").addEventListener("click", loadTransactions);
-
-    // Debounced quick search
-    let qd;
-    quickSearch.addEventListener("input", () => {
-      clearTimeout(qd);
-      qd = setTimeout(applyAllFilters, 200);
+  if (q) {
+    rows = rows.filter(r => {
+      const sourceDisplay = r.source_account_name || r.institution || "";
+      return (
+        String(r.description || "").toLowerCase().includes(q) ||
+        String(r.category || "").toLowerCase().includes(q) ||
+        String(sourceDisplay).toLowerCase().includes(q)
+      );
     });
+  }
 
-    // ===== Selection & Bulk =====
-    function updateBulkbar(){
-      const count = selected.size;
-      selCount.textContent = String(count);
-      bulkbar.classList.toggle("show", count > 0);
-    }
+  viewRows = rows;
+  renderTable(viewRows);
+  persistLastState();
+}
 
-    $("selectAll").addEventListener("change", (e) => {
-      if (!viewRows.length) return;
-      if (e.target.checked) {
-        viewRows.forEach(r => selected.add(r.id));
-      } else {
-        viewRows.forEach(r => selected.delete(r.id));
-      }
-      updateBulkbar();
-      renderTable(viewRows);
+/* ===== Render table ===== */
+function renderTable(rows) {
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="9" class="muted">No transactions found.</td></tr>`;
+    $("txnCount").textContent = 0;
+    $("debits").textContent = money(0);
+    $("credits").textContent = money(0);
+    $("net").textContent = money(0);
+    $("ftRows").textContent = "0";
+    $("ftDebits").textContent = money(0);
+    $("ftCredits").textContent = money(0);
+    $("ftNet").textContent = money(0);
+    return;
+  }
+
+  let debit = 0, credit = 0;
+  const html = rows.map(t => {
+    const amt = Number(t.amount) || 0;
+    if (t.direction === "debit") debit += amt; else credit += amt;
+
+    const sourceDisplay = t.source_account_name || t.institution || "";
+    const receiptIds = txToReceipts.get(t.id) || [];
+    const firstRid = receiptIds[0];
+    const statusBadge = receiptIds.length
+      ? `<a class="badge ok" title="View on Receipts page" href="receipts.html?focus=${encodeURIComponent(firstRid)}">✅ Matched${receiptIds.length>1?` (${receiptIds.length})`:``}</a>`
+      : `<span class="badge muted">Unmatched</span>`;
+    const btnUpload = `<button class="ghost btn-upload" data-id="${t.id}">Upload Receipt</button>`;
+    const btnRule   = `<button class="ghost btn-rule" data-id="${t.id}">Make Rule</button>`;
+    const isChecked = selected.has(t.id) ? 'checked' : '';
+
+    return `<tr data-id="${t.id}">
+      <td><input type="checkbox" class="rowSel" data-id="${t.id}" ${isChecked} /></td>
+      <td>${escapeHtml(t.txn_date)}</td>
+      <td>${escapeHtml(t.description)}</td>
+      <td class="right">${money(amt)}</td>
+      <td>${escapeHtml(t.direction)}</td>
+      <td>${statusBadge}</td>
+      <td class="editable" data-field="category">${escapeHtml(t.category)}</td>
+      <td class="editable" data-field="source_account_name">${escapeHtml(sourceDisplay)}</td>
+      <td>${btnUpload} ${btnRule}</td>
+    </tr>`;
+  }).join("");
+
+  tbody.innerHTML = html;
+
+  Array.from(tbody.querySelectorAll("tr")).forEach(tr => {
+    const id = tr.getAttribute("data-id");
+    const catTd = tr.querySelector('td[data-field="category"]');
+    const srcTd = tr.querySelector('td[data-field="source_account_name"]');
+    catTd.classList.add("editable"); srcTd.classList.add("editable");
+    catTd.addEventListener("click", () => makeEditable(catTd, id, catTd.textContent.trim(), "category"));
+    srcTd.addEventListener("click", () => makeEditable(srcTd, id, srcTd.textContent.trim(), "source_account_name"));
+  });
+
+  document.querySelectorAll(".btn-upload").forEach(btn => {
+    btn.addEventListener("click", () => openUploadFor(btn.getAttribute("data-id")));
+  });
+  document.querySelectorAll(".btn-rule").forEach(btn => {
+    btn.addEventListener("click", () => openRuleFor(btn.getAttribute("data-id")));
+  });
+
+  document.querySelectorAll(".rowSel").forEach(cb => {
+    cb.addEventListener("change", (e) => {
+      const id = e.target.getAttribute("data-id");
+      toggleRowSelection(id, e.target.checked);
     });
+  });
 
-    $("applyCategory").addEventListener("click", async ()=>{
-      const val = (bulkCategory.value || "").trim();
-      if (!val || selected.size===0) return;
-      const ids = Array.from(selected);
-      const chunkSize = 300;
-      for (let i=0;i<ids.length;i+=chunkSize){
-        const chunk = ids.slice(i,i+chunkSize);
-        await sb.from("transactions").update({ category: val }).in("id", chunk);
-      }
-      bulkCategory.value = "";
-      await loadTransactions();
-      statusEl.textContent = `Updated category on ${ids.length} transactions.`;
-      statusEl.className = "ok";
+  $("txnCount").textContent = rows.length;
+  $("debits").textContent   = money(debit);
+  $("credits").textContent  = money(credit);
+  $("net").textContent      = money(credit - debit);
+  $("ftRows").textContent   = rows.length;
+  $("ftDebits").textContent = money(debit);
+  $("ftCredits").textContent= money(credit);
+  $("ftNet").textContent    = money(credit - debit);
+}
+
+/* ===== Inline edit ===== */
+function makeEditable(td, txnId, initialValue, field) {
+  if (td.classList.contains("editing")) return;
+  td.classList.add("editing");
+  const input = document.createElement("input");
+  input.type = "text"; input.value = initialValue || "";
+  input.style.width = "100%"; input.style.padding = ".45rem .6rem";
+  input.style.border = "1px solid #cfcfcf"; input.style.borderRadius = "8px";
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") input.blur();
+    if (e.key === "Escape") { input.value = initialValue || ""; input.blur(); }
+  });
+  input.addEventListener("blur", async () => {
+    const newVal = input.value.trim() || null;
+    td.innerHTML = newVal ? escapeHtml(newVal) : "";
+    td.classList.remove("editing"); td.classList.add("editable");
+    if ((initialValue || null) !== newVal) {
+      await sb.from("transactions").update({ [field]: newVal }).eq("id", txnId);
+      const row = allRows.find(r => r.id === txnId); if (row) row[field] = newVal;
+    }
+  });
+  td.innerHTML = ""; td.appendChild(input); input.focus(); input.select();
+}
+
+/* ===== Selection & bulk ===== */
+function updateBulkbar(){ const n=selected.size; $("selCount").textContent=String(n); $("bulkbar").classList.toggle("show", n>0); }
+function toggleRowSelection(id, checked){ if (checked) selected.add(id); else selected.delete(id); updateBulkbar(); }
+
+$("selectAll").addEventListener("change", (e) => {
+  if (!viewRows.length) return;
+  if (e.target.checked) viewRows.forEach(r => selected.add(r.id));
+  else viewRows.forEach(r => selected.delete(r.id));
+  updateBulkbar(); renderTable(viewRows);
+});
+
+$("applyCategory").addEventListener("click", async ()=>{
+  const val = ($("bulkCategory").value || "").trim(); if (!val || selected.size===0) return;
+  const ids = Array.from(selected); const size=300;
+  for (let i=0;i<ids.length;i+=size) await sb.from("transactions").update({ category: val }).in("id", ids.slice(i,i+size));
+  $("bulkCategory").value = ""; await loadTransactions();
+  statusEl.textContent = `Updated category on ${ids.length} transactions.`; statusEl.className = "ok";
+});
+$("applySource").addEventListener("click", async ()=>{
+  const val = ($("bulkSource").value || "").trim(); if (!val || selected.size===0) return;
+  const ids = Array.from(selected); const size=300;
+  for (let i=0;i<ids.length;i+=size) await sb.from("transactions").update({ source_account_name: val }).in("id", ids.slice(i,i+size));
+  $("bulkSource").value = ""; await loadTransactions();
+  statusEl.textContent = `Updated source on ${ids.length} transactions.`; statusEl.className = "ok";
+});
+$("clearCategory").addEventListener("click", async ()=>{
+  if (selected.size===0) return;
+  const ids = Array.from(selected); const size=300;
+  for (let i=0;i<ids.length;i+=size) await sb.from("transactions").update({ category: null }).in("id", ids.slice(i,i+size));
+  await loadTransactions(); statusEl.textContent = `Cleared category on ${ids.length} transactions.`; statusEl.className = "ok";
+});
+
+/* ===== Health chip clicks ===== */
+$("chipUnmatched").addEventListener("click", ()=>{ $("filterMode").value="unmatched"; applyAllFilters(); });
+$("chipUncategorized").addEventListener("click", ()=>{ $("filterMode").value="uncategorized"; applyAllFilters(); });
+$("chipNoSource").addEventListener("click", ()=>{ $("filterMode").value="without_source"; applyAllFilters(); });
+$("chipDupes").addEventListener("click", ()=>{
+  const seen = new Map(); const dups = new Set();
+  for (const r of allRows) {
+    const key = `${r.txn_date}|${Number(r.amount)||0}|${(r.vendor_clean||r.description||"").trim().toUpperCase()}`;
+    const arr = seen.get(key) || []; arr.push(r.id); seen.set(key, arr);
+  }
+  for (const [,arr] of seen) if (arr.length>1) arr.forEach(id=>dups.add(id));
+  viewRows = allRows.filter(r => dups.has(r.id)); renderTable(viewRows);
+});
+
+/* ===== Views (localStorage) ===== */
+const VIEWS_KEY="kosmos_tx_views", LAST_STATE_KEY="kosmos_tx_last_state", DEFAULT_VIEW_KEY="kosmos_tx_default_view";
+function loadViews(){
+  let views=[]; try { views = JSON.parse(localStorage.getItem(VIEWS_KEY) || "[]"); } catch {}
+  const sel=$("viewsSelect"); sel.innerHTML=""; const ph=document.createElement("option");
+  ph.value=""; ph.textContent="— Choose a view —"; sel.appendChild(ph);
+  const defId=localStorage.getItem(DEFAULT_VIEW_KEY);
+  (views||[]).forEach(v=>{ const o=document.createElement("option"); o.value=v.id; o.textContent=v.name+(v.id===defId?" ⭐":""); sel.appendChild(o); });
+}
+function currentUiState(){ return { fromDate:$("fromDate").value||"", toDate:$("toDate").value||"", mode:$("filterMode").value||"all", search:$("quickSearch").value||"" }; }
+function applyUiState(st){ $("fromDate").value=st.fromDate||""; $("toDate").value=st.toDate||""; $("filterMode").value=st.mode||"all"; $("quickSearch").value=st.search||""; applyAllFilters(); }
+function persistLastState(){ try { localStorage.setItem(LAST_STATE_KEY, JSON.stringify(currentUiState())); } catch {} }
+function restoreOnLoad(){
+  const views = JSON.parse(localStorage.getItem(VIEWS_KEY) || "[]");
+  const defId = localStorage.getItem(DEFAULT_VIEW_KEY);
+  const def = (views || []).find(v => v.id === defId);
+  const last = JSON.parse(localStorage.getItem(LAST_STATE_KEY) || "null");
+  if (def) applyUiState(def.state); else if (last) applyUiState(last);
+}
+$("saveViewBtn").addEventListener("click", ()=>{
+  const name = prompt("Name this view:"); if (!name) return;
+  const views = JSON.parse(localStorage.getItem(VIEWS_KEY) || "[]");
+  const id = "v_"+Date.now(); const state=currentUiState();
+  views.push({id,name,state}); localStorage.setItem(VIEWS_KEY, JSON.stringify(views));
+  loadViews(); $("viewsMsg").textContent=`Saved view “${name}”.`; setTimeout(()=>$("viewsMsg").textContent="",2000);
+});
+$("setDefaultViewBtn").addEventListener("click", ()=>{
+  const id=$("viewsSelect").value; if(!id){ alert("Pick a saved view first."); return; }
+  localStorage.setItem(DEFAULT_VIEW_KEY,id); loadViews(); $("viewsMsg").textContent="Default view set."; setTimeout(()=>$("viewsMsg").textContent="",1500);
+});
+$("deleteViewBtn").addEventListener("click", ()=>{
+  const id=$("viewsSelect").value; if(!id){ alert("Pick a saved view to delete."); return; }
+  let views=JSON.parse(localStorage.getItem(VIEWS_KEY)||"[]"); const v=views.find(x=>x.id===id);
+  if(!confirm(`Delete view “${v?.name||id}”?`)) return;
+  views=views.filter(x=>x.id!==id); localStorage.setItem(VIEWS_KEY, JSON.stringify(views));
+  if(localStorage.getItem(DEFAULT_VIEW_KEY)===id) localStorage.removeItem(DEFAULT_VIEW_KEY);
+  loadViews(); $("viewsSelect").value=""; $("viewsMsg").textContent="Deleted."; setTimeout(()=>$("viewsMsg").textContent="",1200);
+});
+$("viewsSelect").addEventListener("change", ()=>{
+  const id=$("viewsSelect").value; if(!id) return;
+  const views=JSON.parse(localStorage.getItem(VIEWS_KEY)||"[]"); const v=views.find(x=>x.id===id); if(v) applyUiState(v.state);
+});
+
+/* ===== Backfill Sources & Export ===== */
+async function backfillSources() {
+  statusEl.textContent = "Backfilling sources…";
+  const { data, error } = await sb.rpc("backfill_transaction_sources");
+  if (error) { statusEl.className = "err"; statusEl.textContent = error.message; return; }
+  statusEl.className = "ok"; statusEl.textContent = `Backfilled ${data ?? 0} transactions.`; await loadTransactions();
+}
+async function exportCSV() {
+  const { data, error } = await sb.from("v_accountant_export_receipts").select("*");
+  if (error || !data?.length) { alert("No export data."); return; }
+  const header = Object.keys(data[0]); const lines=[header.join(",")];
+  for(const row of data){
+    const line=header.map(h=>{ const v=row[h]??""; return /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g,'""')}"` : v; }).join(",");
+    lines.push(line);
+  }
+  const blob = new Blob([lines.join("\n")], { type: "text/csv" }); const url = URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download="accountant_export.csv"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+$("backfillBtn").addEventListener("click", backfillSources);
+$("exportBtn").addEventListener("click", exportCSV);
+
+/* ===== Import CSV modal (with “CSV has header row”) ===== */
+const backdrop = $("modalBackdrop");
+$("importBtn").addEventListener("click", () => {
+  backdrop.style.display = "flex"; $("importStatus").textContent = "";
+  $("previewTable").querySelector("thead").innerHTML = "";
+  $("previewTable").querySelector("tbody").innerHTML = "";
+  $("csvFile").value = ""; csvData = null; Object.values(mapSelects).forEach(sel => sel.innerHTML = "");
+  $("hasHeader").checked = true;
+});
+$("closeModal").addEventListener("click", () => { backdrop.style.display = "none"; });
+
+let csvData=null;
+const mapSelects = { date:$("mapDate"), desc:$("mapDesc"), amount:$("mapAmount"), dir:$("mapDir"), source:$("mapSource"), category:$("mapCategory") };
+
+$("csvFile").addEventListener("change", async (e)=>{
+  const f=e.target.files?.[0]; if(!f) return;
+  $("importStatus").textContent="Parsing CSV…";
+  const text=await f.text();
+  const parsed = parseCSV(text); // { rows: [...] }
+  csvData = { rows: parsed.rows };
+  rebuildMappingAndPreview();
+});
+$("hasHeader").addEventListener("change", rebuildMappingAndPreview);
+
+function rebuildMappingAndPreview(){
+  if(!csvData?.rows?.length){ $("importStatus").className="err"; $("importStatus").textContent="No rows found in CSV."; return; }
+
+  const hasHeader = $("hasHeader").checked;
+  let headers, rows;
+
+  if (hasHeader) {
+    headers = (csvData.rows[0] || []).map(x => String(x||"").trim());
+    rows    = csvData.rows.slice(1);
+  } else {
+    const cols = (csvData.rows[0] || []).length;
+    headers = Array.from({length: cols}, (_,i)=>`Column ${i+1}`);
+    rows    = csvData.rows.slice(0);
+  }
+
+  csvData.headers = headers;
+  csvData.bodyRows = rows;
+
+  for (const sel of Object.values(mapSelects)) {
+    sel.innerHTML = "";
+    headers.forEach((h,idx)=>{ const opt=document.createElement("option"); opt.value=String(idx); opt.textContent=h; sel.appendChild(opt); });
+  }
+
+  smartMap(headers, rows[0] || [], mapSelects);
+  renderPreview(headers, rows);
+
+  $("importStatus").className="ok";
+  $("importStatus").textContent=`Loaded ${rows.length} rows. Review mapping then click Import.`;
+}
+function renderPreview(headers, rows){
+  const thead=$("previewTable").querySelector("thead");
+  const tb=$("previewTable").querySelector("tbody");
+  thead.innerHTML=`<tr>${headers.map(h=>`<th>${escapeHtml(h)}</th>`).join("")}</tr>`;
+  const max=Math.min(rows.length,50);
+  tb.innerHTML=rows.slice(0,max).map(r=>`<tr>${r.map(c=>`<td>${escapeHtml(c)}</td>`).join("")}</tr>`).join("");
+}
+function smartMap(headers, sampleRow, selects){
+  const pool = headers.map((h,i)=>({text:h.toLowerCase(), idx:i}));
+  const addSample = (i, v) => { if (typeof v==="string") pool.push({text:v.toLowerCase(), idx:i}); };
+  (sampleRow||[]).forEach((v,i)=> addSample(i, v));
+
+  const find = (re) => { let best=-1; for (const p of pool) if (re.test(p.text)) { best=p.idx; break; } return best; };
+  const setIf = (sel, idx) => { if (idx>=0) sel.value=String(idx); };
+
+  setIf(selects.date,   find(/date|posted|txn|transaction/));
+  setIf(selects.desc,   find(/desc|memo|merchant|payee|vendor|details|narrative/));
+  setIf(selects.amount, find(/amount|amt|value|cad|balance change/));
+  setIf(selects.dir,    find(/type|dr|cr|debit|credit|direction/));
+  setIf(selects.source, find(/account|source|from|card|acct|institution/));
+  setIf(selects.category, find(/category|class|gl|gst|hst|tax/));
+}
+$("startImport").addEventListener("click", async ()=>{
+  if(!csvData?.headers || !csvData?.bodyRows){ $("importStatus").className="err"; $("importStatus").textContent="Load a CSV first."; return; }
+
+  const m = {
+    date: Number(mapSelects.date.value),
+    desc: Number(mapSelects.desc.value),
+    amount: Number(mapSelects.amount.value),
+    dir: isNaN(Number(mapSelects.dir.value)) ? null : Number(mapSelects.dir.value),
+    source: isNaN(Number(mapSelects.source.value)) ? null : Number(mapSelects.source.value),
+    category: isNaN(Number(mapSelects.category.value)) ? null : Number(mapSelects.category.value),
+  };
+  if ([m.date,m.desc,m.amount].some(v => isNaN(v))) {
+    $("importStatus").className="err"; $("importStatus").textContent="Please map at least Date, Description, and Amount."; return;
+  }
+
+  const rows=[];
+  for(const raw of csvData.bodyRows){
+    if(!raw.length) continue;
+
+    const dateCell = raw[m.date];
+    const txn_date = normalizeDate(dateCell);
+    const description = (raw[m.desc] || "").toString().trim();
+
+    // Amount parsing: support , as decimal and thousands separators
+    let amtStr = (raw[m.amount] || "").toString().trim();
+    if (/,/.test(amtStr) && /\d,\d{2}$/.test(amtStr) && !/\.\d{2}$/.test(amtStr)) {
+      // likely 1.234,56 → remove thousands dots, turn comma to dot
+      amtStr = amtStr.replace(/\./g,"").replace(",",".");
+    }
+    const amtRaw = amtStr.replace(/[^0-9\.\-\+]/g,"");
+    const amount = Number(amtRaw);
+
+    if(!txn_date || !description || !Number.isFinite(amount)) continue;
+
+    let direction = "debit";
+    if (m.dir != null) {
+      const dval = String(raw[m.dir] || "").toLowerCase();
+      if (/(credit|cr|\+)\b/.test(dval)) direction = "credit";
+      if (/(debit|dr|\-)\b/.test(dval))  direction = "debit";
+    } else {
+      direction = amount < 0 ? "debit" : "credit";
+    }
+
+    const source_account_name = m.source != null ? (raw[m.source] || "").toString().trim() : null;
+    const category = m.category != null ? (raw[m.category] || "").toString().trim() || null : null;
+
+    rows.push({
+      txn_date, post_date: txn_date, description,
+      amount: Math.abs(amount), direction, currency: "CAD",
+      source_account_name: source_account_name || null,
+      category: category || null, imported_via: "csv"
     });
+  }
 
-    $("applySource").addEventListener("click", async ()=>{
-      const val = (bulkSource.value || "").trim();
-      if (!val || selected.size===0) return;
-      const ids = Array.from(selected);
-      const chunkSize = 300;
-      for (let i=0;i<ids.length;i+=chunkSize){
-        const chunk = ids.slice(i,i+chunkSize);
-        await sb.from("transactions").update({ source_account_name: val }).in("id", chunk);
-      }
-      bulkSource.value = "";
-      await loadTransactions();
-      statusEl.textContent = `Updated source on ${ids.length} transactions.`;
-      statusEl.className = "ok";
-    });
+  if(!rows.length){ $("importStatus").className="err"; $("importStatus").textContent="No valid rows to import after parsing. Check mapping (Date/Description/Amount)."; return; }
 
-    $("clearCategory").addEventListener("click", async ()=>{
-      if (selected.size===0) return;
-      const ids = Array.from(selected);
-      const chunkSize = 300;
-      for (let i=0;i<ids.length;i+=chunkSize){
-        const chunk = ids.slice(i,i+chunkSize);
-        await sb.from("transactions").update({ category: null }).in("id", chunk);
-      }
-      await loadTransactions();
-      statusEl.textContent = `Cleared category on ${ids.length} transactions.`;
-      statusEl.className = "ok";
-    });
-
-    // ===== Table render & inline edit =====
-    function makeEditable(td, txnId, initialValue, field) {
-      if (td.classList.contains("editing")) return;
-      td.classList.add("editing");
-
-      const input = document.createElement("input");
-      input.type = "text";
-      input.value = initialValue || "";
-      input.style.width = "100%";
-      input.style.padding = ".45rem .6rem";
-      input.style.border = "1px solid #cfcfcf";
-      input.style.borderRadius = "8px";
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") input.blur();
-        if (e.key === "Escape") { input.value = initialValue || ""; input.blur(); }
-      });
-      input.addEventListener("blur", async () => {
-        const newVal = input.value.trim() || null;
-        td.innerHTML = newVal ? escapeHtml(newVal) : "";
-        td.classList.remove("editing");
-        td.classList.add("editable");
-        if ((initialValue || null) !== newVal) {
-          await sb.from("transactions").update({ [field]: newVal }).eq("id", txnId);
-          const row = allRows.find(r => r.id === txnId);
-          if (row) row[field] = newVal;
-        }
-      });
-
-      td.innerHTML = ""; td.appendChild(input); input.focus(); input.select();
+  $("importStatus").className="muted"; $("importStatus").textContent=`Importing ${rows.length} rows…`;
+  let inserted=0; const batch=300;
+  for(let i=0;i<rows.length;i+=batch){
+    const chunk=rows.slice(i,i+batch);
+    const { error } = await sb.from("transactions").insert(chunk);
+    if(error){ $("importStatus").className="err"; $("importStatus").textContent=error.message; return; }
+    inserted+=chunk.length; $("importStatus").textContent=`Imported ${inserted}/${rows.length}…`;
+  }
+  $("importStatus").className="ok"; $("importStatus").textContent=`Imported ${inserted} transactions successfully.`;
+  backdrop.style.display="none"; await loadTransactions();
+});
+function parseCSV(text){
+  const rows = []; let i=0, field="", row=[], inQuotes=false;
+  const pushField=()=>{ row.push(field); field=""; };
+  const pushRow =()=>{ rows.push(row); row=[]; };
+  while (i < text.length) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') { if (text[i+1] === '"'){ field += '"'; i+=2; continue; } inQuotes=false; i++; continue; }
+      field += ch; i++; continue;
+    } else {
+      if (ch === '"'){ inQuotes=true; i++; continue; }
+      if (ch === ','){ pushField(); i++; continue; }
+      if (ch === '\r'){ i++; continue; }
+      if (ch === '\n'){ pushField(); pushRow(); i++; continue; }
+      field += ch; i++; continue;
     }
+  }
+  if (field.length || row.length) { pushField(); pushRow(); }
+  return { rows };
+}
+function normalizeDate(v){
+  if (!v) return null; const s=String(v).trim();
+  let m=s.match(/^(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})$/); if(m) return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+  m=s.match(/^(\d{1,2})[-\/\.](\d{1,2})[-\/\.](\d{4})$/); if(m) return `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;
+  if(/\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10); 
+  return null;
+}
 
-    function renderTable(rows) {
-      if (!rows.length) {
-        tbody.innerHTML = `<tr><td colspan="9" class="muted">No transactions found.</td></tr>`;
-        $("txnCount").textContent = 0;
-        $("debits").textContent = "$0.00";
-        $("credits").textContent = "$0.00";
-        $("net").textContent = "$0.00";
-        $("ftRows").textContent = "0";
-        $("ftDebits").textContent = "$0.00";
-        $("ftCredits").textContent = "$0.00";
-        $("ftNet").textContent = "$0.00";
-        return;
-      }
+/* ===== Upload Receipt modal (unchanged) ===== */
+let activeTxn=null;
+const uploadBackdrop=$("uploadBackdrop");
+$("upCancel").addEventListener("click", ()=> uploadBackdrop.style.display="none");
+$("upFile").addEventListener("change",(e)=>{
+  const f=e.target.files?.[0]; $("upPreview").src = f ? URL.createObjectURL(f) : "";
+});
+async function openUploadFor(txnId){
+  activeTxn = allRows.find(r => r.id === txnId); if (!activeTxn) return;
+  $("upFile").value=""; $("upPreview").src=""; $("upVendor").value="";
+  $("upDate").value=(activeTxn.txn_date||"").slice(0,10);
+  $("upTotal").value=Number(activeTxn.amount||0).toFixed(2);
+  $("upTax").value="0.00"; $("upNotes").value=""; $("upMsg").textContent="";
+  uploadBackdrop.style.display="flex";
+}
+$("upSave").addEventListener("click", async ()=>{
+  if (!activeTxn) return;
+  const f=$("upFile").files?.[0]; if(!f){ $("upMsg").className="err"; $("upMsg").textContent="Please choose an image file."; return; }
+  const vendor= $("upVendor").value.trim()||null;
+  const date  = $("upDate").value || null;
+  const total = $("upTotal").value ? Number($("upTotal").value) : null;
+  const tax   = $("upTax").value ? Number($("upTax").value) : 0;
+  const notes = $("upNotes").value.trim()||null;
+  if(!date || !total){ $("upMsg").className="err"; $("upMsg").textContent="Date and Total are required."; return; }
+  $("upMsg").className="muted"; $("upMsg").textContent="Uploading image…";
+  const fname=`txn_${activeTxn.id}_${Date.now()}.png`;
+  const { data: upRes, error: upErr } = await sb.storage.from("receipts").upload(fname, f, { contentType: f.type||"image/png", upsert:false });
+  if(upErr){ $("upMsg").className="err"; $("upMsg").textContent=upErr.message; return; }
+  const { data: pub } = sb.storage.from("receipts").getPublicUrl(upRes.path);
+  const image_url = pub?.publicUrl || null;
 
-      let debit = 0, credit = 0;
-      const html = rows.map(t => {
-        const amt = Number(t.amount) || 0;
-        if (t.direction === "debit") debit += amt; else credit += amt;
+  const ins={ org_id:activeTxn.org_id||null, account_id:activeTxn.account_id||null, image_url, size_bytes:f.size||0,
+    receipt_date:date, total, tax, vendor, notes, source:"manual_upload" };
+  $("upMsg").textContent="Saving receipt…";
+  const { data: rIns, error: rErr } = await sb.from("receipts").insert(ins).select("id").single();
+  if(rErr){ $("upMsg").className="err"; $("upMsg").textContent=rErr.message; return; }
 
-        const sourceDisplay = t.source_account_name || t.institution || "";
-        const receiptIds = txToReceipts.get(t.id) || [];
-        const firstRid = receiptIds[0];
-        const statusBadge = receiptIds.length
-          ? `<a class="badge ok" title="View on Receipts page" href="receipts.html?focus=${encodeURIComponent(firstRid)}">✅ Matched${receiptIds.length>1?` (${receiptIds.length})`:``}</a>`
-          : `<span class="badge muted">Unmatched</span>`;
-        const btnUpload = `<button class="ghost btn-upload" data-id="${t.id}">Upload Receipt</button>`;
-        const btnRule = `<button class="ghost btn-rule" data-id="${t.id}">Make Rule</button>`;
-        const isChecked = selected.has(t.id) ? 'checked' : '';
+  const matchRow={ org_id:activeTxn.org_id||null, transaction_id:activeTxn.id, receipt_id:rIns.id,
+    matched_amount:total, confidence:0.99, method:"manual", match_type:"user_attach" };
+  const { error: mErr } = await sb.from("matches").insert(matchRow);
+  if(mErr){ $("upMsg").className="err"; $("upMsg").textContent=mErr.message; return; }
 
-        return `<tr data-id="${t.id}">
-          <td><input type="checkbox" class="rowSel" data-id="${t.id}" ${isChecked} /></td>
-          <td>${escapeHtml(t.txn_date)}</td>
-          <td>${escapeHtml(t.description)}</td>
-          <td class="right">$${amt.toFixed(2)}</td>
-          <td>${escapeHtml(t.direction)}</td>
-          <td>${statusBadge}</td>
-          <td class="editable" data-field="category">${escapeHtml(t.category)}</td>
-          <td class="editable" data-field="source_account_name">${escapeHtml(sourceDisplay)}</td>
-          <td>${btnUpload} ${btnRule}</td>
-        </tr>`;
-      }).join("");
+  $("upMsg").className="ok"; $("upMsg").textContent="Attached!"; uploadBackdrop.style.display="none"; await loadTransactions();
+});
 
-      tbody.innerHTML = html;
+/* ===== Rule modal (direction + auto-match) ===== */
+const ruleBackdrop=$("ruleBackdrop"), rulePattern=$("rulePattern"),
+      ruleCategory=$("ruleCategory"), ruleSource=$("ruleSource"),
+      ruleTax=$("ruleTax"), ruleMsg=$("ruleMsg"),
+      ruleDirection=$("ruleDirection"), ruleAutoMatch=$("ruleAutoMatch");
 
-      // inline editors + buttons + selection
-      Array.from(tbody.querySelectorAll("tr")).forEach(tr => {
-        const id = tr.getAttribute("data-id");
-        const catTd = tr.querySelector('td[data-field="category"]');
-        const srcTd = tr.querySelector('td[data-field="source_account_name"]');
-        catTd.classList.add("editable");
-        srcTd.classList.add("editable");
-        catTd.addEventListener("click", () => makeEditable(catTd, id, catTd.textContent.trim(), "category"));
-        srcTd.addEventListener("click", () => makeEditable(srcTd, id, srcTd.textContent.trim(), "source_account_name"));
-      });
+function defaultPatternFromRow(r){
+  const base=(r.vendor_clean||r.description||"").toUpperCase();
+  return base.replace(/\d{2,}/g,"").replace(/\s{2,}/g," ").trim();
+}
+function openRuleFor(id){
+  const r=allRows.find(x=>x.id===id); if(!r) return;
+  rulePattern.value=defaultPatternFromRow(r);
+  ruleCategory.value=r.category||"";
+  ruleSource.value=r.source_account_name||r.institution||"";
+  ruleTax.value=""; ruleDirection.value=""; ruleAutoMatch.checked=false;
+  ruleMsg.textContent=""; ruleMsg.className="muted";
+  ruleBackdrop.style.display="flex"; ruleBackdrop.setAttribute("data-txn",id);
+}
+$("bulkMakeRule").addEventListener("click", ()=>{
+  const firstSel=selected.values().next().value; if(!firstSel){ alert("Select at least one row."); return; }
+  openRuleFor(firstSel);
+});
+$("ruleCancel").addEventListener("click", ()=>{ ruleBackdrop.style.display="none"; });
 
-      document.querySelectorAll(".btn-upload").forEach(btn => {
-        btn.addEventListener("click", () => openUploadFor(btn.getAttribute("data-id")));
-      });
-      document.querySelectorAll(".btn-rule").forEach(btn => {
-        btn.addEventListener("click", () => openRuleFor(btn.getAttribute("data-id")));
-      });
-      document.querySelectorAll(".rowSel").forEach(cb => {
-        cb.addEventListener("change", (e) => {
-          const id = e.target.getAttribute("data-id");
-          if (e.target.checked) selected.add(id); else selected.delete(id);
-          updateBulkbar();
-        });
-      });
+async function saveRuleCore(applyNow){
+  const vendor_pattern=(rulePattern.value||"").trim();
+  const category=(ruleCategory.value||"").trim();
+  const source=(ruleSource.value||"").trim();
+  const taxVal=ruleTax.value?Number(ruleTax.value):null;
+  const direction_filter=ruleDirection.value || null;
+  const auto_match=!!ruleAutoMatch.checked;
+  if(!vendor_pattern){ ruleMsg.className="err"; ruleMsg.textContent="Vendor Pattern is required."; return; }
 
-      $("txnCount").textContent = rows.length;
-      $("debits").textContent   = `$${debit.toFixed(2)}`;
-      $("credits").textContent  = `$${credit.toFixed(2)}`;
-      $("net").textContent      = `$${(credit - debit).toFixed(2)}`;
-      $("ftRows").textContent   = rows.length;
-      $("ftDebits").textContent = `$${debit.toFixed(2)}`;
-      $("ftCredits").textContent= `$${credit.toFixed(2)}`;
-      $("ftNet").textContent    = `$${(credit - debit).toFixed(2)}`;
+  ruleMsg.className="muted"; ruleMsg.textContent="Saving rule…";
+  const { error:rErr } = await sb.from("vendor_rules").insert({
+    vendor_pattern, category: category||null, source: source||null,
+    tax: Number.isFinite(taxVal)?taxVal:null, direction_filter, auto_match
+  });
+  if(rErr){ ruleMsg.className="err"; ruleMsg.textContent=rErr.message; return; }
+
+  if(!applyNow){ ruleMsg.className="ok"; ruleMsg.textContent="Rule saved."; setTimeout(()=>{ ruleBackdrop.style.display="none"; },600); return; }
+
+  // Apply now
+  ruleMsg.textContent="Applying to existing transactions…";
+  const like=`%${vendor_pattern}%`;
+  let q=sb.from("transactions").select("id,org_id,account_id,txn_date,amount,direction,description,category,source_account_name").ilike("description",like);
+  if(direction_filter) q=q.eq("direction",direction_filter);
+  const { data: rows, error: sErr } = await q; if(sErr){ ruleMsg.className="err"; ruleMsg.textContent=sErr.message; return; }
+  if(!rows?.length){ ruleMsg.className="ok"; ruleMsg.textContent="Rule saved. No rows matched."; return; }
+
+  let updated=0;
+  if(category){
+    const { count, error: u1 } = await sb.from("transactions")
+      .update({ category }).ilike("description",like).is("category",null)
+      .select("id",{count:"exact",head:true}).maybeSingle();
+    if(u1){ ruleMsg.className="err"; ruleMsg.textContent=u1.message; return; }
+    updated += (count||0);
+  }
+  if(source){
+    const { count, error: u2 } = await sb.from("transactions")
+      .update({ source_account_name: source }).ilike("description",like).is("source_account_name",null)
+      .select("id",{count:"exact",head:true}).maybeSingle();
+    if(u2){ ruleMsg.className="err"; ruleMsg.textContent=u2.message; return; }
+    updated += (count||0);
+  }
+
+  if(auto_match){
+    const ids=rows.map(r=>r.id);
+    const { data:mrows } = await sb.from("matches").select("transaction_id").in("transaction_id",ids);
+    const matchedSet=new Set((mrows||[]).map(m=>m.transaction_id));
+    const toCreate = rows.filter(r=>!matchedSet.has(r.id));
+    if(toCreate.length){
+      const receipts = toCreate.map(r=>({
+        org_id:r.org_id||null, account_id:r.account_id||null, image_url:null, size_bytes:0,
+        receipt_date:r.txn_date, total:Number(r.amount)||0, tax:0, vendor:vendor_pattern,
+        source:"virtual_rule", notes:"Virtual receipt generated by rule"
+      }));
+      const { data:insR, error:insErr } = await sb.from("receipts").insert(receipts).select("id");
+      if(insErr){ ruleMsg.className="err"; ruleMsg.textContent=insErr.message; return; }
+      const matches = toCreate.map((r,i)=>({
+        org_id:r.org_id||null, transaction_id:r.id, receipt_id:insR[i].id,
+        matched_amount:Number(r.amount)||0, confidence:0.98, method:"rule_auto", match_type:"auto"
+      }));
+      const { error:mErr } = await sb.from("matches").insert(matches);
+      if(mErr){ ruleMsg.className="err"; ruleMsg.textContent=mErr.message; return; }
+      updated += toCreate.length;
     }
+  }
 
-    // ===== Export accountant CSV (receipts view) =====
-    async function exportCSV() {
-      const { data, error } = await sb.from("v_accountant_export_receipts").select("*");
-      if (error || !data?.length) { alert("No export data."); return; }
-      const header = Object.keys(data[0]);
-      const lines = [header.join(",")];
-      for (const row of data) {
-        const line = header.map(h => {
-          const v = row[h] ?? "";
-          return /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g,'""')}"` : v;
-        }).join(",");
-        lines.push(line);
-      }
-      const blob = new Blob([lines.join("\n")], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = "accountant_export.csv";
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
-    }
-    $("exportBtn").addEventListener("click", exportCSV);
+  ruleMsg.className="ok";
+  ruleMsg.textContent=`Rule saved and applied. Updated ${updated} rows${auto_match?' (auto-matched where needed)':''}.`;
+  setTimeout(async ()=>{ ruleBackdrop.style.display="none"; await loadTransactions(); },700);
+}
+$("ruleSave").addEventListener("click",()=>saveRuleCore(false));
+$("ruleSaveApply").addEventListener("click",()=>saveRuleCore(true));
 
-    // ===== Backfill Sources (RPC) =====
-    async function backfillSources() {
-      statusEl.textContent = "Backfilling sources…";
-      const { data, error } = await sb.rpc("backfill_transaction_sources");
-      if (error) { statusEl.className = "err"; statusEl.textContent = error.message; return; }
-      statusEl.className = "ok";
-      statusEl.textContent = `Backfilled ${data ?? 0} transactions.`;
-      await loadTransactions();
-    }
-    $("backfillBtn").addEventListener("click", backfillSources);
+/* ===== Events ===== */
+$("filterBtn").addEventListener("click", loadTransactions);
+let qd; quickSearch.addEventListener("input", ()=>{ clearTimeout(qd); qd=setTimeout(applyAllFilters,200); });
 
-    // ===== CSV Import =====
-    const backdrop = $("modalBackdrop");
-    const importBtn = $("importBtn");
-    const closeModal = $("closeModal");
-    const csvFile = $("csvFile");
-    const mapSelects = {
-      date: $("mapDate"),
-      desc: $("mapDesc"),
-      amount: $("mapAmount"),
-      dir: $("mapDir"),
-      source: $("mapSource"),
-      category: $("mapCategory"),
-    };
-    const previewTable = $("previewTable");
-    const importStatus = $("importStatus");
-    const startImportBtn = $("startImport");
-    let csvData = null;
-
-    importBtn.addEventListener("click", () => {
-      backdrop.style.display = "flex";
-      importStatus.textContent = "";
-      previewTable.querySelector("thead").innerHTML = "";
-      previewTable.querySelector("tbody").innerHTML = "";
-      csvFile.value = "";
-      csvData = null;
-      Object.values(mapSelects).forEach(sel => sel.innerHTML = "");
-    });
-    closeModal.addEventListener("click", () => { backdrop.style.display = "none"; });
-
-    csvFile.addEventListener("change", async (e) => {
-      const f = e.target.files?.[0];
-      if (!f) return;
-      importStatus.textContent = "Parsing CSV…";
-      const text = await f.text();
-      csvData = parseCSV(text);
-
-      if (!csvData || !csvData.headers?.length) {
-        importStatus.className="err";
-        importStatus.textContent = "Could not read CSV headers.";
-        return;
-      }
-
-      for (const [key, sel] of Object.entries(mapSelects)) {
-        sel.innerHTML = "";
-        csvData.headers.forEach((h, idx) => {
-          const opt = document.createElement("option");
-          opt.value = String(idx);
-          opt.textContent = h;
-          sel.appendChild(opt);
-        });
-      }
-
-      smartMap(csvData.headers, mapSelects);
-      renderPreview(csvData);
-      importStatus.className = "ok";
-      importStatus.textContent = `Loaded ${csvData.rows.length} rows. Review mapping then click Import.`;
-    });
-
-    function renderPreview(csv){
-      const thead = previewTable.querySelector("thead");
-      const tbodyPrev = previewTable.querySelector("tbody");
-      thead.innerHTML = `<tr>${csv.headers.map(h=>`<th>${escapeHtml(h)}</th>`).join("")}</tr>`;
-      const max = Math.min(csv.rows.length, 50);
-      tbodyPrev.innerHTML = csv.rows.slice(0,max).map(r=>{
-        return `<tr>${r.map(c=>`<td>${escapeHtml(c)}</td>`).join("")}</tr>`;
-      }).join("");
-    }
-
-    function smartMap(headers, selects){
-      const idx = (pred) => headers.findIndex(h => pred(h.toLowerCase()));
-      const trySet = (sel, i) => { if (i>=0) sel.value = String(i); };
-
-      trySet(selects.date,    idx(h => /date|posted|txn/.test(h)));
-      trySet(selects.desc,    idx(h => /desc|memo|merchant|payee|vendor/.test(h)));
-      trySet(selects.amount,  idx(h => /amount|amt|value/.test(h)));
-      trySet(selects.dir,     idx(h => /type|dr|cr|debit|credit|direction/.test(h)));
-      trySet(selects.source,  idx(h => /account|source|from|card|acct/.test(h)));
-      trySet(selects.category,idx(h => /category|class/.test(h)));
-    }
-
-    startImportBtn.addEventListener("click", async () => {
-      if (!csvData) { importStatus.className="err"; importStatus.textContent="Please choose a CSV first."; return; }
-
-      const m = {
-        date: Number(mapSelects.date.value),
-        desc: Number(mapSelects.desc.value),
-        amount: Number(mapSelects.amount.value),
-        dir: isNaN(Number(mapSelects.dir.value)) ? null : Number(mapSelects.dir.value),
-        source: isNaN(Number(mapSelects.source.value)) ? null : Number(mapSelects.source.value),
-        category: isNaN(Number(mapSelects.category.value)) ? null : Number(mapSelects.category.value),
-      };
-      if ([m.date,m.desc,m.amount].some(v => isNaN(v))) {
-        importStatus.className="err";
-        importStatus.textContent="Please map at least Date, Description, and Amount.";
-        return;
-      }
-
-      const rows = [];
-      for (const raw of csvData.rows) {
-        if (!raw.length) continue;
-        const txn_date = normalizeDate(raw[m.date]);
-        const description = (raw[m.desc] || "").toString().trim();
-        const amtRaw = (raw[m.amount] || "").toString().replace(/[^0-9\.\-\+]/g,"");
-        const amount = Number(amtRaw);
-        if (!txn_date || !description || !Number.isFinite(amount)) continue;
-
-        let direction = "debit";
-        if (m.dir != null) {
-          const dval = String(raw[m.dir] || "").toLowerCase();
-          if (/credit|cr|\+/.test(dval)) direction = "credit";
-          if (/debit|dr|\-/.test(dval))  direction = "debit";
-        } else {
-          direction = amount < 0 ? "debit" : "credit";
-        }
-
-        const source_account_name = m.source != null ? (raw[m.source] || "").toString().trim() : null;
-        const category = m.category != null ? (raw[m.category] || "").toString().trim() || null : null;
-
-        rows.push({
-          txn_date,
-          post_date: txn_date,
-          description,
-          amount: Math.abs(amount),
-          direction,
-          currency: "CAD",
-          source_account_name: source_account_name || null,
-          category: category || null,
-          imported_via: "csv"
-        });
-      }
-
-      if (!rows.length) {
-        importStatus.className="err";
-        importStatus.textContent="No valid rows to import after parsing. Check your mapping.";
-        return;
-      }
-
-      importStatus.className="muted";
-      importStatus.textContent=`Importing ${rows.length} rows…`;
-
-      let inserted = 0, errors = 0;
-      const batchSize = 300;
-      for (let i=0;i<rows.length;i+=batchSize) {
-        const chunk = rows.slice(i,i+batchSize);
-        const { error } = await sb.from("transactions").insert(chunk);
-        if (error) { errors++; importStatus.className="err"; importStatus.textContent = error.message; break; }
-        inserted += chunk.length;
-        importStatus.textContent = `Imported ${inserted}/${rows.length}…`;
-      }
-
-      if (!errors) {
-        importStatus.className="ok";
-        importStatus.textContent = `Imported ${inserted} transactions successfully.`;
-        await loadTransactions();
-      }
-    });
-
-    function parseCSV(text){
-      const rows = [];
-      let i=0, field="", row=[], inQuotes=false;
-      function pushField(){ row.push(field); field=""; }
-      function pushRow(){ rows.push(row); row=[]; }
-      while (i < text.length) {
-        const ch = text[i];
-        if (inQuotes) {
-          if (ch === '"') {
-            if (text[i+1] === '"'){ field += '"'; i+=2; continue; }
-            inQuotes = false; i++; continue;
-          } else { field += ch; i++; continue; }
-        } else {
-          if (ch === '"'){ inQuotes = true; i++; continue; }
-          if (ch === ','){ pushField(); i++; continue; }
-          if (ch === '\r'){ i++; continue; }
-          if (ch === '\n'){ pushField(); pushRow(); i++; continue; }
-          field += ch; i++; continue;
-        }
-      }
-      if (field.length || row.length) { pushField(); pushRow(); }
-      if (!rows.length) return { headers: [], rows: [] };
-      const headers = rows.shift().map(h => h.trim());
-      return { headers, rows };
-    }
-
-    function normalizeDate(v){
-      if (!v) return null;
-      const s = String(v).trim();
-      let m = s.match(/^(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})$/);
-      if (m) return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
-      m = s.match(/^(\d{1,2})[-\/\.](\d{1,2})[-\/\.](\d{4})$/);
-      if (m) return `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;
-      m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-      if (m) return `${m[3]}-${String(m[1]).padStart(2,'0')}-${String(m[2]).padStart(2,'0')}`;
-      if (/\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
-      return null;
-    }
-
-    // ===== Upload Receipt =====
-    async function openUploadFor(txnId){
-      activeTxn = allRows.find(r => r.id === txnId);
-      if (!activeTxn) return;
-
-      upFile.value = "";
-      upPreview.src = "";
-      upVendor.value = "";
-      upDate.value = (activeTxn.txn_date || "").slice(0,10);
-      upTotal.value = Number(activeTxn.amount || 0).toFixed(2);
-      upTax.value = "0.00";
-      upNotes.value = "";
-      upMsg.textContent = "";
-      upMsg.className = "muted";
-
-      uploadBackdrop.style.display = "flex";
-    }
-
-    $("upCancel").addEventListener("click", () => { uploadBackdrop.style.display = "none"; });
-
-    upFile.addEventListener("change", (e)=>{
-      const f = e.target.files?.[0];
-      if (!f) { upPreview.src = ""; return; }
-      const url = URL.createObjectURL(f);
-      upPreview.src = url;
-    });
-
-    $("upSave").addEventListener("click", async ()=>{
-      if (!activeTxn) return;
-      const f = upFile.files?.[0];
-      if (!f){ upMsg.className="err"; upMsg.textContent="Please choose an image file."; return; }
-
-      const vendor = upVendor.value.trim() || null;
-      const date = upDate.value || null;
-      const total = upTotal.value ? Number(upTotal.value) : null;
-      const tax = upTax.value ? Number(upTax.value) : 0;
-      const notes = upNotes.value.trim() || null;
-
-      if (!date || !total){ upMsg.className="err"; upMsg.textContent="Date and Total are required."; return; }
-
-      upMsg.className="muted"; upMsg.textContent="Uploading image…";
-      const fname = `txn_${activeTxn.id}_${Date.now()}.png`;
-      const { data: upRes, error: upErr } = await sb.storage.from("receipts").upload(fname, f, { contentType: f.type || "image/png", upsert:false });
-      if (upErr){ upMsg.className="err"; upMsg.textContent=upErr.message; return; }
-      const { data: pub } = sb.storage.from("receipts").getPublicUrl(upRes.path);
-      const image_url = pub?.publicUrl || null;
-
-      const ins = {
-        org_id: activeTxn.org_id || null,
-        account_id: activeTxn.account_id || null,
-        image_url,
-        size_bytes: f.size || 0,
-        receipt_date: date,
-        total,
-        tax,
-        vendor,
-        notes,
-        source: "manual_upload"
-      };
-      upMsg.textContent="Saving receipt…";
-      const { data: rIns, error: rErr } = await sb.from("receipts").insert(ins).select("id").single();
-      if (rErr){ upMsg.className="err"; upMsg.textContent=rErr.message; return; }
-
-      upMsg.textContent="Linking to transaction…";
-      const matchRow = {
-        org_id: activeTxn.org_id || null,
-        transaction_id: activeTxn.id,
-        receipt_id: rIns.id,
-        matched_amount: total,
-        confidence: 0.99,
-        method: "manual",
-        match_type: "user_attach"
-      };
-      const { error: mErr } = await sb.from("matches").insert(matchRow);
-      if (mErr){ upMsg.className="err"; upMsg.textContent=mErr.message; return; }
-
-      upMsg.className="ok"; upMsg.textContent="Attached! Matched to the new receipt.";
-      uploadBackdrop.style.display = "none";
-      await loadTransactions();
-    });
-
-    // ===== Rule creation (with direction & auto-match) =====
-    function defaultPatternFromRow(row){
-      const base = (row.vendor_clean || row.description || "").toUpperCase();
-      return base.replace(/\d{2,}/g, "").replace(/\s{2,}/g, " ").trim();
-    }
-
-    function openRuleFor(txnId){
-      const row = allRows.find(r => r.id === txnId);
-      if (!row) return;
-      rulePattern.value = defaultPatternFromRow(row);
-      ruleCategory.value = row.category || "";
-      ruleSource.value = row.source_account_name || row.institution || "";
-      ruleTax.value = "";
-      ruleDirection.value = "";
-      ruleAutoMatch.checked = false;
-      ruleMsg.textContent = "";
-      ruleMsg.className = "muted";
-      ruleBackdrop.style.display = "flex";
-      ruleBackdrop.setAttribute("data-txn", txnId);
-    }
-    $("bulkMakeRule").addEventListener("click", ()=>{
-      const firstSel = selected.values().next().value;
-      if (!firstSel) { alert("Select at least one row."); return; }
-      openRuleFor(firstSel);
-    });
-    $("ruleCancel").addEventListener("click", ()=>{ ruleBackdrop.style.display = "none"; });
-
-    async function saveRuleCore(applyNow){
-      const vendor_pattern = (rulePattern.value || "").trim();
-      const category = (ruleCategory.value || "").trim();
-      const source = (ruleSource.value || "").trim();
-      const taxVal = ruleTax.value ? Number(ruleTax.value) : null;
-      const direction_filter = ruleDirection.value || null;
-      const auto_match = !!ruleAutoMatch.checked;
-
-      if (!vendor_pattern){
-        ruleMsg.className="err"; ruleMsg.textContent="Vendor Pattern is required."; return;
-      }
-
-      ruleMsg.className="muted"; ruleMsg.textContent="Saving rule…";
-      const { error: rErr } = await sb.from("vendor_rules").insert({
-        vendor_pattern,
-        category: category || null,
-        source: source || null,
-        tax: Number.isFinite(taxVal) ? taxVal : null,
-        direction_filter,
-        auto_match
-      });
-      if (rErr){ ruleMsg.className="err"; ruleMsg.textContent=rErr.message; return; }
-
-      if (!applyNow){
-        ruleMsg.className="ok"; ruleMsg.textContent="Rule saved.";
-        setTimeout(()=>{ ruleBackdrop.style.display="none"; },600);
-        return;
-      }
-
-      // ---- APPLY NOW ----
-      ruleMsg.textContent="Applying to existing transactions…";
-      const like = `%${vendor_pattern}%`;
-      let filter = sb.from("transactions")
-        .select("id,org_id,account_id,txn_date,amount,direction,description,category,source_account_name")
-        .ilike("description", like);
-      if (direction_filter){ filter = filter.eq("direction", direction_filter); }
-      const { data: rows, error: sErr } = await filter;
-      if (sErr){ ruleMsg.className="err"; ruleMsg.textContent=sErr.message; return; }
-      if (!rows?.length){ ruleMsg.className="ok"; ruleMsg.textContent="Rule saved. No rows matched current history."; return; }
-
-      let updated = 0;
-
-      if (category){
-        const { count, error: u1 } = await sb.from("transactions")
-          .update({ category })
-          .ilike("description", like)
-          .is("category", null)
-          .select("id", { count: "exact", head: true })
-          .maybeSingle();
-        if (u1){ ruleMsg.className="err"; ruleMsg.textContent=u1.message; return; }
-        updated += (count || 0);
-      }
-      if (source){
-        const { count, error: u2 } = await sb.from("transactions")
-          .update({ source_account_name: source })
-          .ilike("description", like)
-          .is("source_account_name", null)
-          .select("id", { count: "exact", head: true })
-          .maybeSingle();
-        if (u2){ ruleMsg.className="err"; ruleMsg.textContent=u2.message; return; }
-        updated += (count || 0);
-      }
-
-      if (auto_match){
-        const ids = rows.map(r=>r.id);
-        const { data: mrows } = await sb.from("matches").select("transaction_id").in("transaction_id", ids);
-        const matchedSet = new Set((mrows||[]).map(m=>m.transaction_id));
-        const toCreate = rows.filter(r=>!matchedSet.has(r.id));
-
-        if (toCreate.length){
-          const receipts = toCreate.map(r=>({
-            org_id: r.org_id || null,
-            account_id: r.account_id || null,
-            image_url: null,
-            size_bytes: 0,
-            receipt_date: r.txn_date,
-            total: Number(r.amount)||0,
-            tax: 0,
-            vendor: vendor_pattern,
-            source: "virtual_rule",
-            notes: "Virtual receipt generated by rule"
-          }));
-          const { data: insReceipts, error: insErr } = await sb.from("receipts").insert(receipts).select("id");
-          if (insErr){ ruleMsg.className="err"; ruleMsg.textContent=insErr.message; return; }
-
-          const matches = toCreate.map((r,i)=>({
-            org_id: r.org_id || null,
-            transaction_id: r.id,
-            receipt_id: insReceipts[i].id,
-            matched_amount: Number(r.amount)||0,
-            confidence: 0.98,
-            method: "rule_auto",
-            match_type: "auto"
-          }));
-          const { error: mErr } = await sb.from("matches").insert(matches);
-          if (mErr){ ruleMsg.className="err"; ruleMsg.textContent=mErr.message; return; }
-          updated += toCreate.length;
-        }
-      }
-
-      ruleMsg.className="ok";
-      ruleMsg.textContent = `Rule saved and applied. Updated ${updated} rows${auto_match?' (auto-matched where needed)':''}.`;
-      setTimeout(async ()=>{ ruleBackdrop.style.display="none"; await loadTransactions(); },700);
-    }
-
-    $("ruleSave").addEventListener("click", ()=> saveRuleCore(false));
-    $("ruleSaveApply").addEventListener("click", ()=> saveRuleCore(true));
-
-    // ===== Views (Saved presets) =====
-    function loadViews(){
-      let views = [];
-      try { views = JSON.parse(localStorage.getItem(VIEWS_KEY) || "[]"); } catch {}
-      viewsSelect.innerHTML = "";
-      const placeholder = document.createElement("option");
-      placeholder.value = ""; placeholder.textContent = "— Choose a view —";
-      viewsSelect.appendChild(placeholder);
-
-      const defId = localStorage.getItem(DEFAULT_VIEW_KEY);
-      (views || []).forEach(v => {
-        const opt = document.createElement("option");
-        opt.value = v.id;
-        opt.textContent = v.name + (v.id===defId ? " ⭐" : "");
-        viewsSelect.appendChild(opt);
-      });
-    }
-
-    function currentUiState(){
-      return {
-        fromDate: $("fromDate").value || "",
-        toDate: $("toDate").value || "",
-        mode: $("filterMode").value || "all",
-        search: $("quickSearch").value || "",
-      };
-    }
-    function applyUiState(state){
-      $("fromDate").value = state.fromDate || "";
-      $("toDate").value = state.toDate || "";
-      $("filterMode").value = state.mode || "all";
-      $("quickSearch").value = state.search || "";
-      applyAllFilters();
-    }
-    function persistLastState(){
-      try { localStorage.setItem(LAST_STATE_KEY, JSON.stringify(currentUiState())); } catch {}
-    }
-    function restoreOnLoad(){
-      const views = JSON.parse(localStorage.getItem(VIEWS_KEY) || "[]");
-      const defId = localStorage.getItem(DEFAULT_VIEW_KEY);
-      const def = (views || []).find(v => v.id === defId);
-      const last = JSON.parse(localStorage.getItem(LAST_STATE_KEY) || "null");
-      if (def) applyUiState(def.state);
-      else if (last) applyUiState(last);
-    }
-
-    $("saveViewBtn").addEventListener("click", ()=>{
-      const name = prompt("Name this view (e.g., Unmatched this month):");
-      if (!name) return;
-      const views = JSON.parse(localStorage.getItem(VIEWS_KEY) || "[]");
-      const id = "v_" + Date.now();
-      const state = currentUiState();
-      views.push({ id, name, state });
-      localStorage.setItem(VIEWS_KEY, JSON.stringify(views));
-      loadViews();
-      viewsMsg.textContent = `Saved view “${name}”.`;
-      setTimeout(()=>viewsMsg.textContent="", 2000);
-    });
-
-    $("setDefaultViewBtn").addEventListener("click", ()=>{
-      const id = viewsSelect.value;
-      if (!id) { alert("Pick a saved view first."); return; }
-      localStorage.setItem(DEFAULT_VIEW_KEY, id);
-      loadViews();
-      viewsMsg.textContent = "Default view set.";
-      setTimeout(()=>viewsMsg.textContent="", 1500);
-    });
-
-    $("deleteViewBtn").addEventListener("click", ()=>{
-      const id = viewsSelect.value;
-      if (!id) { alert("Pick a saved view to delete."); return; }
-      let views = JSON.parse(localStorage.getItem(VIEWS_KEY) || "[]");
-      const v = views.find(x=>x.id===id);
-      if (!confirm(`Delete view “${v?.name||id}”?`)) return;
-      views = views.filter(v => v.id !== id);
-      localStorage.setItem(VIEWS_KEY, JSON.stringify(views));
-      if (localStorage.getItem(DEFAULT_VIEW_KEY) === id) {
-        localStorage.removeItem(DEFAULT_VIEW_KEY);
-      }
-      loadViews();
-      viewsSelect.value = "";
-      viewsMsg.textContent = "Deleted.";
-      setTimeout(()=>viewsMsg.textContent="", 1200);
-    });
-
-    // Keyboard shortcuts
-    document.addEventListener("keydown", (e) => {
-      if (e.target && ["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName)) return;
-      if (e.key.toLowerCase() === "f") { e.preventDefault(); quickSearch.focus(); quickSearch.select(); }
-      if (e.key.toLowerCase() === "u") { e.preventDefault(); const firstSel=selected.values().next().value; if (firstSel) openUploadFor(firstSel); }
-      if (e.key.toLowerCase() === "e") {
-        e.preventDefault();
-        const firstSel=selected.values().next().value; if (!firstSel) return;
-        const tr = tbody.querySelector(`tr[data-id="${firstSel}"]`);
-        const catTd = tr?.querySelector('td[data-field="category"]');
-        if (catTd) makeEditable(catTd, firstSel, catTd.textContent.trim(), "category");
-      }
-      if (e.key.toLowerCase() === "r") {
-        e.preventDefault();
-        const firstSel=selected.values().next().value; if (!firstSel) return;
-        const rid = (txToReceipts.get(firstSel) || [])[0];
-        if (rid) window.location.href = `receipts.html?focus=${encodeURIComponent(rid)}`;
-      }
-      if (e.key.toLowerCase() === "g") { e.preventDefault(); const firstSel=selected.values().next().value; if (firstSel) openRuleFor(firstSel); }
-    });
-
-    // Buttons that need binding
-    $("exportBtn").addEventListener("click", exportCSV);
-
-    // Views init and initial load
-    loadViews();
-    restoreOnLoad();
-    loadTransactions();
-  </script>
+/* ===== Init ===== */
+loadViews(); restoreOnLoad(); loadTransactions();
+</script>
 </body>
 </html>
