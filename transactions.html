@@ -3,8 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Kosmos Transactions</title>
+  <title>Kosmos — Transactions</title>
+
+  <!-- Shared theme -->
   <link rel="stylesheet" href="style.css" />
+
+  <!-- Supabase -->
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -19,77 +23,96 @@
   </header>
 
   <main class="container">
-    <h2>Transactions Overview</h2>
-    <div class="filters">
-      <label>Date range:</label>
-      <input type="date" id="fromDate" /> – 
-      <input type="date" id="toDate" />
-      <select id="filterMode">
-        <option value="all">All Transactions</option>
-        <option value="matched">Matched Only</option>
-        <option value="unmatched">Unmatched Only</option>
-      </select>
-      <button id="filterBtn">Apply</button>
-      <button id="exportBtn">Export Accountant CSV</button>
-    </div>
+    <h2>💳 Transactions Overview</h2>
+    <p class="muted">View, filter, and export all transactions. CSV imports work great; bank sync is hidden for now.</p>
 
-    <div class="syncbox">
-      <h3>Bank Sync (Mock Flinks)</h3>
-      <small>Imports sample transactions via your Edge Function <code>bank-sync</code></small>
+    <!-- Filters -->
+    <div class="card">
       <div class="row">
-        <label>Account name:</label>
-        <input id="bankAccount" placeholder="CIBC Chequing 1234" />
-        <label>Days back:</label>
-        <input id="bankDays" type="number" value="14" min="1" max="90" />
-        <button id="bankImportBtn">Import Latest</button>
+        <label>Date Range:</label>
+        <input type="date" id="fromDate" />
+        <span>–</span>
+        <input type="date" id="toDate" />
+        <select id="filterMode">
+          <option value="all">All</option>
+          <option value="matched">Matched</option>
+          <option value="unmatched">Unmatched</option>
+        </select>
+        <button id="filterBtn">Apply</button>
+        <button id="exportBtn" class="ghost">📁 Export CSV</button>
       </div>
-      <p id="bankMsg" class="muted"></p>
     </div>
 
-    <div class="summary">
-      <p><strong>Total transactions:</strong> <span id="txnCount">—</span></p>
-      <p><strong>Debits total:</strong> <span id="debits">—</span></p>
-      <p><strong>Credits total:</strong> <span id="credits">—</span></p>
-      <p><strong>Net:</strong> <span id="net">—</span></p>
+    <!-- Summary -->
+    <div class="card">
+      <div class="grid-2">
+        <div><strong>Total Transactions:</strong> <span id="txnCount">—</span></div>
+        <div><strong>Debits:</strong> <span id="debits">—</span></div>
+        <div><strong>Credits:</strong> <span id="credits">—</span></div>
+        <div><strong>Net:</strong> <span id="net">—</span></div>
+      </div>
+      <p class="muted" style="margin-top:8px;">Numbers reflect current filters.</p>
     </div>
 
-    <table id="txnTable">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Description</th>
-          <th class="right">Amount</th>
-          <th>Type</th>
-          <th>Source</th>
-          <th>Institution</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+    <!-- Table -->
+    <div class="card">
+      <table id="txnTable">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Description</th>
+            <th class="right">Amount</th>
+            <th>Type</th>
+            <th>Source</th>
+            <th>Institution</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </main>
 
   <script>
+    // ===== Supabase client =====
     const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
     const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+    // ===== DOM helpers =====
     const qs = (id) => document.getElementById(id);
     const tableBody = qs("txnTable").querySelector("tbody");
 
+    // ===== Data loading =====
     async function loadTransactions() {
       const from = qs("fromDate").value || "1900-01-01";
-      const to = qs("toDate").value || "2999-12-31";
+      const to   = qs("toDate").value   || "2999-12-31";
       const mode = qs("filterMode").value;
 
-      let query = sb.from("transactions").select("*").gte("txn_date", from).lte("txn_date", to).order("txn_date", { ascending: false });
+      let query = sb
+        .from("transactions")
+        .select("*")
+        .gte("txn_date", from)
+        .lte("txn_date", to)
+        .order("txn_date", { ascending: false });
 
-      if (mode === "matched") query = query.in("id", (await sb.from("matches").select("transaction_id")).data?.map(x => x.transaction_id) || []);
-      if (mode === "unmatched") query = query.not("id", "in", (await sb.from("matches").select("transaction_id")).data?.map(x => x.transaction_id) || []);
+      // Matched/unmatched via matches table
+      if (mode === "matched") {
+        const ids = (await sb.from("matches").select("transaction_id")).data?.map(x => x.transaction_id) || [];
+        query = query.in("id", ids);
+      }
+      if (mode === "unmatched") {
+        const ids = (await sb.from("matches").select("transaction_id")).data?.map(x => x.transaction_id) || [];
+        query = query.not("id", "in", ids);
+      }
 
       const { data, error } = await query;
       if (error) {
         console.error(error);
         tableBody.innerHTML = `<tr><td colspan="6" class="err">${error.message}</td></tr>`;
+        qs("txnCount").textContent = "—";
+        qs("debits").textContent   = "—";
+        qs("credits").textContent  = "—";
+        qs("net").textContent      = "—";
         return;
       }
       renderTable(data);
@@ -98,6 +121,10 @@
     function renderTable(data) {
       if (!data?.length) {
         tableBody.innerHTML = `<tr><td colspan="6" class="muted">No transactions found.</td></tr>`;
+        qs("txnCount").textContent = 0;
+        qs("debits").textContent   = "$0.00";
+        qs("credits").textContent  = "$0.00";
+        qs("net").textContent      = "$0.00";
         return;
       }
 
@@ -105,6 +132,7 @@
       const rows = data.map(t => {
         const amt = Number(t.amount) || 0;
         if (t.direction === "debit") debitSum += amt; else creditSum += amt;
+
         return `<tr>
           <td>${t.txn_date ?? ""}</td>
           <td>${t.description ?? ""}</td>
@@ -117,11 +145,12 @@
 
       tableBody.innerHTML = rows;
       qs("txnCount").textContent = data.length;
-      qs("debits").textContent = `$${debitSum.toFixed(2)}`;
-      qs("credits").textContent = `$${creditSum.toFixed(2)}`;
-      qs("net").textContent = `$${(creditSum - debitSum).toFixed(2)}`;
+      qs("debits").textContent   = `$${debitSum.toFixed(2)}`;
+      qs("credits").textContent  = `$${creditSum.toFixed(2)}`;
+      qs("net").textContent      = `$${(creditSum - debitSum).toFixed(2)}`;
     }
 
+    // ===== Export receipts CSV (uses accountant view) =====
     async function exportCSV() {
       const { data, error } = await sb.from("v_accountant_export_receipts").select("*");
       if (error || !data?.length) { alert("No export data."); return; }
@@ -141,33 +170,11 @@
       URL.revokeObjectURL(url);
     }
 
-    async function importBank() {
-      const account = qs("bankAccount").value || "CIBC Chequing";
-      const days = Number(qs("bankDays").value || 14);
-      qs("bankMsg").className = "muted";
-      qs("bankMsg").textContent = "Importing from mock Flinks…";
-
-      try {
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/bank-sync?route=import`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ days, account })
-        });
-        const json = await res.json();
-        if (!json.ok) throw new Error(json.error || "Import failed.");
-        qs("bankMsg").className = "ok";
-        qs("bankMsg").textContent = `Imported ${json.inserted || 0} transactions.`;
-        await loadTransactions();
-      } catch (e) {
-        qs("bankMsg").className = "err";
-        qs("bankMsg").textContent = e.message;
-      }
-    }
-
+    // ===== Events =====
     qs("filterBtn").addEventListener("click", loadTransactions);
     qs("exportBtn").addEventListener("click", exportCSV);
-    qs("bankImportBtn").addEventListener("click", importBank);
 
+    // Initial load
     loadTransactions();
   </script>
 </body>
