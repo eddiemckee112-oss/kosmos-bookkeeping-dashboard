@@ -5,21 +5,19 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Kosmos Bookkeeping — Transactions</title>
   <link rel="stylesheet" href="style.css"/>
+  <!-- Supabase JS v2 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .pill{padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:#fff}
     .status-btn{font-size:.8rem;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#fff;cursor:pointer}
     .status-btn.ok{background:#eef8f1;border-color:#cfe9d7;color:var(--ok)}
+    .upload-btn{font-size:.8rem;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#f9f9f9;cursor:pointer}
+    .right{text-align:right} .muted{color:var(--muted)} .ok{color:var(--ok)} .err{color:var(--err)} .small{font-size:.85rem}
     .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.18);display:none;align-items:flex-start;justify-content:center;padding:40px 12px;z-index:50}
     .modal{background:#fff;width:min(1100px,100%);max-height:85vh;overflow:auto;border:1px solid var(--border);border-radius:16px;padding:16px 16px 18px}
-    .right{text-align:right} .muted{color:var(--muted)} .ok{color:var(--ok)} .err{color:var(--err)} .small{font-size:.85rem}
-    .field{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
-    .hidden{display:none}
-    .upload-btn{font-size:.8rem;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#f9f9f9;cursor:pointer}
   </style>
 </head>
-
 <body>
   <header>
     <h1>Kosmos Bookkeeping</h1>
@@ -35,10 +33,12 @@
     <h2>💳 Transactions</h2>
     <p class="muted">Filter, import, categorize, attach receipts, and track sources.</p>
 
+    <!-- Controls -->
     <div class="card" style="margin-bottom:14px;">
       <div class="toolbar">
         <label>Date Range:</label>
         <input id="fromDate" type="date"/><span>–</span><input id="toDate" type="date"/>
+
         <select id="typeFilter">
           <option value="all">All</option>
           <option value="debit">Debits only</option>
@@ -49,12 +49,31 @@
           <option value="no_source">No Source</option>
           <option value="duplicates">Possible Duplicates</option>
         </select>
+
         <button id="applyBtn">Apply</button>
         <input id="quickSearch" placeholder="Search description/category/source…" style="flex:1;min-width:220px"/>
         <button id="importBtn" class="ghost">📥 Import CSV</button>
+        <button id="exportBtn" class="ghost">⬇️ Export CSV</button>
+      </div>
+
+      <div class="row" style="gap:10px;margin-top:10px;">
+        <span class="pill">Unmatched: <b id="chipUnmatched">—</b></span>
+        <span class="pill">Uncategorized: <b id="chipUncat">—</b></span>
+        <span class="pill">No Source: <b id="chipNoSource">—</b></span>
+        <span class="pill">Duplicates: <b id="chipDupes">—</b></span>
       </div>
     </div>
 
+    <!-- Totals -->
+    <div class="card" style="margin-bottom:14px;">
+      <div>Total Transactions: <b id="totalRows">—</b></div>
+      <div>Debits: <b id="totalDebits">$0.00</b></div>
+      <div>Credits: <b id="totalCredits">$0.00</b></div>
+      <div>Net: <b id="totalNet">$0.00</b></div>
+      <small class="muted">Numbers reflect the current filter.</small>
+    </div>
+
+    <!-- Table -->
     <div class="card">
       <table id="txTable">
         <thead>
@@ -75,6 +94,37 @@
     </div>
   </main>
 
+  <!-- Import Modal (unchanged mapping A/B/C/D) -->
+  <div id="impBackdrop" class="modal-backdrop">
+    <div class="modal">
+      <h3>Import Transactions (CSV)</h3>
+      <p class="note muted small">
+        Mapping is <b>A=Date</b>, <b>B=Description</b>, <b>C=Debit</b>, <b>D=Credit</b>.  
+        Handles $ signs, commas, and (parentheses) negatives.
+      </p>
+
+      <div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <input id="csvFile" type="file" accept=".csv,text/csv"/>
+        <button id="closeImport" class="ghost">Close</button>
+      </div>
+
+      <p id="impStatus" class="muted small" style="margin-top:10px;">Select a CSV to begin.</p>
+      <div class="kpill small" id="countPill" style="display:inline-block;margin-top:6px;">Parsed — · Valid — · Skipped — · Debits — · Credits —</div>
+
+      <div id="impPreview" class="card" style="margin-top:12px;display:none;">
+        <h4 style="margin:0 0 8px 0">Preview (first 20 rows)</h4>
+        <table style="width:100%;border-collapse:collapse;">
+          <thead><tr><th>Date</th><th>Description</th><th class="right">Amount</th><th>Direction</th><th>Source</th></tr></thead>
+          <tbody id="prevBody"><tr><td colspan="5" class="muted">No rows yet</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="row" style="justify-content:flex-end;margin-top:12px">
+        <button id="importGo" class="ghost">Import</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Upload Receipt Modal -->
   <div id="uploadBackdrop" class="modal-backdrop">
     <div class="modal">
@@ -90,35 +140,270 @@
   </div>
 
   <script>
+    // === Supabase client ===
     const sb = supabase.createClient(
       "https://advihqhjjlxumgdlbwui.supabase.co",
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY"
     );
 
+    // === helpers ===
     const $ = id => document.getElementById(id);
+    const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const money = n => (n==null?0:n).toLocaleString(undefined,{style:"currency",currency:"CAD"});
 
+    // === load + render ===
     async function loadTransactions(){
-      const { data, error } = await sb.from("transactions")
-        .select("id,txn_date,description,amount,direction,category,source_account_name")
-        .order("txn_date",{ascending:false});
-      if(error){ alert(error.message); return; }
+      const from = $("fromDate").value || null;
+      const to   = $("toDate").value || null;
+      const q    = $("quickSearch").value.trim().toLowerCase();
+      const type = $("typeFilter").value;
 
-      $("txBody").innerHTML = data.map(r=>`
-        <tr>
-          <td>${r.txn_date||""}</td>
-          <td>${r.description||""}</td>
+      let query = sb.from("transactions").select(`
+        id, txn_date, description, amount, direction, category, source_account_name,
+        matches:matches(id, transaction_id, receipt_id)
+      `);
+
+      if (from) query = query.gte("txn_date", from);
+      if (to)   query = query.lte("txn_date", to);
+      if (type === "debit")  query = query.eq("direction","debit");
+      if (type === "credit") query = query.eq("direction","credit");
+
+      query = query.order("txn_date",{ascending:false});
+
+      const { data, error } = await query;
+      if (error){ alert(error.message); return; }
+
+      let rows = data || [];
+      if (type === "matched")   rows = rows.filter(r => r.matches && r.matches.length);
+      if (type === "unmatched") rows = rows.filter(r => !r.matches || r.matches.length===0);
+      if (type === "uncategorized") rows = rows.filter(r => !r.category);
+      if (type === "no_source")     rows = rows.filter(r => !r.source_account_name);
+      if (type === "duplicates")    rows = findDuplicates(rows);
+
+      if (q) rows = rows.filter(r =>
+        (r.description||"").toLowerCase().includes(q) ||
+        (r.source_account_name||"").toLowerCase().includes(q) ||
+        (r.category||"").toLowerCase().includes(q)
+      );
+
+      const d = rows.filter(r=>r.direction==='debit').reduce((s,r)=>s+(+r.amount||0),0);
+      const c = rows.filter(r=>r.direction==='credit').reduce((s,r)=>s+(+r.amount||0),0);
+      $("totalRows").textContent   = rows.length;
+      $("totalDebits").textContent = money(d);
+      $("totalCredits").textContent= money(c);
+      $("totalNet").textContent    = money(c-d);
+
+      $("chipUnmatched").textContent = rows.filter(r => !r.matches || r.matches.length===0).length;
+      $("chipUncat").textContent     = rows.filter(r => !r.category).length;
+      $("chipNoSource").textContent  = rows.filter(r => !r.source_account_name).length;
+      $("chipDupes").textContent     = findDuplicates(rows).length;
+
+      $("txBody").innerHTML = rows.map(r=>{
+        const matched = r.matches && r.matches.length;
+        return `<tr>
+          <td>${esc(r.txn_date||"")}</td>
+          <td>${esc(r.description||"")}</td>
           <td class="right">${money(r.amount)}</td>
-          <td>${r.direction}</td>
-          <td>${r.category||""}</td>
-          <td>${r.source_account_name||""}</td>
-          <td>${r.category ? "Categorized" : "Uncategorized"}</td>
-          <td><button class="upload-btn" onclick="openUpload('${r.id}','${r.description?.replace(/'/g,'')}','${r.txn_date}','${r.amount}')">📷 Upload</button></td>
-        </tr>`).join("");
-      $("rowsCount").textContent = "Rows: " + data.length;
+          <td>${esc(r.direction||"")}</td>
+          <td>${esc(r.category||"")}</td>
+          <td>${esc(r.source_account_name||"")}</td>
+          <td><button class="status-btn ${matched?'ok':'ghost'}">${matched?'Matched':'Unmatched'}</button></td>
+          <td><button class="upload-btn" onclick="openUpload('${r.id}','${esc(r.description||'')}', '${esc(r.txn_date||'')}', '${r.amount}')">📷 Upload</button></td>
+        </tr>`;
+      }).join("");
+      $("rowsCount").textContent = `Rows: ${rows.length}`;
     }
 
-    // -------- Upload Receipt Modal --------
+    function findDuplicates(rows){
+      const key = r => `${(r.txn_date||"").slice(0,10)}|${(r.amount||0)}|${(r.description||"").toLowerCase().replace(/\s+/g,' ').trim().slice(0,64)}`;
+      const map = new Map();
+      rows.forEach(r => map.set(key(r), (map.get(key(r))||0)+1));
+      return rows.filter(r => map.get(key(r))>1);
+    }
+
+    // === filters & search ===
+    $("applyBtn").addEventListener("click", loadTransactions);
+    $("quickSearch").addEventListener("input", ()=>{ clearTimeout(window.__qsT); window.__qsT=setTimeout(loadTransactions,150); });
+
+    // === Export ===
+    $("exportBtn").addEventListener("click", async ()=>{
+      const { data, error } = await sb.from("transactions")
+        .select("txn_date,description,amount,direction,category,source_account_name")
+        .order("txn_date",{ascending:false});
+      if(error){ alert(error.message); return; }
+      const rows = [
+        ["Date","Description","Amount","Type","Category","Source"],
+        ...data.map(r=>[
+          r.txn_date||"",
+          (r.description||"").replace(/[\r\n]+/g," "),
+          r.amount,
+          r.direction,
+          r.category||"",
+          r.source_account_name||""
+        ])
+      ];
+      const csv = rows.map(r=>r.map(cell=>{
+        const s=String(cell??""); return /[",\n;]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;
+      }).join(",")).join("\n");
+      const blob = new Blob([csv],{type:"text/csv;charset=utf-8"});
+      const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="transactions_export.csv"; a.click(); URL.revokeObjectURL(a.href);
+    });
+
+    // === Importer (UNCHANGED logic A/B/C/D) ===
+    $("importBtn").addEventListener("click", ()=>openImporter());
+    $("closeImport").addEventListener("click", ()=>{ $("impBackdrop").style.display="none"; });
+
+    let __valid=[]; let __skipped=[];
+
+    function openImporter(){
+      $("impStatus").className="muted small";
+      $("impStatus").textContent="Select a CSV to begin.";
+      $("countPill").textContent="Parsed — · Valid — · Skipped — · Debits — · Credits —";
+      $("prevBody").innerHTML=`<tr><td colspan="5" class="muted">No rows yet</td></tr>`;
+      $("impPreview").style.display="none";
+      $("csvFile").value="";
+      $("impBackdrop").style.display="flex";
+      __valid=[]; __skipped=[];
+    }
+
+    function detectDelimiterBlock(sample){
+      const c=(sample.match(/,/g)||[]).length, s=(sample.match(/;/g)||[]).length, t=(sample.match(/\t/g)||[]).length;
+      if(Math.max(c,s,t)===s) return ";"; if(Math.max(c,s,t)===t) return "\t"; return ",";
+    }
+    function parseLine(line, delim){
+      const out=[]; let cur='', q=false;
+      for(let i=0;i<line.length;i++){
+        const ch=line[i];
+        if(ch==='"'){ if(q && line[i+1]==='"'){cur+='"';i++;} else q=!q; }
+        else if(ch===delim && !q){ out.push(cur); cur=''; }
+        else cur+=ch;
+      }
+      out.push(cur);
+      return out.map(x=>x.trim());
+    }
+    function parseCSV(text){
+      const sample = text.split(/\r?\n/).slice(0,8).join("\n");
+      const delim = detectDelimiterBlock(sample);
+      const lines = text.replace(/\r\n/g,"\n").replace(/\r/g,"\n").split("\n");
+      const rows = lines.map(l=> l.trim()==="" ? null : parseLine(l,delim));
+      return { rows, delim };
+    }
+    function isDateLike(s){
+      if(!s) return false;
+      const t=String(s).trim();
+      if(/^\d{4}[-/]\d{2}[-/]\d{2}$/.test(t)) return true;
+      const d=new Date(t); return !isNaN(d.valueOf());
+    }
+    function toISO(s){
+      if(!s) return null;
+      const t=String(s).trim();
+      if(/^\d{4}[-/]\d{2}[-/]\d{2}$/.test(t)) return t.replace(/\//g,"-");
+      const d=new Date(t); if(isNaN(d.valueOf())) return null;
+      return d.toISOString().slice(0,10);
+    }
+    function parseNum(s){
+      if(s==null) return null;
+      let v=String(s).trim();
+      if(!v) return null;
+      const paren = /^\(.*\)$/.test(v); if(paren) v=v.replace(/[()]/g,"");
+      v = v.replace(/\$/g,"").replace(/,/g,"");
+      const n = Number(v); if(Number.isNaN(n)) return null;
+      return paren ? -Math.abs(n) : n;
+    }
+
+    $("csvFile").addEventListener("change", async (e)=>{
+      __valid=[]; __skipped=[];
+      const f=e.target.files?.[0]; if(!f) return;
+
+      $("impStatus").textContent="Reading file…";
+      const text = await f.text();
+      const { rows } = parseCSV(text);
+
+      const parsedLines = rows.filter(r=>r!==undefined).length;
+      const nonBlank = rows.filter(r=> r && r.some(x=>String(x).trim().length));
+      if(nonBlank.length===0){
+        $("impStatus").className="err small"; $("impStatus").textContent="No rows detected.";
+        $("countPill").textContent=`Parsed ${parsedLines} · Valid 0 · Skipped ${parsedLines} · Debits 0 · Credits 0`;
+        $("impPreview").style.display="none"; return;
+      }
+
+      let start=0;
+      if(nonBlank[0] && !isDateLike(nonBlank[0][0])) start=1;
+
+      const DATE_COL = 0, DESC_COL = 1, DEBIT_COL = 2, CREDIT_COL = 3;
+
+      let debSum=0, credSum=0, valid=0;
+
+      for(let i=start;i<nonBlank.length;i++){
+        const r=nonBlank[i];
+        const date = toISO(r[DATE_COL]);
+        const desc = String(r[DESC_COL]||"").trim();
+        if(!date || !desc){ __skipped.push({line:i+1,reason:'bad date/desc'}); continue; }
+
+        const dVal = parseNum(r[DEBIT_COL]);
+        const cVal = parseNum(r[CREDIT_COL]);
+
+        let amount=null, direction=null;
+
+        if(cVal!=null && cVal>0){ amount = Math.abs(cVal); direction='credit'; credSum+=amount; }
+        else if(dVal!=null && dVal!==0){ amount = Math.abs(dVal); direction='debit'; debSum+=amount; }
+        else { __skipped.push({line:i+1,reason:'no debit/credit'}); continue; }
+
+        __valid.push({date, desc, amount, direction, source: null}); valid++;
+      }
+
+      const skippedCount = Math.max(parsedLines - (start>0?1:0) - valid, 0);
+      $("countPill").textContent = `Parsed ${parsedLines} · Valid ${valid} · Skipped ${skippedCount} · Debits ${debSum.toFixed(2)} · Credits ${credSum.toFixed(2)}`;
+
+      if(valid===0){
+        $("impStatus").className="err small";
+        $("impStatus").textContent="No valid rows after parsing. Check column positions.";
+        $("impPreview").style.display="none"; return;
+      }
+
+      const first20 = __valid.slice(0,20);
+      $("prevBody").innerHTML = first20.map(v=>`
+        <tr>
+          <td>${esc(v.date)}</td>
+          <td>${esc(v.desc)}</td>
+          <td class="right">${money(v.amount)}</td>
+          <td>${v.direction}</td>
+          <td>${esc(v.source||"")}</td>
+        </tr>`).join("");
+      $("impPreview").style.display="block";
+      $("impStatus").className="muted small";
+      $("impStatus").textContent=`Ready to import ${valid} transactions.`;
+    });
+
+    $("importGo").addEventListener("click", async ()=>{
+      if(!__valid.length){ alert("No valid rows."); return; }
+      $("impStatus").className="muted small";
+      $("impStatus").textContent=`Importing ${__valid.length} transactions…`;
+      const rows = __valid.map(v=>({
+        txn_date: v.date,
+        post_date: v.date,
+        description: v.desc,
+        amount: v.amount,
+        direction: v.direction,
+        source_account_name: v.source,
+        currency: "CAD",
+        imported_via: "csv"
+      }));
+      try{
+        for(let i=0;i<rows.length;i+=300){
+          const chunk = rows.slice(i,i+300);
+          const { error } = await sb.from("transactions").insert(chunk);
+          if(error) throw error;
+          $("impStatus").textContent = `Importing ${rows.length}… ${Math.min(i+300,rows.length)}/${rows.length}`;
+        }
+        $("impStatus").className="ok small"; $("impStatus").textContent=`✅ Imported ${rows.length} transactions.`;
+        $("impBackdrop").style.display="none"; await loadTransactions();
+      }catch(err){
+        $("impStatus").className="err small"; $("impStatus").textContent=String(err.message||err);
+      }
+    });
+
+    // === Upload Receipt flow ===
     let currentTxn = null;
     function openUpload(id, desc, date, amt){
       currentTxn = { id, desc, date, amt };
@@ -127,6 +412,7 @@
       $("uploadStatus").textContent = "";
       $("uploadBackdrop").style.display = "flex";
     }
+    window.openUpload = openUpload;
 
     $("cancelUpload").onclick = ()=>{ $("uploadBackdrop").style.display="none"; };
 
@@ -136,15 +422,16 @@
       $("uploadStatus").textContent = "Uploading…";
 
       const filename = `${Date.now()}_${file.name}`;
-      const { data, error } = await sb.storage
-        .from("receipts-warm")
-        .upload(filename, file);
+      const { error } = await sb.storage.from("receipts-warm").upload(filename, file);
       if(error){ $("uploadStatus").textContent = "Error: " + error.message; return; }
 
-      // Insert new receipt record
       const imageUrl = `https://advihqhjjlxumgdlbwui.supabase.co/storage/v1/object/public/receipts-warm/${filename}`;
+
+      const { data: orgRow } = await sb.from("orgs").select("id").limit(1).single();
+      const org_id = orgRow?.id || null;
+
       const { error: err2 } = await sb.from("receipts").insert({
-        org_id: (await getOrgId()),
+        org_id,
         account_id: null,
         image_url: imageUrl,
         receipt_date: currentTxn.date,
@@ -160,12 +447,7 @@
       setTimeout(()=>{ $("uploadBackdrop").style.display="none"; },800);
     };
 
-    async function getOrgId(){
-      const { data, error } = await sb.from("orgs").select("id").limit(1).single();
-      if(error) return null;
-      return data.id;
-    }
-
+    // Boot
     loadTransactions();
   </script>
 </body>
