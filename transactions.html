@@ -16,6 +16,31 @@
     td.editable { cursor: text; }
     td.editing  { background:#fffbe6; }
     .hint { font-size:.85rem; color:var(--muted); margin-top:6px; }
+    .toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .spacer { flex: 1 1 auto; }
+
+    /* Modal */
+    .modal-backdrop{
+      position:fixed; inset:0; background:rgba(0,0,0,.35);
+      display:none; align-items:center; justify-content:center; z-index:50;
+    }
+    .modal{
+      width:min(920px, 92vw); max-height:85vh; overflow:auto;
+      background:#fff; border:1px solid var(--border); border-radius:14px; padding:16px;
+      box-shadow:0 10px 35px rgba(0,0,0,.18);
+    }
+    .modal h3{ margin:0 0 8px 0 }
+    .map-grid{ display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
+    @media (max-width: 760px){ .map-grid{ grid-template-columns:1fr; } }
+    .preview{
+      border:1px solid var(--border); border-radius:10px; overflow:auto; background:#fff;
+      max-height:320px;
+    }
+    .preview table{ font-size:.9rem }
+    .sticky-footer{
+      position:sticky; bottom:0; background:#fff; border-top:1px solid var(--border);
+      padding:10px 12px; display:flex; gap:12px; flex-wrap:wrap; justify-content:flex-end;
+    }
   </style>
 </head>
 <body>
@@ -30,29 +55,32 @@
   </header>
 
   <main class="container">
-    <h2>💳 Transactions Overview</h2>
-    <p class="muted">View, filter, and export all transactions. Click <b>Category</b> or <b>Source</b> to edit and save instantly.</p>
+    <h2>💳 Transactions</h2>
+    <p class="muted">Filter, import, categorize, and export your transactions. Click <b>Category</b> or <b>Source</b> to edit inline.</p>
 
     <!-- Filters / Actions -->
     <div class="card">
-      <div class="row" style="align-items:center; gap:12px;">
+      <div class="toolbar">
         <label>Date Range:</label>
         <input type="date" id="fromDate" />
         <span>–</span>
         <input type="date" id="toDate" />
-        <select id="filterMode">
+        <select id="filterMode" title="Match status">
           <option value="all">All</option>
           <option value="matched">Matched</option>
           <option value="unmatched">Unmatched</option>
         </select>
         <button id="filterBtn">Apply</button>
 
-        <span style="flex:1 1 auto"></span>
+        <span class="spacer"></span>
 
+        <input id="quickSearch" placeholder="Search description/category/source…" style="padding:.5rem .7rem; border:1px solid #cfcfcf; border-radius:10px; min-width:260px;" />
+
+        <button id="importBtn" class="ghost">⬆️ Import CSV</button>
         <button id="backfillBtn" class="ghost" title="Fill missing Source from Accounts">↺ Backfill Sources</button>
         <button id="exportBtn" class="ghost">📁 Export CSV</button>
       </div>
-      <div class="hint">“Source” shows the account name (or the institution if the account name is empty). Editing Source writes to <code>source_account_name</code>.</div>
+      <div class="hint">“Source” prefers the account name, else the institution. Editing Source writes to <code>source_account_name</code>.</div>
       <p id="status" class="muted" style="margin-top:6px;"></p>
     </div>
 
@@ -64,7 +92,7 @@
         <div><strong>Credits:</strong> <span id="credits">—</span></div>
         <div><strong>Net:</strong> <span id="net">—</span></div>
       </div>
-      <p class="muted" style="margin-top:8px;">Numbers reflect the current filter.</p>
+      <p class="muted" style="margin-top:8px;">Numbers reflect the current filter. Use Quick Search to instantly narrow the table.</p>
     </div>
 
     <!-- Table -->
@@ -81,9 +109,85 @@
           </tr>
         </thead>
         <tbody></tbody>
+        <tfoot>
+          <tr>
+            <td colspan="6">
+              <div class="sticky-footer">
+                <span class="kpill">Rows: <b id="ftRows">0</b></span>
+                <span class="kpill">Debits: <b id="ftDebits">$0.00</b></span>
+                <span class="kpill">Credits: <b id="ftCredits">$0.00</b></span>
+                <span class="kpill">Net: <b id="ftNet">$0.00</b></span>
+              </div>
+            </td>
+          </tr>
+        </tfoot>
       </table>
     </div>
   </main>
+
+  <!-- Import Modal -->
+  <div id="modalBackdrop" class="modal-backdrop">
+    <div class="modal">
+      <h3>Import Transactions (CSV)</h3>
+      <p class="muted">Select your CSV, map the columns, preview, then import. We’ll skip blank rows.</p>
+
+      <div class="card" style="margin-bottom:10px;">
+        <div class="row">
+          <input id="csvFile" type="file" accept=".csv,text/csv" />
+          <span class="muted">Max ~5MB</span>
+          <span class="spacer"></span>
+          <button id="closeModal" class="ghost">Close</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:10px;">
+        <h4 style="margin:0 0 8px 0;">Column Mapping</h4>
+        <div class="map-grid">
+          <div>
+            <label>Transaction Date</label>
+            <select id="mapDate"></select>
+          </div>
+          <div>
+            <label>Description</label>
+            <select id="mapDesc"></select>
+          </div>
+          <div>
+            <label>Amount</label>
+            <select id="mapAmount"></select>
+          </div>
+          <div>
+            <label>Direction (debit/credit) <span class="muted">(optional)</span></label>
+            <select id="mapDir"></select>
+          </div>
+          <div>
+            <label>Source <span class="muted">(optional)</span></label>
+            <select id="mapSource"></select>
+          </div>
+          <div>
+            <label>Category <span class="muted">(optional)</span></label>
+            <select id="mapCategory"></select>
+          </div>
+        </div>
+        <p class="muted" style="margin-top:8px;">If “Direction” is empty, we’ll infer it from the Amount sign (negative = debit, positive = credit).</p>
+      </div>
+
+      <div class="card">
+        <h4 style="margin:0 0 8px 0;">Preview (first 50 rows)</h4>
+        <div class="preview">
+          <table id="previewTable">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="row" style="margin-top:10px; justify-content:space-between;">
+          <span id="importStatus" class="muted"></span>
+          <div class="row">
+            <button id="startImport">Import</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script>
     // ===== Supabase =====
@@ -94,6 +198,12 @@
     const $ = (id) => document.getElementById(id);
     const tbody = document.querySelector("#txnTable tbody");
     const statusEl = $("status");
+    const quickSearch = $("quickSearch");
+
+    // ===== State =====
+    let allRows = [];     // raw from DB
+    let viewRows = [];    // filtered by quick search
+    let csvData = null;   // parsed CSV { headers, rows }
 
     // ===== Load & Filter =====
     async function loadTransactions() {
@@ -101,8 +211,7 @@
       const to   = $("toDate").value   || "2999-12-31";
       const mode = $("filterMode").value;
 
-      let q = sb
-        .from("transactions")
+      let q = sb.from("transactions")
         .select("*")
         .gte("txn_date", from)
         .lte("txn_date", to)
@@ -118,7 +227,25 @@
 
       const { data, error } = await q;
       if (error) return renderError(error.message);
-      renderTable(data || []);
+      allRows = data || [];
+      applyQuickSearch();
+    }
+
+    function applyQuickSearch(){
+      const q = (quickSearch.value || "").trim().toLowerCase();
+      if (!q) {
+        viewRows = allRows.slice();
+      } else {
+        viewRows = allRows.filter(r => {
+          const sourceDisplay = r.source_account_name || r.institution || "";
+          return (
+            String(r.description || "").toLowerCase().includes(q) ||
+            String(r.category || "").toLowerCase().includes(q) ||
+            String(sourceDisplay).toLowerCase().includes(q)
+          );
+        });
+      }
+      renderTable(viewRows);
     }
 
     function renderError(msg) {
@@ -127,6 +254,10 @@
       $("debits").textContent = "$0.00";
       $("credits").textContent = "$0.00";
       $("net").textContent = "$0.00";
+      $("ftRows").textContent = "0";
+      $("ftDebits").textContent = "$0.00";
+      $("ftCredits").textContent = "$0.00";
+      $("ftNet").textContent = "$0.00";
     }
 
     // ===== Inline edit helpers (Category & Source) =====
@@ -152,16 +283,18 @@
         td.innerHTML = newVal ? escapeHtml(newVal) : "";
         td.classList.remove("editing");
         td.classList.add("editable");
-        // Save only if changed
         if ((initialValue || null) !== newVal) {
           await sb.from("transactions").update({ [field]: newVal }).eq("id", txnId);
+          // keep allRows in sync so quick search doesn't revert values
+          const row = allRows.find(r => r.id === txnId);
+          if (row) row[field] = newVal;
         }
       });
 
       td.innerHTML = ""; td.appendChild(input); input.focus(); input.select();
     }
 
-    // ===== Render =====
+    // ===== Render Table =====
     function renderTable(rows) {
       if (!rows.length) {
         tbody.innerHTML = `<tr><td colspan="6" class="muted">No transactions found.</td></tr>`;
@@ -169,6 +302,10 @@
         $("debits").textContent = "$0.00";
         $("credits").textContent = "$0.00";
         $("net").textContent = "$0.00";
+        $("ftRows").textContent = "0";
+        $("ftDebits").textContent = "$0.00";
+        $("ftCredits").textContent = "$0.00";
+        $("ftNet").textContent = "$0.00";
         return;
       }
 
@@ -177,7 +314,6 @@
         const amt = Number(t.amount) || 0;
         if (t.direction === "debit") debit += amt; else credit += amt;
 
-        // Single Source: prefer account name, else institution
         const sourceDisplay = t.source_account_name || t.institution || "";
 
         return `<tr data-id="${t.id}">
@@ -192,23 +328,28 @@
 
       tbody.innerHTML = html;
 
-      // attach inline editors (Category + Source)
+      // attach inline editors
       Array.from(tbody.querySelectorAll("tr")).forEach(tr => {
         const id = tr.getAttribute("data-id");
-
         const catTd = tr.querySelector('td[data-field="category"]');
-        catTd.classList.add("editable");
-        catTd.addEventListener("click", () => makeEditable(catTd, id, catTd.textContent.trim(), "category"));
-
         const srcTd = tr.querySelector('td[data-field="source_account_name"]');
+        catTd.classList.add("editable");
         srcTd.classList.add("editable");
+        catTd.addEventListener("click", () => makeEditable(catTd, id, catTd.textContent.trim(), "category"));
         srcTd.addEventListener("click", () => makeEditable(srcTd, id, srcTd.textContent.trim(), "source_account_name"));
       });
 
+      // top summary
       $("txnCount").textContent = rows.length;
       $("debits").textContent   = `$${debit.toFixed(2)}`;
       $("credits").textContent  = `$${credit.toFixed(2)}`;
       $("net").textContent      = `$${(credit - debit).toFixed(2)}`;
+
+      // sticky footer summary
+      $("ftRows").textContent   = rows.length;
+      $("ftDebits").textContent = `$${debit.toFixed(2)}`;
+      $("ftCredits").textContent= `$${credit.toFixed(2)}`;
+      $("ftNet").textContent    = `$${(credit - debit).toFixed(2)}`;
     }
 
     // ===== Export receipts CSV (unchanged) =====
@@ -242,10 +383,222 @@
       await loadTransactions();
     }
 
+    // ===== CSV Import Modal logic =====
+    const backdrop = $("modalBackdrop");
+    const importBtn = $("importBtn");
+    const closeModal = $("closeModal");
+    const csvFile = $("csvFile");
+    const mapSelects = {
+      date: $("mapDate"),
+      desc: $("mapDesc"),
+      amount: $("mapAmount"),
+      dir: $("mapDir"),
+      source: $("mapSource"),
+      category: $("mapCategory"),
+    };
+    const previewTable = $("previewTable");
+    const importStatus = $("importStatus");
+    const startImportBtn = $("startImport");
+
+    importBtn.addEventListener("click", () => {
+      backdrop.style.display = "flex";
+      importStatus.textContent = "";
+      previewTable.thead && (previewTable.thead.innerHTML = "");
+      previewTable.querySelector("thead").innerHTML = "";
+      previewTable.querySelector("tbody").innerHTML = "";
+      csvFile.value = "";
+      csvData = null;
+      Object.values(mapSelects).forEach(sel => sel.innerHTML = "");
+    });
+    closeModal.addEventListener("click", () => { backdrop.style.display = "none"; });
+
+    csvFile.addEventListener("change", async (e) => {
+      const f = e.target.files?.[0];
+      if (!f) return;
+      importStatus.textContent = "Parsing CSV…";
+      const text = await f.text();
+      csvData = parseCSV(text);
+
+      if (!csvData || !csvData.headers?.length) {
+        importStatus.className="err";
+        importStatus.textContent = "Could not read CSV headers.";
+        return;
+      }
+
+      // populate mapping selects
+      for (const [key, sel] of Object.entries(mapSelects)) {
+        sel.innerHTML = "";
+        csvData.headers.forEach((h, idx) => {
+          const opt = document.createElement("option");
+          opt.value = String(idx);
+          opt.textContent = h;
+          sel.appendChild(opt);
+        });
+      }
+
+      // try smart defaults
+      smartMap(csvData.headers, mapSelects);
+
+      // preview
+      renderPreview(csvData);
+      importStatus.className = "ok";
+      importStatus.textContent = `Loaded ${csvData.rows.length} rows. Review mapping then click Import.`;
+    });
+
+    function renderPreview(csv){
+      const thead = previewTable.querySelector("thead");
+      const tbodyPrev = previewTable.querySelector("tbody");
+      thead.innerHTML = `<tr>${csv.headers.map(h=>`<th>${escapeHtml(h)}</th>`).join("")}</tr>`;
+      const max = Math.min(csv.rows.length, 50);
+      tbodyPrev.innerHTML = csv.rows.slice(0,max).map(r=>{
+        return `<tr>${r.map(c=>`<td>${escapeHtml(c)}</td>`).join("")}</tr>`;
+      }).join("");
+    }
+
+    function smartMap(headers, selects){
+      const idx = (pred) => headers.findIndex(h => pred(h.toLowerCase()));
+      const trySet = (sel, i) => { if (i>=0) sel.value = String(i); };
+
+      trySet(selects.date,    idx(h => /date|posted|txn/.test(h)));
+      trySet(selects.desc,    idx(h => /desc|memo|merchant|payee|vendor/.test(h)));
+      trySet(selects.amount,  idx(h => /amount|amt|value/.test(h)));
+      trySet(selects.dir,     idx(h => /type|dr|cr|debit|credit|direction/.test(h)));
+      trySet(selects.source,  idx(h => /account|source|from|card|acct/.test(h)));
+      trySet(selects.category,idx(h => /category|class/.test(h)));
+    }
+
+    startImportBtn.addEventListener("click", async () => {
+      if (!csvData) { importStatus.className="err"; importStatus.textContent="Please choose a CSV first."; return; }
+
+      // Required mappings
+      const m = {
+        date: Number(mapSelects.date.value),
+        desc: Number(mapSelects.desc.value),
+        amount: Number(mapSelects.amount.value),
+        dir: isNaN(Number(mapSelects.dir.value)) ? null : Number(mapSelects.dir.value),
+        source: isNaN(Number(mapSelects.source.value)) ? null : Number(mapSelects.source.value),
+        category: isNaN(Number(mapSelects.category.value)) ? null : Number(mapSelects.category.value),
+      };
+      if ([m.date,m.desc,m.amount].some(v => isNaN(v))) {
+        importStatus.className="err";
+        importStatus.textContent="Please map at least Date, Description, and Amount.";
+        return;
+      }
+
+      // Build row objects
+      const rows = [];
+      for (const raw of csvData.rows) {
+        if (!raw.length) continue;
+        const txn_date = normalizeDate(raw[m.date]);
+        const description = (raw[m.desc] || "").toString().trim();
+        const amtRaw = (raw[m.amount] || "").toString().replace(/[^0-9\.\-\+]/g,"");
+        const amount = Number(amtRaw);
+        if (!txn_date || !description || !Number.isFinite(amount)) continue;
+
+        let direction = "debit";
+        if (m.dir != null) {
+          const dval = String(raw[m.dir] || "").toLowerCase();
+          if (/credit|cr|\+/.test(dval)) direction = "credit";
+          if (/debit|dr|\-/.test(dval))  direction = "debit";
+        } else {
+          // infer from sign
+          direction = amount < 0 ? "debit" : "credit";
+        }
+
+        const source_account_name = m.source != null ? (raw[m.source] || "").toString().trim() : null;
+        const category = m.category != null ? (raw[m.category] || "").toString().trim() || null : null;
+
+        rows.push({
+          txn_date,
+          post_date: txn_date,
+          description,
+          amount: Math.abs(amount),   // store absolute; sign in direction
+          direction,
+          currency: "CAD",
+          source_account_name: source_account_name || null,
+          category: category || null,
+          imported_via: "csv"
+        });
+      }
+
+      if (!rows.length) {
+        importStatus.className="err";
+        importStatus.textContent="No valid rows to import after parsing. Check your mapping.";
+        return;
+      }
+
+      importStatus.className="muted";
+      importStatus.textContent=`Importing ${rows.length} rows…`;
+
+      // Batch insert (Supabase limit safety)
+      let inserted = 0, errors = 0;
+      const batchSize = 300;
+      for (let i=0;i<rows.length;i+=batchSize) {
+        const chunk = rows.slice(i,i+batchSize);
+        const { error } = await sb.from("transactions").insert(chunk);
+        if (error) { errors++; importStatus.className="err"; importStatus.textContent = error.message; break; }
+        inserted += chunk.length;
+        importStatus.textContent = `Imported ${inserted}/${rows.length}…`;
+      }
+
+      if (!errors) {
+        importStatus.className="ok";
+        importStatus.textContent = `Imported ${inserted} transactions successfully.`;
+        await loadTransactions();
+      }
+    });
+
+    // Lightweight CSV parser w/ quotes + commas
+    function parseCSV(text){
+      const rows = [];
+      let i=0, field="", row=[], inQuotes=false;
+      function pushField(){ row.push(field); field=""; }
+      function pushRow(){ rows.push(row); row=[]; }
+      while (i < text.length) {
+        const ch = text[i];
+        if (inQuotes) {
+          if (ch === '"') {
+            if (text[i+1] === '"'){ field += '"'; i+=2; continue; } // escaped quote
+            inQuotes = false; i++; continue;
+          } else { field += ch; i++; continue; }
+        } else {
+          if (ch === '"'){ inQuotes = true; i++; continue; }
+          if (ch === ','){ pushField(); i++; continue; }
+          if (ch === '\r'){ i++; continue; }
+          if (ch === '\n'){ pushField(); pushRow(); i++; continue; }
+          field += ch; i++; continue;
+        }
+      }
+      // flush tail
+      if (field.length || row.length) { pushField(); pushRow(); }
+
+      if (!rows.length) return { headers: [], rows: [] };
+      const headers = rows.shift().map(h => h.trim());
+      return { headers, rows };
+    }
+
+    function normalizeDate(v){
+      if (!v) return null;
+      const s = String(v).trim();
+      // Try YYYY-MM-DD
+      let m = s.match(/^(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})$/);
+      if (m) return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+      // Try DD-MM-YYYY or DD/MM/YYYY
+      m = s.match(/^(\d{1,2})[-\/\.](\d{1,2})[-\/\.](\d{4})$/);
+      if (m) return `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;
+      // Try MM/DD/YYYY
+      m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (m) return `${m[3]}-${String(m[1]).padStart(2,'0')}-${String(m[2]).padStart(2,'0')}`;
+      // Fallback: just return as-is if it looks datey
+      if (/\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+      return null;
+    }
+
     // Events
     $("filterBtn").addEventListener("click", loadTransactions);
     $("exportBtn").addEventListener("click", exportCSV);
     $("backfillBtn").addEventListener("click", backfillSources);
+    quickSearch.addEventListener("input", applyQuickSearch);
 
     // Initial
     loadTransactions();
