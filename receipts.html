@@ -2,645 +2,441 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Kosmos Bookkeeping — Receipts</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Kosmos — Receipts</title>
+
+  <!-- Shared theme -->
+  <link rel="stylesheet" href="style.css"/>
 
   <!-- Supabase -->
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-
   <!-- Tesseract (local OCR) -->
-  <script src="https://unpkg.com/tesseract.js@5.0.3/dist/tesseract.min.js"></script>
-
-  <!-- pdf.js to render PDFs -->
-  <script src="https://unpkg.com/pdfjs-dist@4.6.82/build/pdf.min.js"></script>
-  <script>pdfjsLib.GlobalWorkerOptions.workerSrc="https://unpkg.com/pdfjs-dist@4.6.82/build/pdf.worker.min.js";</script>
+  <script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
 
   <style>
-    :root{--bg:#fafafa;--card:#fff;--border:#e5e7eb;--muted:#6b7280;--ok:#0a7a33;--err:#b00020;--ink:#111;--btn:#111;--btnH:#333;}
-    *{box-sizing:border-box}
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:var(--bg);color:var(--ink);}
-    header{background:#fff;border-bottom:1px solid var(--border);padding:14px 24px;display:flex;justify-content:space-between;align-items:center;}
-    header h1{font-size:1.2rem;margin:0;}
-    nav a{margin-left:16px;color:var(--ink);text-decoration:none;font-weight:500;padding:6px 10px;border-radius:8px;}
-    nav a:hover,nav a.active{background:#111;color:#fff;}
-    main{padding:32px;max-width:1200px;margin:auto;}
-    h2{margin-top:0}
-    .grid{display:grid;grid-template-columns:560px 1fr;gap:24px;align-items:start;}
-    @media (max-width:1200px){.grid{grid-template-columns:1fr}}
-    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;margin-top:20px;}
-    label{display:block;margin-top:.7rem;font-weight:600;}
-    input,select{width:100%;padding:.6rem .7rem;border:1px solid #cfcfcf;border-radius:10px;margin-top:.35rem;background:#fff;}
-    input[readonly]{background:#f7f7f7;}
-    button{padding:.6rem 1rem;border-radius:10px;border:1px solid #bbb;background:var(--btn);color:#fff;cursor:pointer;}
-    button:hover{background:var(--btnH);}
-    .secondary{background:#f7f7f7;color:#111;border-color:#d0d0d0;}
-    .secondary:hover{background:#eee;}
-    .rowbtns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center;}
-    table{width:100%;border-collapse:collapse;font-size:14px;}
-    th,td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;}
-    th{background:#f6f7f8;position:sticky;top:0;z-index:1;}
-    .right{text-align:right;}
-    .muted{color:var(--muted)} .ok{color:var(--ok)} .err{color:var(--err)}
-    .chip{font-size:12px;background:#eef2ff;border:1px solid #c7d2fe;padding:2px 6px;border-radius:999px;}
-    small.muted{color:var(--muted);display:block;margin-top:.25rem;}
-    progress{width:100%;}
-    canvas{width:100%;max-width:520px;border:1px solid var(--border);border-radius:10px;background:#fff;cursor:crosshair;}
-    .hint{font-size:12px;color:var(--muted);}
-    .switch{display:flex;align-items:center;gap:8px;}
+    /* page-local tweaks */
+    .two-col{ display:grid; grid-template-columns: 1.2fr .8fr; gap:16px; }
+    @media (max-width: 960px){ .two-col{ grid-template-columns:1fr; } }
+    .drop {
+      border:2px dashed var(--border); border-radius:14px; padding:16px; text-align:center;
+      background:#fff;
+    }
+    .drop.drag{ background:#f6faff; border-color:#bcd4ff; }
+    .chip{ display:inline-block; border:1px solid var(--border); border-radius:999px; padding:3px 8px; margin-left:6px; font-size:.8rem; }
+    .chip.ok{ border-color:#c7f0d7; background:#e9fbf0; }
+    .chip.warn{ border-color:#ffe59a; background:#fff8d8; }
+    .chip.bad{ border-color:#ffc0c0; background:#fff0f0; }
+    .advanced { margin-top:8px; }
+    .advanced summary { cursor:pointer; font-weight:700; }
+    canvas { max-width:100%; border:1px solid var(--border); border-radius:10px; background:#fff }
   </style>
 </head>
 <body>
-<header>
-  <h1>📸 Kosmos Bookkeeping</h1>
-  <nav>
-    <a href="index.html">Dashboard</a>
-    <a href="receipts.html" class="active">Receipts</a>
-    <a href="transactions.html">Transactions</a>
-    <a href="reports.html">Reports</a>
-  </nav>
-</header>
+  <!-- Header -->
+  <header>
+    <h1>Kosmos Bookkeeping</h1>
+    <nav>
+      <a href="index.html">Dashboard</a>
+      <a href="receipts.html" class="active">Receipts</a>
+      <a href="transactions.html">Transactions</a>
+      <a href="reports.html">Reports</a>
+    </nav>
+  </header>
 
-<main>
-  <h2>Receipt Upload & Scanner (Auto-Enhance)</h2>
-  <p class="muted">Drop a receipt image/PDF. Click <strong>Auto Enhance & Scan</strong> to auto-rotate, auto-crop, auto-zoom, and extract totals/date/vendor locally (no paid API).</p>
+  <main class="container">
+    <h2>🧾 Receipts Scanner</h2>
+    <p class="muted">Scan locally with Tesseract (no paid API). Auto-enhance, extract vendor/date/total/tax, review, then save.</p>
 
-  <div class="grid">
-    <div>
-      <!-- Preview + controls -->
-      <div class="card">
-        <h3>Preview & Enhance</h3>
-        <div class="rowbtns">
-          <input type="file" id="fileInput" accept="image/*,.pdf"/>
-          <button id="autoAll" class="secondary">Auto Enhance & Scan</button>
-        </div>
-        <div class="rowbtns">
-          <button id="rotateBtn" class="secondary">Rotate 90°</button>
-          <label class="switch">
-            <span class="hint">Zoom</span>
-            <input id="zoom" type="range" min="0.5" max="3" step="0.1" value="1" style="width:180px;">
-            <span id="zoomVal" class="hint">1.0×</span>
-          </label>
-          <label class="switch">
-            <input id="magnifyToggle" type="checkbox">
-            <span class="hint">Magnifier</span>
-          </label>
-          <label class="switch">
-            <span class="hint">Strength</span>
-            <input id="magnifyStrength" type="range" min="1.5" max="4" step="0.1" value="2">
-          </label>
-          <button id="clearCrop" class="secondary" title="Clear crop">Clear crop</button>
-          <button id="autoDetect" class="secondary" title="Find totals zone">Auto-Detect Totals</button>
-          <button id="scanBtn" class="secondary">Scan (manual)</button>
-
-          <!-- Raw OCR toggle -->
-          <label class="switch" style="margin-left:8px;">
-            <input id="showRaw" type="checkbox">
-            <span class="hint">Show OCR text</span>
-          </label>
+    <div class="two-col">
+      <!-- LEFT: Scanner + form -->
+      <section class="grid" style="gap:16px;">
+        <!-- Upload / drop -->
+        <div class="card">
+          <div id="drop" class="drop">
+            <p><strong>Drop an image or PDF page here</strong> (PNG/JPG best). Or choose a file:</p>
+            <input id="file" type="file" accept="image/*"/>
+          </div>
+          <div class="row" style="margin-top:12px;">
+            <button id="btnRotateL" class="ghost">⟲ Rotate</button>
+            <button id="btnRotateR" class="ghost">⟳ Rotate</button>
+            <button id="btnZoomOut" class="ghost">− Zoom</button>
+            <button id="btnZoomIn" class="ghost">＋ Zoom</button>
+            <span class="muted" id="status" style="margin-left:auto;"></span>
+          </div>
         </div>
 
-        <div style="margin-top:10px;position:relative;">
-          <canvas id="preview" width="520" height="520" aria-label="preview"></canvas>
+        <!-- Preview -->
+        <div class="card">
+          <canvas id="canvas" width="1200" height="1600"></canvas>
         </div>
-        <pre id="rawOut" class="muted" style="display:none;white-space:pre-wrap;max-height:180px;overflow:auto;border:1px dashed #ddd;border-radius:8px;padding:8px;margin-top:8px;"></pre>
-        <div id="scanStatus" class="muted" style="margin-top:.5rem;"></div>
-        <progress id="scanProgress" max="1" value="0" style="display:none;"></progress>
-      </div>
 
-      <!-- Fields + save -->
-      <div class="card">
-        <h3>Details</h3>
-        <label>Vendor<input id="vendor" placeholder="e.g., Sysco, Costco"/></label>
-        <label>Date<input id="rdate" type="date"/></label>
-        <label>Total<input id="total" type="number" step="0.01"/></label>
-        <label>Tax<input id="tax" type="number" step="0.01"/></label>
-        <label>Subtotal (auto)<input id="subtotal" type="number" step="0.01" readonly/></label>
-        <label>Category<input id="category" placeholder="Category"/></label>
-        <label>Source<input id="source" placeholder="Bank/Card"/></label>
-        <label>Notes<input id="notes" placeholder="optional"/></label>
-        <div class="rowbtns"><button id="uploadBtn">Upload & Save</button></div>
-        <p id="msg" class="muted"></p>
-      </div>
+        <!-- Scan controls -->
+        <div class="card">
+          <div class="row">
+            <button id="btnAutoScan">✨ Auto-Enhance & Scan</button>
+            <button id="btnUseDetected" class="ghost" title="Fill the form below with detected values">Use detected values</button>
+            <label class="muted" style="margin-left:auto;">
+              <input type="checkbox" id="toggleRaw"/> Show OCR text
+            </label>
+          </div>
 
-      <!-- Automation -->
-      <div class="card">
-        <h3>Automation</h3>
-        <div class="rowbtns">
-          <button id="btnApply" class="secondary">Apply Rules</button>
-          <select id="matchMode"><option value="strict" selected>Strict</option><option value="fuzzy">Fuzzy</option></select>
-          <button id="btnMatch" class="secondary">Match</button>
-          <button id="exportBtn">Export Accountant CSV</button>
+          <details class="advanced">
+            <summary>Advanced</summary>
+            <div class="row" style="margin-top:10px;">
+              <button id="btnManualScan" class="ghost">Scan (manual)</button>
+              <button id="btnCancel" class="ghost">Cancel</button>
+              <button id="btnSharpen" class="ghost">Sharpen</button>
+              <button id="btnBinarize" class="ghost">Binarize</button>
+              <span class="muted">These tweaks re-process the current image before OCR.</span>
+            </div>
+            <pre id="rawBox" style="display:none; max-height:220px; overflow:auto; border:1px solid var(--border); border-radius:10px; padding:10px; background:#fff; margin-top:10px;"></pre>
+          </details>
         </div>
-        <p id="autoMsg" class="muted"></p>
-      </div>
+
+        <!-- Detected -->
+        <div class="card">
+          <h3 style="margin:0 0 8px 0;">Detected</h3>
+          <div class="grid grid-2">
+            <div>Vendor: <b id="detVendor">—</b> <span id="confVendor" class="chip">—</span></div>
+            <div>Date: <b id="detDate">—</b> <span id="confDate" class="chip">—</span></div>
+            <div>Total: <b id="detTotal">—</b> <span id="confTotal" class="chip">—</span></div>
+            <div>Tax: <b id="detTax">—</b> <span id="confTax" class="chip">—</span></div>
+          </div>
+        </div>
+
+        <!-- Review & save -->
+        <div class="card">
+          <h3 style="margin:0 0 8px 0;">Review & Save</h3>
+          <div class="grid grid-2">
+            <div>
+              <label>Vendor</label>
+              <input id="inVendor" placeholder="Vendor"/>
+            </div>
+            <div>
+              <label>Date</label>
+              <input id="inDate" type="date"/>
+            </div>
+            <div>
+              <label>Total</label>
+              <input id="inTotal" type="number" step="0.01" placeholder="0.00"/>
+            </div>
+            <div>
+              <label>Tax</label>
+              <input id="inTax" type="number" step="0.01" placeholder="0.00"/>
+            </div>
+          </div>
+          <div style="margin-top:8px;">
+            <label>Notes</label>
+            <input id="inNotes" placeholder="Optional notes (category/source can be added later in rules)"/>
+          </div>
+          <div class="row" style="margin-top:12px;">
+            <button id="btnSave">Upload & Save</button>
+            <span id="saveMsg" class="muted" style="margin-left:8px;"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT: Unmatched receipts list -->
+      <aside class="grid" style="gap:16px;">
+        <div class="card">
+          <div class="row" style="justify-content:space-between;">
+            <h3 style="margin:0;">Unmatched Receipts</h3>
+            <button id="btnRefresh" class="ghost">Refresh</button>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th style="min-width:110px;">Date</th>
+                <th style="min-width:160px;">Vendor</th>
+                <th class="right" style="min-width:100px;">Total</th>
+                <th>Open</th>
+              </tr>
+            </thead>
+            <tbody id="unmatchedBody">
+              <tr><td colspan="4" class="muted">No items.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </aside>
     </div>
+  </main>
 
-    <!-- Unmatched list -->
-    <div class="card">
-      <h3>Unmatched Receipts</h3>
-      <div style="max-height:540px;overflow:auto;margin-top:8px;">
-        <table id="unmatchedTable">
-          <thead><tr><th>Date</th><th>Vendor</th><th class="right">Total</th><th class="right">Tax</th><th>Category</th><th>Source</th><th>Image</th></tr></thead>
-        <tbody><tr><td colspan="7" class="muted">Loading…</td></tr></tbody></table>
-      </div>
-      <button id="refreshBtn" class="secondary" style="margin-top:8px;">Refresh</button>
-    </div>
-  </div>
-</main>
+  <script>
+    // ===== Supabase client =====
+    const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-<script>
-/* ---------- Supabase ---------- */
-const SUPABASE_URL="https://advihqhjjlxumgdlbwui.supabase.co";
-const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
-const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
-const BUCKET="receipts-warm";
+    // ===== DOM =====
+    const el = (id) => document.getElementById(id);
+    const file = el("file"), drop = el("drop"), canvas = el("canvas");
+    const ctx = canvas.getContext("2d");
+    const statusEl = el("status"), rawBox = el("rawBox");
 
-/* ---------- DOM helpers ---------- */
-const qs=id=>document.getElementById(id);
-const msgEl=qs("msg"), autoMsg=qs("autoMsg");
-const statusEl=qs("scanStatus"), prog=qs("scanProgress");
+    const det = {
+      vendor: el("detVendor"), date: el("detDate"), total: el("detTotal"), tax: el("detTax")
+    };
+    const conf = {
+      vendor: el("confVendor"), date: el("confDate"), total: el("confTotal"), tax: el("confTax")
+    };
+    const form = {
+      vendor: el("inVendor"), date: el("inDate"), total: el("inTotal"), tax: el("inTax"), notes: el("inNotes")
+    };
 
-/* ---------- Preview / canvas state ---------- */
-let baseImage=null; // HTMLImageElement
-let rotation=0;    // 0/90/180/270
-let crop=null;     // {x,y,w,h} in canvas coords
-const canvas=qs("preview"); const ctx=canvas.getContext("2d"); const Z=qs("zoom");
+    let imageBitmap = null;
+    let rotation = 0;
+    let zoom = 1;
+    let cancelFlag = false;
 
-/* ---------- UI: zoom / rotate / crop ---------- */
-qs("zoom").addEventListener("input", ()=>{ qs("zoomVal").textContent = `${Number(Z.value).toFixed(1)}×`; drawPreview(); });
-qs("rotateBtn").addEventListener("click", ()=>{ rotation=(rotation+90)%360; drawPreview(); });
-qs("clearCrop").addEventListener("click", ()=>{ crop=null; drawPreview(); });
-canvas.addEventListener("dblclick", ()=>{ crop=null; drawPreview(); });
-
-let dragging=false, dragHandle=null, startX=0, startY=0;
-function hitHandle(mx,my){
-  if(!crop) return null;
-  const hs=[
-    {n:"nw",x:crop.x,y:crop.y},{n:"ne",x:crop.x+crop.w,y:crop.y},
-    {n:"sw",x:crop.x,y:crop.y+crop.h},{n:"se",x:crop.x+crop.w,y:crop.y+crop.h}
-  ];
-  for(const h of hs){ if(Math.abs(mx-h.x)<=6 && Math.abs(my-h.y)<=6) return h.n; }
-  return null;
-}
-canvas.addEventListener("mousedown",e=>{
-  const r=canvas.getBoundingClientRect(); const mx=e.clientX-r.left, my=e.clientY-r.top;
-  dragHandle=hitHandle(mx,my); dragging=true; startX=mx; startY=my;
-  if(!dragHandle){ crop={x:mx,y:my,w:0,h:0}; }
-});
-canvas.addEventListener("mousemove",e=>{
-  if(dragging){
-    const r=canvas.getBoundingClientRect(); const mx=e.clientX-r.left, my=e.clientY-r.top;
-    if(dragHandle && crop){
-      if(dragHandle==="nw"){ crop.w += crop.x-mx; crop.h += crop.y-my; crop.x=mx; crop.y=my; }
-      if(dragHandle==="ne"){ crop.w = mx-crop.x; crop.h += crop.y-my; crop.y=my; }
-      if(dragHandle==="sw"){ crop.w += crop.x-mx; crop.x=mx; crop.h = my-crop.y; }
-      if(dragHandle==="se"){ crop.w = mx-crop.x; crop.h = my-crop.y; }
-    }else if(crop){
-      crop.w = mx - startX; crop.h = my - startY;
-      if(crop.w<0){ crop.x=mx; crop.w=startX-mx; }
-      if(crop.h<0){ crop.y=my; crop.h=my-startY; }
+    // ===== Helpers =====
+    function setStatus(t){ statusEl.textContent = t || ""; }
+    function setChip(el, v){
+      el.textContent = v.label;
+      el.className = "chip " + (v.level || "warn");
     }
-  }
-  drawPreview(); drawMagnifier(e);
-});
-window.addEventListener("mouseup",()=>{ dragging=false; dragHandle=null; });
+    function resetDetected(){
+      ["vendor","date","total","tax"].forEach(k => det[k].textContent = "—");
+      ["vendor","date","total","tax"].forEach(k => setChip(conf[k], {label:"—",level:""}));
+    }
+    function draw(){
+      if(!imageBitmap){ ctx.clearRect(0,0,canvas.width,canvas.height); return; }
+      const w = imageBitmap.width * zoom, h = imageBitmap.height * zoom;
+      canvas.width = w; canvas.height = h;
+      ctx.save();
+      ctx.clearRect(0,0,w,h);
+      // rotation around center
+      ctx.translate(w/2, h/2);
+      ctx.rotate(rotation*Math.PI/180);
+      ctx.translate(-w/2, -h/2);
+      ctx.drawImage(imageBitmap, 0, 0, w, h);
+      ctx.restore();
+    }
+    async function loadImage(file){
+      const bitmap = await createImageBitmap(file);
+      imageBitmap = bitmap;
+      rotation = 0; zoom = Math.min(1200 / bitmap.width, 1600 / bitmap.height) || 1;
+      draw(); resetDetected(); rawBox.style.display="none";
+    }
+    function preprocessSharpen(){
+      const {width:w,height:h} = canvas;
+      const img = ctx.getImageData(0,0,w,h);
+      const d = img.data;
+      // simple unsharp mask
+      for(let i=0;i<d.length;i+=4){
+        const avg = (d[i]+d[i+1]+d[i+2])/3;
+        d[i] = Math.min(255, avg*1.15);
+        d[i+1] = Math.min(255, avg*1.15);
+        d[i+2] = Math.min(255, avg*1.15);
+      }
+      ctx.putImageData(img,0,0);
+    }
+    function preprocessBinarize(){
+      const {width:w,height:h} = canvas;
+      const img = ctx.getImageData(0,0,w,h);
+      const d = img.data;
+      for(let i=0;i<d.length;i+=4){
+        const g = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
+        const v = g > 180 ? 255 : 0;
+        d[i]=d[i+1]=d[i+2]=v;
+      }
+      ctx.putImageData(img,0,0);
+    }
 
-/* ---------- Magnifier ---------- */
-function drawMagnifier(evt){
-  if(!qs("magnifyToggle").checked || !baseImage) return;
-  const rect=canvas.getBoundingClientRect(); const mx=evt.clientX-rect.left, my=evt.clientY-rect.top;
-  const k=Number(qs("magnifyStrength").value); const r=60;
-  const snap=ctx.getImageData(0,0,canvas.width,canvas.height); ctx.putImageData(snap,0,0);
-  ctx.save(); ctx.beginPath(); ctx.arc(mx,my,r,0,Math.PI*2); ctx.clip();
-  ctx.drawImage(canvas, mx-r/k, my-r/k, 2*r/k, 2*r/k, mx-r, my-r, 2*r, 2*r);
-  ctx.restore(); ctx.strokeStyle="#111"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(mx,my,r,0,Math.PI*2); ctx.stroke();
-}
+    function parseOCR(text){
+      // basic CA-friendly parser
+      const lines = text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+      // vendor: first non-allcaps-numbers-ish line near top
+      const top = lines.slice(0,10);
+      let vendor = (top.find(s => /[a-zA-Z]/.test(s) && !/total|visa|master|debit|credit|hst|gst|pst|balance/i.test(s)) || "").replace(/\s{2,}/g,' ');
+      if (vendor.length > 40) vendor = vendor.slice(0,40);
 
-/* ---------- Image/PDF load ---------- */
-qs("fileInput").addEventListener("change", async ()=>{
-  rotation=0; crop=null;
-  const f=qs("fileInput").files?.[0]; if(!f){ baseImage=null; clearCanvas(); return; }
-  if(f.type==="application/pdf"){
-    const ab=await f.arrayBuffer(); const pdf=await pdfjsLib.getDocument({data:ab}).promise;
-    const page=await pdf.getPage(1); const viewport=page.getViewport({scale:2});
-    const c=document.createElement("canvas"); c.width=viewport.width; c.height=viewport.height;
-    await page.render({canvasContext:c.getContext("2d"),viewport}).promise;
-    baseImage=await loadImage(c.toDataURL("image/png",1.0));
-  }else{
-    baseImage=await loadImage(URL.createObjectURL(f));
-  }
-  drawPreview();
-});
-function loadImage(src){ return new Promise((res,rej)=>{ const img=new Image(); img.onload=()=>res(img); img.onerror=rej; img.src=src; }); }
-function clearCanvas(){ ctx.clearRect(0,0,canvas.width,canvas.height); }
+      // date: look for YYYY-MM-DD / YYYY/MM/DD / DD-MM-YYYY / MM/DD/YYYY
+      let date = null;
+      for(const s of lines){
+        const ymd = s.match(/(20\d{2})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+        const dmy = s.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](20\d{2})/);
+        if(ymd){ const [_,Y,M,D]=ymd; date = `${Y}-${String(M).padStart(2,'0')}-${String(D).padStart(2,'0')}`; break; }
+        if(dmy){ const [_,D,M,Y]=dmy; date = `${Y}-${String(M).padStart(2,'0')}-${String(D).padStart(2,'0')}`; break; }
+      }
 
-/* ---------- Preview draw ---------- */
-function drawPreview(){
-  clearCanvas(); if(!baseImage) return;
-  const zoom=Number(Z.value);
-  const imgW=(rotation%180===0)?baseImage.width:baseImage.height;
-  const imgH=(rotation%180===0)?baseImage.height:baseImage.width;
-  const scale=Math.min(canvas.width/imgW, canvas.height/imgH)*zoom;
-  const drawW=Math.round(imgW*scale), drawH=Math.round(imgH*scale);
-  const dx=Math.round((canvas.width-drawW)/2), dy=Math.round((canvas.height-drawH)/2);
+      // amounts
+      const money = lines.flatMap(s => (s.match(/([$]?\s*\d{1,3}(?:[,\s]\d{3})*(?:\.\d{2})?)/g)||[]))
+        .map(v => Number(String(v).replace(/[^0-9.]/g,'')))
+        .filter(n => Number.isFinite(n) && n>0).sort((a,b)=>a-b);
 
-  ctx.save(); ctx.translate(canvas.width/2,canvas.height/2); ctx.rotate(rotation*Math.PI/180);
-  ctx.drawImage(baseImage,-drawW/2,-drawH/2,drawW,drawH); ctx.restore();
-  ctx.strokeStyle="#d0d0d0"; ctx.strokeRect(dx,dy,drawW,drawH);
-
-  if(crop){
-    ctx.save(); ctx.strokeStyle="#2563eb"; ctx.lineWidth=2; ctx.setLineDash([6,4]);
-    ctx.strokeRect(crop.x,crop.y,crop.w,crop.h);
-    ctx.setLineDash([]); ctx.fillStyle="#2563eb";
-    for(const [hx,hy] of [[crop.x,crop.y],[crop.x+crop.w,crop.y],[crop.x,crop.y+crop.h],[crop.x+crop.w,crop.y+crop.h]]) ctx.fillRect(hx-3,hy-3,6,6);
-    ctx.restore();
-  }
-}
-
-/* ---------- Build OCR image (rotation/crop + preprocessing) ---------- */
-async function buildOcrDataURL(){
-  if(!baseImage) throw new Error("Pick a file first.");
-  const zoom=Number(Z.value);
-  const imgW=(rotation%180===0)?baseImage.width:baseImage.height;
-  const imgH=(rotation%180===0)?baseImage.height:baseImage.width;
-  const fitScale=Math.min(canvas.width/imgW, canvas.height/imgH)*zoom;
-  const drawW=Math.round(imgW*fitScale), drawH=Math.round(imgH*fitScale);
-  const dx=Math.round((canvas.width-drawW)/2), dy=Math.round((canvas.height-drawH)/2);
-
-  let srcRect;
-  if(crop){
-    const sx=Math.max(0,Math.round((crop.x-dx)/fitScale));
-    const sy=Math.max(0,Math.round((crop.y-dy)/fitScale));
-    const sw=Math.max(1,Math.round(crop.w/fitScale));
-    const sh=Math.max(1,Math.round(crop.h/fitScale));
-    srcRect={sx,sy,sw,sh};
-  }else{
-    srcRect={sx:0,sy:0,sw:imgW,sh:imgH};
-  }
-
-  // rotate original to upright
-  const upright=document.createElement("canvas"); upright.width=imgW; upright.height=imgH;
-  const ug=upright.getContext("2d");
-  if(rotation!==0){
-    const buf=document.createElement("canvas");
-    if(rotation%180===0){ buf.width=baseImage.width; buf.height=baseImage.height; }
-    else { buf.width=baseImage.height; buf.height=baseImage.width; }
-    const bg=buf.getContext("2d");
-    bg.translate(buf.width/2,buf.height/2); bg.rotate(rotation*Math.PI/180);
-    bg.drawImage(baseImage,-baseImage.width/2,-baseImage.height/2);
-    ug.drawImage(buf,0,0,buf.width,buf.height,0,0,imgW,imgH);
-  }else ug.drawImage(baseImage,0,0);
-
-  // Crop + upscale
-  const out=document.createElement("canvas");
-  const upscale=2.2;
-  out.width=Math.min(2400,Math.round(srcRect.sw*upscale));
-  out.height=Math.min(2400,Math.round(srcRect.sh*upscale));
-  const g=out.getContext("2d"); g.imageSmoothingQuality="high";
-  g.drawImage(upright,srcRect.sx,srcRect.sy,srcRect.sw,srcRect.sh,0,0,out.width,out.height);
-
-  // preprocess: grayscale + adaptive threshold + light unsharp
-  preprocessOn(g,out.width,out.height);
-
-  return { dataUrl: out.toDataURL("image/png",1.0) };
-}
-
-/* Preprocess pipeline */
-function preprocessOn(ctx,w,h){
-  const id=ctx.getImageData(0,0,w,h), d=id.data;
-  // grayscale
-  for(let i=0;i<d.length;i+=4){
-    const y=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
-    d[i]=d[i+1]=d[i+2]=y;
-  }
-  // adaptive threshold (box mean)
-  const copy=new Uint8ClampedArray(d);
-  const k=4;
-  for(let y=0;y<h;y++){
-    for(let x=0;x<w;x++){
-      let sum=0,cnt=0;
-      for(let dy=-k;dy<=k;dy++){
-        const yy=y+dy; if(yy<0||yy>=h) continue;
-        for(let dx=-k;dx<=k;dx++){
-          const xx=x+dx; if(xx<0||xx>=w) continue;
-          const o=(yy*w+xx)*4; sum+=copy[o]; cnt++;
+      // tax candidates
+      let tax = null;
+      for(const s of lines){
+        const m = s.match(/\b(HST|GST|PST|TVQ|TPS)\b[^\d]*([\$]?\s*\d+(?:\.\d{2})?)/i);
+        if(m){ tax = Number(String(m[2]).replace(/[^0-9.]/g,'')); break; }
+      }
+      // total candidates with keyword bias
+      let total = null;
+      for(const s of lines){
+        if(/grand\s*total|amount\s*due|total/i.test(s)){
+          const m = s.match(/([\$]?\s*\d+(?:[,\s]\d{3})*(?:\.\d{2})?)/);
+          if(m){ total = Number(String(m[1]).replace(/[^0-9.]/g,'')); break; }
         }
       }
-      const o=(y*w+x)*4; const mean=sum/cnt;
-      const v = copy[o] > (mean-8) ? 255 : 0;  // slight bias
-      d[o]=d[o+1]=d[o+2]=v;
+      if (!total && money.length) total = money[money.length-1];
+
+      // confidence heuristics
+      const conf = {
+        vendor: vendor ? {label:"high",level:"ok"} : {label:"low",level:"bad"},
+        date: date ? {label:"med",level:"ok"} : {label:"low",level:"bad"},
+        total: total ? {label:"high",level:"ok"} : {label:"low",level:"bad"},
+        tax: tax!=null ? {label:"med",level:"ok"} : {label:"unknown",level:"warn"}
+      };
+
+      return { vendor, date, total, tax, conf, text };
     }
-  }
-  // light unsharp: blend with original grayscale
-  for(let i=0;i<d.length;i+=4){
-    const g=copy[i];
-    d[i]=d[i+1]=d[i+2]=Math.min(255,Math.max(0,0.7*d[i]+0.3*g));
-  }
-  ctx.putImageData(id,0,0);
-}
 
-/* ---------- OCR core (PSM 6) ---------- */
-async function ocrText(dataUrl,wantLayout=false){
-  prog.style.display="block"; prog.value=0; statusEl.textContent="Starting OCR…";
-  const worker=await Tesseract.createWorker("eng",1,{
-    logger:m=>{ if(m.status) statusEl.textContent=`${m.status}…`; if(m.progress!=null) prog.value=m.progress; }
-  });
-  const { data } = await worker.recognize(dataUrl, {
-    tessedit_pageseg_mode: 6,
-    preserve_interword_spaces: "1"
-  });
-  await worker.terminate(); prog.style.display="none";
-  return wantLayout ? data : { text:data.text };
-}
-
-/* ---------- Parsing tuned for CA receipts ---------- */
-function findDate(text){
-  const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-  const rx=[
-    /\b(\d{4})[-\/\.](\d{2})[-\/\.](\d{2})\b/,
-    /\b(\d{2})[-\/\.](\d{2})[-\/\.](\d{4})\b/,
-    /\b([A-Za-z]{3,9})\s+(\d{1,2}),\s*(\d{4})\b/
-  ];
-  for(const line of lines){
-    for(const r of rx){
-      const m=line.match(r); if(!m) continue;
-      if(r===rx[0]) return `${m[1]}-${m[2]}-${m[3]}`;
-      if(r===rx[1]){ const mm=m[1].padStart(2,"0"), dd=m[2].padStart(2,"0"); return `${m[3]}-${mm}-${dd}`; }
-      if(r===rx[2]){
-        const months=["january","february","march","april","may","june","july","august","september","october","november","december"];
-        const mm=String(months.indexOf(m[1].toLowerCase())+1).padStart(2,"0");
-        const dd=String(m[2]).padStart(2,"0"); return `${m[3]}-${mm}-${dd}`;
-      }
+    async function runOCR(){
+      setStatus("Running OCR…"); cancelFlag=false;
+      const blob = await new Promise(res => canvas.toBlob(res,"image/png",0.95));
+      const { data: { text } } = await Tesseract.recognize(blob, "eng", { logger: _ => {} });
+      if (cancelFlag) { setStatus("Canceled."); return null; }
+      setStatus("Parsing…");
+      return parseOCR(text);
     }
-  }
-  return null;
-}
 
-function findAmounts(text){
-  const lines=text.split(/\r?\n/);
-  const rxAmt=/[-+]?\$?\(?\d{1,3}(?:[,\s]\d{3})*(?:\.\d{2})?\)?/g;
-  let total=null, tax=0;
-  const totalRx=/(grand\s*total|amount\s*due|balance\s*due|total)\b/i;
-  const taxRx=/\b(hst|gst|pst|tps|tvq|tax)\b/i;
+    // ===== Actions =====
+    el("btnRotateL").addEventListener("click",()=>{ rotation -= 90; draw(); });
+    el("btnRotateR").addEventListener("click",()=>{ rotation += 90; draw(); });
+    el("btnZoomIn").addEventListener("click",()=>{ zoom *= 1.1; draw(); });
+    el("btnZoomOut").addEventListener("click",()=>{ zoom /= 1.1; draw(); });
 
-  for(const line of lines){
-    const lower=line.toLowerCase();
-    const amts=[...line.matchAll(rxAmt)].map(m=>m[0]);
-    if(total===null && totalRx.test(lower) && amts.length){
-      const s=amts[amts.length-1].replace(/[^\d.-]/g,"");
-      const v=Number(s); if(Number.isFinite(v)) total=Math.abs(v);
+    el("btnSharpen").addEventListener("click",()=>{ preprocessSharpen(); });
+    el("btnBinarize").addEventListener("click",()=>{ preprocessBinarize(); });
+
+    el("toggleRaw").addEventListener("change",(e)=>{
+      rawBox.style.display = e.target.checked ? "block" : "none";
+    });
+
+    el("btnCancel").addEventListener("click",()=>{ cancelFlag=true; setStatus("Canceling…"); });
+
+    async function autoEnhance(){
+      // simple: brighten a touch before OCR
+      preprocessSharpen();
     }
-    if(tax===0 && taxRx.test(lower) && amts.length){
-      const s=amts[amts.length-1].replace(/[^\d.-]/g,"");
-      const v=Number(s); if(Number.isFinite(v)) tax=Math.abs(v);
+
+    el("btnAutoScan").addEventListener("click", async ()=>{
+      if(!imageBitmap){ alert("Pick an image first."); return; }
+      setStatus("Enhancing…");
+      await autoEnhance();
+      const out = await runOCR();
+      if(!out) return;
+      // show
+      det.vendor.textContent = out.vendor || "—";
+      det.date.textContent = out.date || "—";
+      det.total.textContent = out.total!=null ? `$${out.total.toFixed(2)}` : "—";
+      det.tax.textContent = out.tax!=null ? `$${Number(out.tax).toFixed(2)}` : "—";
+      setChip(conf.vendor,out.conf.vendor);
+      setChip(conf.date,out.conf.date);
+      setChip(conf.total,out.conf.total);
+      setChip(conf.tax,out.conf.tax);
+      rawBox.textContent = out.text;
+      setStatus("Done.");
+      el("btnUseDetected").onclick = ()=>{
+        if(out.vendor) form.vendor.value = out.vendor;
+        if(out.date) form.date.value = out.date;
+        if(out.total!=null) form.total.value = out.total.toFixed(2);
+        if(out.tax!=null) form.tax.value = Number(out.tax).toFixed(2);
+      };
+    });
+
+    el("btnManualScan").addEventListener("click", async ()=>{
+      if(!imageBitmap){ alert("Pick an image first."); return; }
+      const out = await runOCR();
+      if(!out) return;
+      det.vendor.textContent = out.vendor || "—";
+      det.date.textContent = out.date || "—";
+      det.total.textContent = out.total!=null ? `$${out.total.toFixed(2)}` : "—";
+      det.tax.textContent = out.tax!=null ? `$${Number(out.tax).toFixed(2)}` : "—";
+      setChip(conf.vendor,out.conf.vendor);
+      setChip(conf.date,out.conf.date);
+      setChip(conf.total,out.conf.total);
+      setChip(conf.tax,out.conf.tax);
+      rawBox.textContent = out.text;
+      setStatus("Done.");
+    });
+
+    // upload / drop
+    file.addEventListener("change", e=>{
+      const f = e.target.files?.[0];
+      if(!f) return;
+      loadImage(f);
+    });
+    ["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,(e)=>{e.preventDefault(); drop.classList.add("drag");}));
+    ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,(e)=>{e.preventDefault(); drop.classList.remove("drag");}));
+    drop.addEventListener("drop", e=>{
+      const f = e.dataTransfer.files?.[0];
+      if(!f) return;
+      loadImage(f);
+    });
+
+    // Save
+    el("btnUseDetected").addEventListener("click", ()=>{}); // assigned after scan
+    el("btnSave").addEventListener("click", async ()=>{
+      if(!imageBitmap){ alert("Scan an image first."); return; }
+      const vendor = form.vendor.value.trim();
+      const date = form.date.value || null;
+      const total = form.total.value ? Number(form.total.value) : null;
+      const tax = form.tax.value ? Number(form.tax.value) : 0;
+      const notes = form.notes.value || null;
+
+      if(!total || !date){ alert("Date and Total are required."); return; }
+
+      el("saveMsg").textContent = "Uploading…";
+      const pngBlob = await new Promise(res => canvas.toBlob(res,"image/png",0.95));
+      const size_bytes = pngBlob.size;
+
+      const fname = `receipt_${Date.now()}.png`;
+      const { data: up, error: upErr } = await sb.storage.from("receipts").upload(fname, pngBlob, { contentType:"image/png", upsert:false });
+      if(upErr){ el("saveMsg").className="err"; el("saveMsg").textContent = upErr.message; return; }
+
+      const { data: pub } = sb.storage.from("receipts").getPublicUrl(up.path);
+      const image_url = pub?.publicUrl || null;
+
+      const ins = {
+        image_url, size_bytes, receipt_date: date, total, tax,
+        vendor: vendor || null, notes: notes || null, source: "local_ocr"
+      };
+
+      const { error: insErr } = await sb.from("receipts").insert(ins);
+      if(insErr){ el("saveMsg").className="err"; el("saveMsg").textContent = insErr.message; return; }
+
+      el("saveMsg").className="ok";
+      el("saveMsg").textContent = "Saved.";
+      // refresh unmatched panel
+      loadUnmatched();
+    });
+
+    // Unmatched list
+    async function loadUnmatched(){
+      const body = el("unmatchedBody");
+      body.innerHTML = `<tr><td colspan="4" class="muted">Loading…</td></tr>`;
+      let q = sb.from("v_unmatched_receipts").select("id,receipt_date,vendor,total,image_url,created_at").order("created_at", {ascending:false}).limit(50);
+      const { data, error } = await q;
+      if(error){ body.innerHTML = `<tr><td colspan="4" class="err">${error.message}</td></tr>`; return; }
+      if(!data?.length){ body.innerHTML = `<tr><td colspan="4" class="muted">No unmatched receipts.</td></tr>`; return; }
+      body.innerHTML = data.map(r=>{
+        const t = Number(r.total||0).toFixed(2);
+        const link = r.image_url ? `<a href="${r.image_url}" target="_blank">Open</a>` : `<span class="muted">—</span>`;
+        const d = (r.receipt_date||"").slice(0,10);
+        const v = (r.vendor||"").substring(0,40);
+        return `<tr>
+          <td>${d}</td>
+          <td>${v}</td>
+          <td class="right">$${t}</td>
+          <td>${link}</td>
+        </tr>`;
+      }).join("");
     }
-  }
-  if(total===null){
-    const all=[];
-    for(const line of lines){
-      for(const m of line.matchAll(rxAmt)){
-        const v=Number(m[0].replace(/[^\d.-]/g,""));
-        if(Number.isFinite(v)) all.push(Math.abs(v));
-      }
-    }
-    if(all.length) total=all.sort((a,b)=>b-a)[0];
-  }
-  return { total, tax };
-}
+    el("btnRefresh").addEventListener("click", loadUnmatched);
 
-function findVendor(text){
-  const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-  for(let i=0;i<Math.min(8,lines.length);i++){
-    const s=lines[i];
-    if(/\d{5,}/.test(s)) continue;
-    if(/invoice|receipt|sale|order|transaction|subtotal|total|tax|hst|gst|pst|tps|tvq/i.test(s)) continue;
-    if(s.length>=3) return s.replace(/\s{2,}/g," ");
-  }
-  return lines[0]||null;
-}
-
-function extractFields(text){
-  const date=findDate(text);
-  const { total, tax }=findAmounts(text);
-  const vendor=findVendor(text);
-  return { vendor, date, total, tax, rawText:text };
-}
-
-/* ---------- Auto-Detect Totals & map to crop ---------- */
-async function autoDetectTotals(){
-  if(!baseImage){ statusEl.className="err"; statusEl.textContent="Pick a file first."; return; }
-  statusEl.className="muted"; statusEl.textContent="Finding totals region…";
-  crop=null;
-  const meta=await buildOcrDataURL();
-  const layout=await ocrText(meta.dataUrl,true);
-  const words=(layout.words||layout.lines||[]);
-  const rx=/(grand\s*total|amount\s*due|balance\s*due|total)/i;
-  const hits=[]; for(const w of words){ const t=(w.text||w.word||"").trim(); if(!t) continue; if(rx.test(t)) hits.push(w); }
-  if(!hits.length){ statusEl.className="err"; statusEl.textContent="Couldn’t find 'total'. Try manual crop."; return null; }
-
-  const on=hits[0];
-  const sameLine=words.filter(w=>{
-    const y0=w.bbox?.y0 ?? w.y0 ?? 0, y1=w.bbox?.y1 ?? w.y1 ?? 0;
-    const oy0=on.bbox?.y0 ?? on.y0 ?? 0, oy1=on.bbox?.y1 ?? on.y1 ?? 0;
-    return Math.abs(((y0+y1)/2)-((oy0+oy1)/2))<20;
-  });
-  const xs=sameLine.map(w=>w.bbox?.x0 ?? w.x0 ?? 0), xe=sameLine.map(w=>w.bbox?.x1 ?? w.x1 ?? 0);
-  const ys=sameLine.map(w=>w.bbox?.y0 ?? w.y0 ?? 0), ye=sameLine.map(w=>w.bbox?.y1 ?? w.y1 ?? 0);
-  let x0=Math.min(...xs), x1=Math.max(...xe), y0=Math.min(...ys), y1=Math.max(...ye);
-  const pad=30; x0=Math.max(0,x0-pad); y0=Math.max(0,y0-pad); x1=x1+pad+250; y1=y1+pad+120;
-
-  const zoom=Number(Z.value);
-  const imgW=(rotation%180===0)?baseImage.width:baseImage.height;
-  const imgH=(rotation%180===0)?baseImage.height:baseImage.width;
-  const fitScale=Math.min(canvas.width/imgW, canvas.height/imgH)*zoom;
-  const drawW=Math.round(imgW*fitScale), drawH=Math.round(imgH*fitScale);
-  const dx=Math.round((canvas.width-drawW)/2), dy=Math.round((canvas.height-drawH)/2);
-
-  const upscale=2.2;
-  const bx=x0/upscale, by=y0/upscale, bw=(x1-x0)/upscale, bh=(y1-y0)/upscale;
-  const cx=dx+Math.round(bx*fitScale), cy=dy+Math.round(by*fitScale);
-  const cw=Math.round(bw*fitScale), ch=Math.round(bh*fitScale);
-
-  crop={x:cx,y:cy,w:cw,h:ch};
-  drawPreview();
-  statusEl.className="ok"; statusEl.textContent="Totals region detected.";
-  return true;
-}
-
-/* ---------- Auto-Rotate ---------- */
-async function autoRotate(){
-  if(!baseImage) return;
-  statusEl.className="muted"; statusEl.textContent="Finding correct orientation…";
-  const rotations=[0,90,180,270]; const scores=[];
-  for(const r of rotations){
-    rotation=r;
-    const zPrev=Number(Z.value); Z.value="1";
-    const { dataUrl }=await buildOcrDataURL();
-    const { text }=await ocrText(dataUrl,false);
-    const score=(text||"").replace(/[^A-Za-z0-9]/g,"").length;
-    scores.push({r,score}); Z.value=String(zPrev);
-  }
-  scores.sort((a,b)=>b.score-a.score);
-  rotation=scores[0]?.r ?? 0; drawPreview();
-  statusEl.className="ok"; statusEl.textContent=`Orientation: ${rotation}°`;
-}
-
-/* ---------- Auto-zoom so crop fills ~80% ---------- */
-function autoZoomToCrop(){
-  if(!crop || !baseImage) return;
-  const targetFill=0.8;
-  const imgW=(rotation%180===0)?baseImage.width:baseImage.height;
-  const imgH=(rotation%180===0)?baseImage.height:baseImage.width;
-  const curZoom=Number(Z.value);
-  const curFit=Math.min(canvas.width/imgW, canvas.height/imgH)*curZoom;
-  const drawW=Math.round(imgW*curFit), drawH=Math.round(imgH*curFit);
-  const dx=Math.round((canvas.width-drawW)/2), dy=Math.round((canvas.height-drawH)/2);
-  const cwOrig=(crop.w)/curFit, chOrig=(crop.h)/curFit;
-
-  const desiredScale=Math.min((canvas.width*targetFill)/cwOrig,(canvas.height*targetFill)/chOrig);
-  const baseFit=Math.min(canvas.width/imgW, canvas.height/imgH);
-  const newZoom=Math.max(0.5,Math.min(3,desiredScale/baseFit));
-
-  Z.value=String(newZoom); drawPreview();
-
-  const newFit=Math.min(canvas.width/imgW, canvas.height/imgH)*newZoom;
-  const newDW=Math.round(imgW*newFit), newDH=Math.round(imgH*newFit);
-  const ndx=Math.round((canvas.width-newDW)/2), ndy=Math.round((canvas.height-newDH)/2);
-
-  const centerX=dx+crop.x+crop.w/2, centerY=dy+crop.y+crop.h/2;
-  const centerOrigX=(centerX-dx)/curFit, centerOrigY=(centerY-dy)/curFit;
-  const newCenterX=ndx+centerOrigX*newFit, newCenterY=ndy+centerOrigY*newFit;
-
-  crop.x=Math.round(newCenterX-(cwOrig*newFit)/2);
-  crop.y=Math.round(newCenterY-(chOrig*newFit)/2);
-  crop.w=Math.round(cwOrig*newFit);
-  crop.h=Math.round(chOrig*newFit);
-  drawPreview();
-}
-
-/* ---------- Actions ---------- */
-qs("scanBtn").addEventListener("click", manualScan);
-qs("autoDetect").addEventListener("click", autoDetectTotals);
-qs("autoAll").addEventListener("click", autoAll);
-
-async function manualScan(){
-  try{
-    statusEl.className="muted"; statusEl.textContent="Preparing selection…";
-    const meta=await buildOcrDataURL();
-    statusEl.textContent="Scanning locally…";
-    const { text }=await ocrText(meta.dataUrl,false);
-
-    // raw viewer
-    const show=qs("showRaw").checked, rawOut=qs("rawOut");
-    rawOut.style.display=show?"block":"none";
-    if(show) rawOut.textContent=text;
-
-    const out=extractFields(text);
-    if(out.vendor) qs("vendor").value=out.vendor;
-    if(out.date)   qs("rdate").value =out.date;
-    if(typeof out.total==="number") qs("total").value=out.total.toFixed(2);
-    if(typeof out.tax  ==="number") qs("tax").value  =out.tax.toFixed(2);
-    updateSubtotalPreview();
-
-    statusEl.className="ok"; statusEl.textContent="Scan complete — review & save.";
-  }catch(e){
-    statusEl.className="err"; statusEl.textContent="Scan failed: "+(e?.message||e);
-  }
-}
-
-async function autoAll(){
-  try{
-    if(!baseImage){ statusEl.className="err"; statusEl.textContent="Pick a file first."; return; }
-    await autoRotate();
-    const ok = await autoDetectTotals();
-    if(ok){ autoZoomToCrop(); await manualScan(); }
-  }catch(e){ statusEl.className="err"; statusEl.textContent="Auto-enhance failed: "+(e?.message||e); }
-}
-
-/* ---------- Unmatched table & save ---------- */
-function to2(n){ if(n==null||n==="") return ""; const v=Number(n); return Number.isNaN(v)?"":v.toFixed(2); }
-function updateSubtotalPreview(){ const t=parseFloat(qs("total").value)||0; const x=parseFloat(qs("tax").value)||0; qs("subtotal").value=(t-x).toFixed(2); }
-qs("total").addEventListener("input",updateSubtotalPreview); qs("tax").addEventListener("input",updateSubtotalPreview);
-
-async function loadUnmatched(){
-  const tbody=qs("unmatchedTable").querySelector("tbody");
-  tbody.innerHTML=`<tr><td colspan="7">Loading…</td></tr>`;
-  const {data,error}=await sb.from("v_unmatched_receipts")
-    .select("receipt_date,vendor,total,tax,category,source,image_url,created_at")
-    .order("created_at",{ascending:false}).limit(25);
-  if(error){ tbody.innerHTML = `<tr><td colspan="7" class="err">${error.message}</td></tr>`; return; }
-  if(!data?.length){ tbody.innerHTML = `<tr><td colspan="7" class="muted">All caught up—no unmatched receipts.</td></tr>`; return; }
-  tbody.innerHTML = data.map(r=>{
-    const tot=typeof r.total==="number"?r.total.toFixed(2):(r.total??"");
-    const tax=typeof r.tax==="number"?r.tax.toFixed(2):(r.tax??"");
-    const img=r.image_url?`<a href="${r.image_url}" target="_blank" class="chip">open</a>`:"";
-    return `<tr><td>${r.receipt_date??""}</td><td>${r.vendor??""}</td><td class="right">$${tot}</td><td class="right">$${tax}</td><td>${r.category??""}</td><td>${r.source??""}</td><td>${img}</td></tr>`;
-  }).join("");
-}
-qs("refreshBtn").addEventListener("click",loadUnmatched);
-
-qs("uploadBtn").addEventListener("click", async ()=>{
-  msgEl.className="muted"; msgEl.textContent="Uploading…";
-  const file=qs("fileInput").files?.[0];
-  if(!file){ msgEl.className="err"; msgEl.textContent="Pick a file first."; return; }
-
-  const path=`${Date.now()}-${file.name}`;
-  const { error: upErr } = await sb.storage.from(BUCKET).upload(path, file, { contentType:file.type||"application/octet-stream", upsert:false });
-  if(upErr){ msgEl.className="err"; msgEl.textContent="Storage error: "+upErr.message; return; }
-  const { data: pub } = sb.storage.from(BUCKET).getPublicUrl(path);
-  const publicUrl = pub?.publicUrl;
-
-  const payload = {
-    image_url: publicUrl,
-    vendor: qs("vendor").value || null,
-    receipt_date: qs("rdate").value || null,
-    total: qs("total").value ? Number(qs("total").value) : null,
-    tax: qs("tax").value ? Number(qs("tax").value) : 0,
-    category: qs("category").value || null,
-    source: qs("source").value || null,
-    notes: qs("notes").value || null
-  };
-  const { error } = await sb.from("receipts").insert([payload]);
-  if(error){ msgEl.className="err"; msgEl.textContent="DB error: " + error.message; return; }
-  msgEl.className="ok"; msgEl.textContent="Uploaded & saved.";
-  qs("fileInput").value="";
-  await loadUnmatched();
-});
-
-qs("btnApply").addEventListener("click", async ()=>{
-  autoMsg.className="muted"; autoMsg.textContent="Applying rules…";
-  const { error } = await sb.rpc("apply_rules");
-  if(error){ autoMsg.className="err"; autoMsg.textContent=error.message; return; }
-  autoMsg.className="ok"; autoMsg.textContent="Rules applied."; loadUnmatched();
-});
-qs("btnMatch").addEventListener("click", async ()=>{
-  autoMsg.className="muted"; autoMsg.textContent="Matching…";
-  const fn = qs("matchMode").value==="fuzzy" ? "match_now_fuzzy" : "match_now";
-  const { error } = await sb.rpc(fn);
-  if(error){ autoMsg.className="err"; autoMsg.textContent=error.message; return; }
-  autoMsg.className="ok"; autoMsg.textContent="Matching complete."; loadUnmatched();
-});
-qs("exportBtn").addEventListener("click", async ()=>{
-  autoMsg.className="muted"; autoMsg.textContent="Building CSV…";
-  const { data, error } = await sb.from("v_accountant_export_receipts").select("*").order("receipt_date",{ascending:true});
-  if(error){ autoMsg.className="err"; autoMsg.textContent = error.message; return; }
-  if(!data?.length){ autoMsg.textContent="No data."; return; }
-  const cols=["receipt_date","vendor","category","source","subtotal","tax","total","notes","image_url"];
-  const header=cols.join(",");
-  const rows=data.map(r=>cols.map(k=>{ const v=r[k]??""; const s=String(v); return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; }).join(","));
-  const csv=[header,...rows].join("\n");
-  const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
-  const url=URL.createObjectURL(blob); const a=document.createElement("a");
-  a.href=url; a.download=`accountant_export_${new Date().toISOString().slice(0,10)}.csv`;
-  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  autoMsg.className="ok"; autoMsg.textContent="CSV downloaded.";
-});
-
-/* init */
-loadUnmatched();
-
-/* -------- helpers used above -------- */
-function preprocessPlaceholder(){/* kept for clarity */} // (unused)
-</script>
+    // init
+    loadUnmatched();
+  </script>
 </body>
 </html>
