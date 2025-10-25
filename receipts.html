@@ -1,442 +1,398 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Kosmos — Receipts</title>
 
-  <!-- Shared theme -->
-  <link rel="stylesheet" href="style.css"/>
-
-  <!-- Supabase -->
+  <link rel="stylesheet" href="style.css" />
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-  <!-- Tesseract (local OCR) -->
-  <script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
 
   <style>
-    /* page-local tweaks */
-    .two-col{ display:grid; grid-template-columns: 1.2fr .8fr; gap:16px; }
-    @media (max-width: 960px){ .two-col{ grid-template-columns:1fr; } }
-    .drop {
-      border:2px dashed var(--border); border-radius:14px; padding:16px; text-align:center;
-      background:#fff;
-    }
-    .drop.drag{ background:#f6faff; border-color:#bcd4ff; }
-    .chip{ display:inline-block; border:1px solid var(--border); border-radius:999px; padding:3px 8px; margin-left:6px; font-size:.8rem; }
-    .chip.ok{ border-color:#c7f0d7; background:#e9fbf0; }
-    .chip.warn{ border-color:#ffe59a; background:#fff8d8; }
-    .chip.bad{ border-color:#ffc0c0; background:#fff0f0; }
-    .advanced { margin-top:8px; }
-    .advanced summary { cursor:pointer; font-weight:700; }
-    canvas { max-width:100%; border:1px solid var(--border); border-radius:10px; background:#fff }
+    .uploader{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    @media (max-width:860px){.uploader{grid-template-columns:1fr}}
+    .imgbox{border:1px dashed var(--border);border-radius:14px;background:#fff;padding:14px;text-align:center}
+    .imgbox input{width:100%}
+    .imgbox img{max-width:100%;height:auto;border-radius:10px;margin-top:10px}
+    .mutetip{font-size:.85rem;color:var(--muted)}
+    .grid-rec{display:grid;gap:12px}
+    @media (min-width:900px){.grid-rec{display:block}}
+
+    .r-cards{display:grid;gap:12px;grid-template-columns:repeat(1,minmax(0,1fr))}
+    @media (min-width:520px){.r-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media (min-width:900px){.r-cards{display:none}}
+
+    .card-receipt{display:flex;gap:12px;align-items:flex-start}
+    .card-receipt img{width:66px;height:66px;object-fit:cover;border-radius:10px;border:1px solid var(--border)}
+    .card-receipt .meta{flex:1}
+    .card-receipt .meta b{display:block}
+    .badge{display:inline-block;padding:4px 8px;border-radius:999px;border:1px solid var(--border);font-weight:600;font-size:.82rem}
+    .badge.ok{background:#eef9f1;color:var(--ok);border-color:#cfe7d6}
+    .badge.muted{background:#f6f7f8;color:var(--muted)}
+
+    td.editable{cursor:text} td.editing{background:#fffbe6}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .spacer{flex:1 1 auto}
   </style>
 </head>
 <body>
-  <!-- Header -->
-  <header>
-    <h1>Kosmos Bookkeeping</h1>
-    <nav>
-      <a href="index.html">Dashboard</a>
-      <a href="receipts.html" class="active">Receipts</a>
-      <a href="transactions.html">Transactions</a>
-      <a href="reports.html">Reports</a>
-    </nav>
-  </header>
+<header>
+  <h1>Kosmos Bookkeeping</h1>
+  <nav>
+    <a href="index.html">Dashboard</a>
+    <a href="receipts.html" class="active">Receipts</a>
+    <a href="transactions.html">Transactions</a>
+    <a href="reports.html">Reports</a>
+  </nav>
+</header>
 
-  <main class="container">
-    <h2>🧾 Receipts Scanner</h2>
-    <p class="muted">Scan locally with Tesseract (no paid API). Auto-enhance, extract vendor/date/total/tax, review, then save.</p>
+<main class="container">
 
-    <div class="two-col">
-      <!-- LEFT: Scanner + form -->
-      <section class="grid" style="gap:16px;">
-        <!-- Upload / drop -->
-        <div class="card">
-          <div id="drop" class="drop">
-            <p><strong>Drop an image or PDF page here</strong> (PNG/JPG best). Or choose a file:</p>
-            <input id="file" type="file" accept="image/*"/>
+  <h2>🧾 Receipts</h2>
+  <p class="muted">Mobile-friendly upload (tap **Choose File** to open the camera on your phone), quick edit, and match status.</p>
+
+  <!-- Upload Box -->
+  <div class="card">
+    <div class="uploader">
+      <div class="imgbox">
+        <input id="file" type="file" accept="image/*" capture="environment" />
+        <div class="mutetip" style="margin-top:6px">Tip: On mobile this opens your camera. You can also pick from photos.</div>
+        <img id="preview" alt="" />
+      </div>
+
+      <div>
+        <div class="grid grid-2">
+          <div>
+            <label>Vendor</label>
+            <input id="vendor" placeholder="e.g., NO FRILLS" />
           </div>
-          <div class="row" style="margin-top:12px;">
-            <button id="btnRotateL" class="ghost">⟲ Rotate</button>
-            <button id="btnRotateR" class="ghost">⟳ Rotate</button>
-            <button id="btnZoomOut" class="ghost">− Zoom</button>
-            <button id="btnZoomIn" class="ghost">＋ Zoom</button>
-            <span class="muted" id="status" style="margin-left:auto;"></span>
+          <div>
+            <label>Date</label>
+            <input id="rdate" type="date" />
           </div>
-        </div>
-
-        <!-- Preview -->
-        <div class="card">
-          <canvas id="canvas" width="1200" height="1600"></canvas>
-        </div>
-
-        <!-- Scan controls -->
-        <div class="card">
-          <div class="row">
-            <button id="btnAutoScan">✨ Auto-Enhance & Scan</button>
-            <button id="btnUseDetected" class="ghost" title="Fill the form below with detected values">Use detected values</button>
-            <label class="muted" style="margin-left:auto;">
-              <input type="checkbox" id="toggleRaw"/> Show OCR text
-            </label>
+          <div>
+            <label>Total</label>
+            <input id="total" type="number" step="0.01" placeholder="0.00" />
           </div>
-
-          <details class="advanced">
-            <summary>Advanced</summary>
-            <div class="row" style="margin-top:10px;">
-              <button id="btnManualScan" class="ghost">Scan (manual)</button>
-              <button id="btnCancel" class="ghost">Cancel</button>
-              <button id="btnSharpen" class="ghost">Sharpen</button>
-              <button id="btnBinarize" class="ghost">Binarize</button>
-              <span class="muted">These tweaks re-process the current image before OCR.</span>
-            </div>
-            <pre id="rawBox" style="display:none; max-height:220px; overflow:auto; border:1px solid var(--border); border-radius:10px; padding:10px; background:#fff; margin-top:10px;"></pre>
-          </details>
-        </div>
-
-        <!-- Detected -->
-        <div class="card">
-          <h3 style="margin:0 0 8px 0;">Detected</h3>
-          <div class="grid grid-2">
-            <div>Vendor: <b id="detVendor">—</b> <span id="confVendor" class="chip">—</span></div>
-            <div>Date: <b id="detDate">—</b> <span id="confDate" class="chip">—</span></div>
-            <div>Total: <b id="detTotal">—</b> <span id="confTotal" class="chip">—</span></div>
-            <div>Tax: <b id="detTax">—</b> <span id="confTax" class="chip">—</span></div>
+          <div>
+            <label>Tax</label>
+            <input id="tax" type="number" step="0.01" value="0.00" />
           </div>
         </div>
-
-        <!-- Review & save -->
-        <div class="card">
-          <h3 style="margin:0 0 8px 0;">Review & Save</h3>
-          <div class="grid grid-2">
-            <div>
-              <label>Vendor</label>
-              <input id="inVendor" placeholder="Vendor"/>
-            </div>
-            <div>
-              <label>Date</label>
-              <input id="inDate" type="date"/>
-            </div>
-            <div>
-              <label>Total</label>
-              <input id="inTotal" type="number" step="0.01" placeholder="0.00"/>
-            </div>
-            <div>
-              <label>Tax</label>
-              <input id="inTax" type="number" step="0.01" placeholder="0.00"/>
-            </div>
-          </div>
-          <div style="margin-top:8px;">
-            <label>Notes</label>
-            <input id="inNotes" placeholder="Optional notes (category/source can be added later in rules)"/>
-          </div>
-          <div class="row" style="margin-top:12px;">
-            <button id="btnSave">Upload & Save</button>
-            <span id="saveMsg" class="muted" style="margin-left:8px;"></span>
-          </div>
+        <div style="margin-top:8px">
+          <label>Source <span class="muted">(optional)</span></label>
+          <input id="source" placeholder="e.g., Visa ****1234" />
         </div>
-      </section>
-
-      <!-- RIGHT: Unmatched receipts list -->
-      <aside class="grid" style="gap:16px;">
-        <div class="card">
-          <div class="row" style="justify-content:space-between;">
-            <h3 style="margin:0;">Unmatched Receipts</h3>
-            <button id="btnRefresh" class="ghost">Refresh</button>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th style="min-width:110px;">Date</th>
-                <th style="min-width:160px;">Vendor</th>
-                <th class="right" style="min-width:100px;">Total</th>
-                <th>Open</th>
-              </tr>
-            </thead>
-            <tbody id="unmatchedBody">
-              <tr><td colspan="4" class="muted">No items.</td></tr>
-            </tbody>
-          </table>
+        <div style="margin-top:8px">
+          <label>Notes <span class="muted">(optional)</span></label>
+          <input id="notes" placeholder="Any notes…" />
         </div>
-      </aside>
+
+        <p id="upMsg" class="muted" style="margin-top:8px"></p>
+        <div class="row" style="justify-content:flex-end;margin-top:8px">
+          <button id="clearBtn" class="ghost">Clear</button>
+          <button id="uploadBtn">Upload Receipt</button>
+        </div>
+      </div>
     </div>
-  </main>
+  </div>
 
-  <script>
-    // ===== Supabase client =====
-    const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
-    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
-    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  <!-- Filters/Actions -->
+  <div class="card">
+    <div class="toolbar">
+      <select id="filterMode">
+        <option value="all">All</option>
+        <option value="unmatched">Unmatched</option>
+        <option value="matched">Matched</option>
+        <option value="recent">Recently added</option>
+      </select>
 
-    // ===== DOM =====
-    const el = (id) => document.getElementById(id);
-    const file = el("file"), drop = el("drop"), canvas = el("canvas");
-    const ctx = canvas.getContext("2d");
-    const statusEl = el("status"), rawBox = el("rawBox");
+      <input id="search" placeholder="Search vendor/notes/source…" style="padding:.5rem .7rem;border:1px solid #cfcfcf;border-radius:10px;min-width:220px" />
+      <button id="applyFilter">Apply</button>
 
-    const det = {
-      vendor: el("detVendor"), date: el("detDate"), total: el("detTotal"), tax: el("detTax")
-    };
-    const conf = {
-      vendor: el("confVendor"), date: el("confDate"), total: el("confTotal"), tax: el("confTax")
-    };
-    const form = {
-      vendor: el("inVendor"), date: el("inDate"), total: el("inTotal"), tax: el("inTax"), notes: el("inNotes")
-    };
+      <span class="spacer"></span>
+      <button id="deleteSelected" class="ghost">🗑️ Delete Selected</button>
+    </div>
+    <div class="chips" style="margin-top:8px">
+      <span class="chip">Total: <b id="countAll">0</b></span>
+      <span class="chip">Matched: <b id="countMatched">0</b></span>
+      <span class="chip">Unmatched: <b id="countUnmatched">0</b></span>
+    </div>
+    <p id="status" class="muted" style="margin-top:6px"></p>
+  </div>
 
-    let imageBitmap = null;
-    let rotation = 0;
-    let zoom = 1;
-    let cancelFlag = false;
+  <!-- Card list on mobile -->
+  <div class="grid-rec">
+    <div class="r-cards" id="cards"></div>
 
-    // ===== Helpers =====
-    function setStatus(t){ statusEl.textContent = t || ""; }
-    function setChip(el, v){
-      el.textContent = v.label;
-      el.className = "chip " + (v.level || "warn");
+    <!-- Table on desktop -->
+    <div class="card" style="overflow:auto">
+      <table id="recTable">
+        <thead>
+          <tr>
+            <th style="width:40px"><input type="checkbox" id="selectAll" /></th>
+            <th style="min-width:110px;">Date</th>
+            <th style="min-width:180px;">Vendor</th>
+            <th class="right" style="min-width:110px;">Total</th>
+            <th class="right" style="min-width:90px;">Tax</th>
+            <th style="min-width:140px;">Source</th>
+            <th style="min-width:120px;">Status</th>
+            <th style="min-width:220px;">Notes</th>
+            <th style="min-width:200px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot>
+          <tr><td colspan="9">
+            <div class="sticky-footer">
+              <span class="kpill">Rows: <b id="ftRows">0</b></span>
+              <span class="kpill">Subtotal: <b id="ftSubtotal">$0.00</b></span>
+              <span class="kpill">Tax: <b id="ftTax">$0.00</b></span>
+              <span class="kpill">Total: <b id="ftTotal">$0.00</b></span>
+            </div>
+          </td></tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+/* ===== Supabase setup ===== */
+const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const $ = id => document.getElementById(id);
+const tbody = document.querySelector("#recTable tbody");
+const cards = $("cards");
+
+let all = [];
+let matches = new Map(); // receipt_id -> [transaction_id]
+const selected = new Set();
+
+function money(n){ const v=Number(n)||0; return `$${v.toFixed(2)}`; }
+function esc(s){ return String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+/* ===== Upload form ===== */
+$("file").addEventListener("change", e=>{
+  const f=e.target.files?.[0];
+  $("preview").src = f ? URL.createObjectURL(f) : "";
+  $("upMsg").textContent = f ? `Selected: ${f.name}` : "";
+});
+$("clearBtn").addEventListener("click", ()=>{
+  $("file").value=""; $("preview").src="";
+  $("vendor").value=""; $("rdate").value=""; $("total").value=""; $("tax").value="0.00";
+  $("source").value=""; $("notes").value=""; $("upMsg").textContent="";
+});
+
+/* No auto-scanner for now — we keep it simple: upload + fields */
+$("uploadBtn").addEventListener("click", async ()=>{
+  const f=$("file").files?.[0];
+  if(!f){ $("upMsg").className="err"; $("upMsg").textContent="Choose a file (camera or photo)."; return; }
+
+  const vendor = $("vendor").value.trim() || null;
+  const receipt_date = $("rdate").value || null;
+  const total = $("total").value ? Number($("total").value) : null;
+  const tax = $("tax").value ? Number($("tax").value) : 0;
+  const source = $("source").value.trim() || null;
+  const notes = $("notes").value.trim() || null;
+
+  if(!receipt_date || total===null){ $("upMsg").className="err"; $("upMsg").textContent="Date and Total are required."; return; }
+
+  $("upMsg").className="muted"; $("upMsg").textContent="Uploading…";
+  const fname = `r_${Date.now()}_${(f.name||"image").replace(/[^\w.\-]+/g,"_")}`;
+  const { data:upRes, error:upErr } = await sb.storage.from("receipts").upload(fname, f, { contentType: f.type||"image/jpeg" });
+  if(upErr){ $("upMsg").className="err"; $("upMsg").textContent=upErr.message; return; }
+  const { data:pub } = sb.storage.from("receipts").getPublicUrl(upRes.path);
+  const image_url = pub?.publicUrl || null;
+
+  const ins = {
+    image_url, size_bytes: f.size||0, receipt_date, total, tax,
+    vendor, source, notes
+  };
+  const { error:insErr } = await sb.from("receipts").insert(ins);
+  if(insErr){ $("upMsg").className="err"; $("upMsg").textContent=insErr.message; return; }
+
+  $("upMsg").className="ok"; $("upMsg").textContent="Uploaded.";
+  $("clearBtn").click(); await loadReceipts();
+});
+
+/* ===== Load & render ===== */
+async function loadReceipts(){
+  const { data: recs, error: rErr } = await sb.from("receipts").select("*").order("created_at",{ascending:false});
+  if(rErr){ tbody.innerHTML = `<tr><td colspan="9" class="err">${rErr.message}</td></tr>`; return; }
+  all = recs || [];
+
+  const { data: mx } = await sb.from("matches").select("receipt_id, transaction_id");
+  matches.clear();
+  (mx||[]).forEach(m=>{
+    const arr = matches.get(m.receipt_id) || [];
+    arr.push(m.transaction_id); matches.set(m.receipt_id, arr);
+  });
+
+  applyFilters();
+}
+
+function applyFilters(){
+  const mode = $("filterMode").value;
+  const q = ($("search").value||"").toLowerCase().trim();
+
+  let rows = all.slice();
+  rows = rows.filter(r=>{
+    const hasMatch = matches.has(r.id);
+    switch(mode){
+      case "matched": return hasMatch;
+      case "unmatched": return !hasMatch;
+      case "recent": return true; // already sorted newest first
+      default: return true;
     }
-    function resetDetected(){
-      ["vendor","date","total","tax"].forEach(k => det[k].textContent = "—");
-      ["vendor","date","total","tax"].forEach(k => setChip(conf[k], {label:"—",level:""}));
-    }
-    function draw(){
-      if(!imageBitmap){ ctx.clearRect(0,0,canvas.width,canvas.height); return; }
-      const w = imageBitmap.width * zoom, h = imageBitmap.height * zoom;
-      canvas.width = w; canvas.height = h;
-      ctx.save();
-      ctx.clearRect(0,0,w,h);
-      // rotation around center
-      ctx.translate(w/2, h/2);
-      ctx.rotate(rotation*Math.PI/180);
-      ctx.translate(-w/2, -h/2);
-      ctx.drawImage(imageBitmap, 0, 0, w, h);
-      ctx.restore();
-    }
-    async function loadImage(file){
-      const bitmap = await createImageBitmap(file);
-      imageBitmap = bitmap;
-      rotation = 0; zoom = Math.min(1200 / bitmap.width, 1600 / bitmap.height) || 1;
-      draw(); resetDetected(); rawBox.style.display="none";
-    }
-    function preprocessSharpen(){
-      const {width:w,height:h} = canvas;
-      const img = ctx.getImageData(0,0,w,h);
-      const d = img.data;
-      // simple unsharp mask
-      for(let i=0;i<d.length;i+=4){
-        const avg = (d[i]+d[i+1]+d[i+2])/3;
-        d[i] = Math.min(255, avg*1.15);
-        d[i+1] = Math.min(255, avg*1.15);
-        d[i+2] = Math.min(255, avg*1.15);
-      }
-      ctx.putImageData(img,0,0);
-    }
-    function preprocessBinarize(){
-      const {width:w,height:h} = canvas;
-      const img = ctx.getImageData(0,0,w,h);
-      const d = img.data;
-      for(let i=0;i<d.length;i+=4){
-        const g = 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2];
-        const v = g > 180 ? 255 : 0;
-        d[i]=d[i+1]=d[i+2]=v;
-      }
-      ctx.putImageData(img,0,0);
-    }
+  });
+  if(q){
+    rows = rows.filter(r => 
+      String(r.vendor||"").toLowerCase().includes(q) ||
+      String(r.notes||"").toLowerCase().includes(q) ||
+      String(r.source||"").toLowerCase().includes(q)
+    );
+  }
+  render(rows);
+}
 
-    function parseOCR(text){
-      // basic CA-friendly parser
-      const lines = text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-      // vendor: first non-allcaps-numbers-ish line near top
-      const top = lines.slice(0,10);
-      let vendor = (top.find(s => /[a-zA-Z]/.test(s) && !/total|visa|master|debit|credit|hst|gst|pst|balance/i.test(s)) || "").replace(/\s{2,}/g,' ');
-      if (vendor.length > 40) vendor = vendor.slice(0,40);
+function render(rows){
+  // counters
+  $("countAll").textContent = all.length;
+  let m=0; for(const r of all) if(matches.has(r.id)) m++;
+  $("countMatched").textContent = m; $("countUnmatched").textContent = all.length - m;
 
-      // date: look for YYYY-MM-DD / YYYY/MM/DD / DD-MM-YYYY / MM/DD/YYYY
-      let date = null;
-      for(const s of lines){
-        const ymd = s.match(/(20\d{2})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
-        const dmy = s.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](20\d{2})/);
-        if(ymd){ const [_,Y,M,D]=ymd; date = `${Y}-${String(M).padStart(2,'0')}-${String(D).padStart(2,'0')}`; break; }
-        if(dmy){ const [_,D,M,Y]=dmy; date = `${Y}-${String(M).padStart(2,'0')}-${String(D).padStart(2,'0')}`; break; }
-      }
+  // table
+  if(!rows.length){
+    tbody.innerHTML = `<tr><td colspan="9" class="muted">No receipts found.</td></tr>`;
+    $("ftRows").textContent="0"; $("ftSubtotal").textContent=money(0); $("ftTax").textContent=money(0); $("ftTotal").textContent=money(0);
+  }else{
+    let subtotal=0, taxSum=0, totalSum=0;
+    const html = rows.map(r=>{
+      const status = matches.has(r.id)
+        ? `<span class="badge ok">Matched${matches.get(r.id).length>1?` (${matches.get(r.id).length})`:``}</span>`
+        : `<span class="badge muted">Unmatched</span>`;
+      subtotal += Number(r.total||0) - Number(r.tax||0);
+      taxSum   += Number(r.tax||0);
+      totalSum += Number(r.total||0);
 
-      // amounts
-      const money = lines.flatMap(s => (s.match(/([$]?\s*\d{1,3}(?:[,\s]\d{3})*(?:\.\d{2})?)/g)||[]))
-        .map(v => Number(String(v).replace(/[^0-9.]/g,'')))
-        .filter(n => Number.isFinite(n) && n>0).sort((a,b)=>a-b);
+      const img = r.image_url ? `<img src="${esc(r.image_url)}" style="width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid var(--border)" />` : "";
 
-      // tax candidates
-      let tax = null;
-      for(const s of lines){
-        const m = s.match(/\b(HST|GST|PST|TVQ|TPS)\b[^\d]*([\$]?\s*\d+(?:\.\d{2})?)/i);
-        if(m){ tax = Number(String(m[2]).replace(/[^0-9.]/g,'')); break; }
-      }
-      // total candidates with keyword bias
-      let total = null;
-      for(const s of lines){
-        if(/grand\s*total|amount\s*due|total/i.test(s)){
-          const m = s.match(/([\$]?\s*\d+(?:[,\s]\d{3})*(?:\.\d{2})?)/);
-          if(m){ total = Number(String(m[1]).replace(/[^0-9.]/g,'')); break; }
-        }
-      }
-      if (!total && money.length) total = money[money.length-1];
+      return `<tr data-id="${r.id}">
+        <td><input type="checkbox" class="sel" data-id="${r.id}" ${selected.has(r.id)?"checked":""}/></td>
+        <td class="editable" data-field="receipt_date">${esc((r.receipt_date||"").slice(0,10))}</td>
+        <td class="editable" data-field="vendor">${esc(r.vendor||"")}</td>
+        <td class="right editable" data-field="total">${esc(Number(r.total||0).toFixed(2))}</td>
+        <td class="right editable" data-field="tax">${esc(Number(r.tax||0).toFixed(2))}</td>
+        <td class="editable" data-field="source">${esc(r.source||"")}</td>
+        <td>${status}</td>
+        <td class="editable" data-field="notes">${esc(r.notes||"")}</td>
+        <td>
+          ${img}
+          <a class="badge" href="${esc(r.image_url||'#')}" target="_blank" rel="noopener" style="margin-left:8px">Open</a>
+          <button class="ghost btnDel" data-id="${r.id}">Delete</button>
+        </td>
+      </tr>`;
+    }).join("");
+    tbody.innerHTML = html;
 
-      // confidence heuristics
-      const conf = {
-        vendor: vendor ? {label:"high",level:"ok"} : {label:"low",level:"bad"},
-        date: date ? {label:"med",level:"ok"} : {label:"low",level:"bad"},
-        total: total ? {label:"high",level:"ok"} : {label:"low",level:"bad"},
-        tax: tax!=null ? {label:"med",level:"ok"} : {label:"unknown",level:"warn"}
-      };
-
-      return { vendor, date, total, tax, conf, text };
-    }
-
-    async function runOCR(){
-      setStatus("Running OCR…"); cancelFlag=false;
-      const blob = await new Promise(res => canvas.toBlob(res,"image/png",0.95));
-      const { data: { text } } = await Tesseract.recognize(blob, "eng", { logger: _ => {} });
-      if (cancelFlag) { setStatus("Canceled."); return null; }
-      setStatus("Parsing…");
-      return parseOCR(text);
-    }
-
-    // ===== Actions =====
-    el("btnRotateL").addEventListener("click",()=>{ rotation -= 90; draw(); });
-    el("btnRotateR").addEventListener("click",()=>{ rotation += 90; draw(); });
-    el("btnZoomIn").addEventListener("click",()=>{ zoom *= 1.1; draw(); });
-    el("btnZoomOut").addEventListener("click",()=>{ zoom /= 1.1; draw(); });
-
-    el("btnSharpen").addEventListener("click",()=>{ preprocessSharpen(); });
-    el("btnBinarize").addEventListener("click",()=>{ preprocessBinarize(); });
-
-    el("toggleRaw").addEventListener("change",(e)=>{
-      rawBox.style.display = e.target.checked ? "block" : "none";
+    // Editable cells
+    Array.from(tbody.querySelectorAll("td.editable")).forEach(td=>{
+      const id = td.closest("tr").getAttribute("data-id");
+      const field = td.getAttribute("data-field");
+      td.addEventListener("click",()=>makeEditable(td,id,field));
+    });
+    // Selections
+    document.querySelectorAll(".sel").forEach(cb=>{
+      cb.addEventListener("change",(e)=>{ const id=e.target.getAttribute("data-id"); if(e.target.checked) selected.add(id); else selected.delete(id); });
+    });
+    // Deletes
+    document.querySelectorAll(".btnDel").forEach(btn=>{
+      btn.addEventListener("click", async ()=>{
+        const id=btn.getAttribute("data-id");
+        if(!confirm("Delete this receipt?")) return;
+        await sb.from("receipts").delete().eq("id",id);
+        selected.delete(id); await loadReceipts();
+      });
     });
 
-    el("btnCancel").addEventListener("click",()=>{ cancelFlag=true; setStatus("Canceling…"); });
+    $("ftRows").textContent=rows.length;
+    $("ftSubtotal").textContent=money(subtotal);
+    $("ftTax").textContent=money(taxSum);
+    $("ftTotal").textContent=money(totalSum);
+  }
 
-    async function autoEnhance(){
-      // simple: brighten a touch before OCR
-      preprocessSharpen();
-    }
-
-    el("btnAutoScan").addEventListener("click", async ()=>{
-      if(!imageBitmap){ alert("Pick an image first."); return; }
-      setStatus("Enhancing…");
-      await autoEnhance();
-      const out = await runOCR();
-      if(!out) return;
-      // show
-      det.vendor.textContent = out.vendor || "—";
-      det.date.textContent = out.date || "—";
-      det.total.textContent = out.total!=null ? `$${out.total.toFixed(2)}` : "—";
-      det.tax.textContent = out.tax!=null ? `$${Number(out.tax).toFixed(2)}` : "—";
-      setChip(conf.vendor,out.conf.vendor);
-      setChip(conf.date,out.conf.date);
-      setChip(conf.total,out.conf.total);
-      setChip(conf.tax,out.conf.tax);
-      rawBox.textContent = out.text;
-      setStatus("Done.");
-      el("btnUseDetected").onclick = ()=>{
-        if(out.vendor) form.vendor.value = out.vendor;
-        if(out.date) form.date.value = out.date;
-        if(out.total!=null) form.total.value = out.total.toFixed(2);
-        if(out.tax!=null) form.tax.value = Number(out.tax).toFixed(2);
-      };
+  // mobile cards
+  if(!rows.length){ cards.innerHTML=""; return; }
+  cards.innerHTML = rows.map(r=>{
+    const status = matches.has(r.id)
+      ? `<span class="badge ok">Matched</span>`
+      : `<span class="badge muted">Unmatched</span>`;
+    return `<div class="card card-receipt" data-id="${r.id}">
+      <img src="${esc(r.image_url||'')}" alt="">
+      <div class="meta">
+        <b>${esc(r.vendor||'Unknown Vendor')}</b>
+        <div class="muted">${esc((r.receipt_date||'').slice(0,10))} • ${money(r.total||0)}</div>
+        <div style="margin-top:6px">${status}</div>
+      </div>
+      <div>
+        <button class="ghost btnDel" data-id="${r.id}">Delete</button>
+      </div>
+    </div>`;
+  }).join("");
+  cards.querySelectorAll(".btnDel").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const id=btn.getAttribute("data-id");
+      if(!confirm("Delete this receipt?")) return;
+      await sb.from("receipts").delete().eq("id",id);
+      selected.delete(id); await loadReceipts();
     });
+  });
+}
 
-    el("btnManualScan").addEventListener("click", async ()=>{
-      if(!imageBitmap){ alert("Pick an image first."); return; }
-      const out = await runOCR();
-      if(!out) return;
-      det.vendor.textContent = out.vendor || "—";
-      det.date.textContent = out.date || "—";
-      det.total.textContent = out.total!=null ? `$${out.total.toFixed(2)}` : "—";
-      det.tax.textContent = out.tax!=null ? `$${Number(out.tax).toFixed(2)}` : "—";
-      setChip(conf.vendor,out.conf.vendor);
-      setChip(conf.date,out.conf.date);
-      setChip(conf.total,out.conf.total);
-      setChip(conf.tax,out.conf.tax);
-      rawBox.textContent = out.text;
-      setStatus("Done.");
-    });
+function makeEditable(td, id, field){
+  if(td.classList.contains("editing")) return;
+  const original = td.textContent.trim();
+  td.classList.add("editing");
+  const input = document.createElement("input");
+  input.type = (field==="receipt_date") ? "date" : "text";
+  input.value = (field==="total"||field==="tax") ? String(Number(original||0)) : (field==="receipt_date"?original:original);
+  input.style.width="100%"; input.style.padding=".45rem .6rem"; input.style.border="1px solid #cfcfcf"; input.style.borderRadius="8px";
+  input.addEventListener("keydown",e=>{ if(e.key==="Enter") input.blur(); if(e.key==="Escape"){ input.value=original; input.blur(); }});
+  input.addEventListener("blur", async ()=>{
+    let value = input.value.trim();
+    if(field==="total"||field==="tax"){ value = value?Number(value):0; }
+    if(field==="receipt_date" && value.length>10) value = value.slice(0,10);
+    td.classList.remove("editing"); td.textContent = (field==="total"||field==="tax")?Number(value||0).toFixed(2):value;
+    const upd = {}; upd[field]= value||null;
+    await sb.from("receipts").update(upd).eq("id",id);
+  });
+  td.innerHTML=""; td.appendChild(input); input.focus(); input.select();
+}
 
-    // upload / drop
-    file.addEventListener("change", e=>{
-      const f = e.target.files?.[0];
-      if(!f) return;
-      loadImage(f);
-    });
-    ["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,(e)=>{e.preventDefault(); drop.classList.add("drag");}));
-    ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,(e)=>{e.preventDefault(); drop.classList.remove("drag");}));
-    drop.addEventListener("drop", e=>{
-      const f = e.dataTransfer.files?.[0];
-      if(!f) return;
-      loadImage(f);
-    });
+/* ===== Actions ===== */
+$("applyFilter").addEventListener("click", applyFilters);
+$("search").addEventListener("input", ()=>{ clearTimeout(window._s); window._s=setTimeout(applyFilters,180); });
 
-    // Save
-    el("btnUseDetected").addEventListener("click", ()=>{}); // assigned after scan
-    el("btnSave").addEventListener("click", async ()=>{
-      if(!imageBitmap){ alert("Scan an image first."); return; }
-      const vendor = form.vendor.value.trim();
-      const date = form.date.value || null;
-      const total = form.total.value ? Number(form.total.value) : null;
-      const tax = form.tax.value ? Number(form.tax.value) : 0;
-      const notes = form.notes.value || null;
+$("selectAll").addEventListener("change", (e)=>{
+  if(e.target.checked) all.forEach(r=>selected.add(r.id)); else selected.clear();
+  applyFilters();
+});
 
-      if(!total || !date){ alert("Date and Total are required."); return; }
+$("deleteSelected").addEventListener("click", async ()=>{
+  if(!selected.size) return;
+  if(!confirm(`Delete ${selected.size} receipt(s)?`)) return;
+  const ids=[...selected]; const chunk=300;
+  for(let i=0;i<ids.length;i+=chunk){
+    await sb.from("receipts").delete().in("id", ids.slice(i,i+chunk));
+  }
+  selected.clear(); await loadReceipts();
+});
 
-      el("saveMsg").textContent = "Uploading…";
-      const pngBlob = await new Promise(res => canvas.toBlob(res,"image/png",0.95));
-      const size_bytes = pngBlob.size;
-
-      const fname = `receipt_${Date.now()}.png`;
-      const { data: up, error: upErr } = await sb.storage.from("receipts").upload(fname, pngBlob, { contentType:"image/png", upsert:false });
-      if(upErr){ el("saveMsg").className="err"; el("saveMsg").textContent = upErr.message; return; }
-
-      const { data: pub } = sb.storage.from("receipts").getPublicUrl(up.path);
-      const image_url = pub?.publicUrl || null;
-
-      const ins = {
-        image_url, size_bytes, receipt_date: date, total, tax,
-        vendor: vendor || null, notes: notes || null, source: "local_ocr"
-      };
-
-      const { error: insErr } = await sb.from("receipts").insert(ins);
-      if(insErr){ el("saveMsg").className="err"; el("saveMsg").textContent = insErr.message; return; }
-
-      el("saveMsg").className="ok";
-      el("saveMsg").textContent = "Saved.";
-      // refresh unmatched panel
-      loadUnmatched();
-    });
-
-    // Unmatched list
-    async function loadUnmatched(){
-      const body = el("unmatchedBody");
-      body.innerHTML = `<tr><td colspan="4" class="muted">Loading…</td></tr>`;
-      let q = sb.from("v_unmatched_receipts").select("id,receipt_date,vendor,total,image_url,created_at").order("created_at", {ascending:false}).limit(50);
-      const { data, error } = await q;
-      if(error){ body.innerHTML = `<tr><td colspan="4" class="err">${error.message}</td></tr>`; return; }
-      if(!data?.length){ body.innerHTML = `<tr><td colspan="4" class="muted">No unmatched receipts.</td></tr>`; return; }
-      body.innerHTML = data.map(r=>{
-        const t = Number(r.total||0).toFixed(2);
-        const link = r.image_url ? `<a href="${r.image_url}" target="_blank">Open</a>` : `<span class="muted">—</span>`;
-        const d = (r.receipt_date||"").slice(0,10);
-        const v = (r.vendor||"").substring(0,40);
-        return `<tr>
-          <td>${d}</td>
-          <td>${v}</td>
-          <td class="right">$${t}</td>
-          <td>${link}</td>
-        </tr>`;
-      }).join("");
-    }
-    el("btnRefresh").addEventListener("click", loadUnmatched);
-
-    // init
-    loadUnmatched();
-  </script>
+/* ===== Init ===== */
+loadReceipts();
+</script>
 </body>
 </html>
