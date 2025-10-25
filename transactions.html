@@ -5,14 +5,17 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Kosmos — Transactions</title>
 
-  <!-- Shared theme -->
   <link rel="stylesheet" href="style.css" />
-
-  <!-- Supabase -->
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
+  <style>
+    /* page-local polish */
+    td.editable { cursor: text; }
+    td.editing  { background:#fffbe6; }
+    .hint { font-size:.85rem; color:var(--muted); margin-top:6px; }
+  </style>
 </head>
 <body>
-  <!-- Consistent header/nav (same as Dashboard) -->
   <header>
     <h1>Kosmos Bookkeeping</h1>
     <nav>
@@ -25,26 +28,24 @@
 
   <main class="container">
     <h2>💳 Transactions Overview</h2>
-    <p class="muted">View, filter, and export your transactions. CSV import stays as-is; bank sync is hidden for now.</p>
+    <p class="muted">View, filter, and export all transactions. Click a <b>Category</b> cell to edit and save instantly.</p>
 
     <!-- Filters -->
     <div class="card">
-      <div class="row" style="gap:12px; align-items:center;">
-        <label for="fromDate">Date Range:</label>
+      <div class="row">
+        <label>Date Range:</label>
         <input type="date" id="fromDate" />
         <span>–</span>
         <input type="date" id="toDate" />
-
-        <select id="filterMode" aria-label="Filter by match status">
+        <select id="filterMode">
           <option value="all">All</option>
           <option value="matched">Matched</option>
           <option value="unmatched">Unmatched</option>
         </select>
-
         <button id="filterBtn">Apply</button>
-        <span style="flex:1 1 auto"></span>
         <button id="exportBtn" class="ghost">📁 Export CSV</button>
       </div>
+      <div class="hint">Tip: Use rules later to auto-fill categories by vendor; for now you can edit them inline.</div>
     </div>
 
     <!-- Summary -->
@@ -55,51 +56,42 @@
         <div><strong>Credits:</strong> <span id="credits">—</span></div>
         <div><strong>Net:</strong> <span id="net">—</span></div>
       </div>
-      <p class="muted" style="margin-top:8px;">Numbers reflect current filters.</p>
+      <p class="muted" style="margin-top:8px;">Numbers reflect the current filter.</p>
     </div>
 
     <!-- Table -->
-    <div class="card">
-      <div style="overflow:auto;">
-        <table id="txnTable">
-          <thead>
-            <tr>
-              <th style="min-width:110px;">Date</th>
-              <th style="min-width:380px;">Description</th>
-              <th class="right" style="min-width:120px;">Amount</th>
-              <th style="min-width:90px;">Type</th>
-              <th style="min-width:160px;">Source</th>
-              <th style="min-width:140px;">Institution</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Hidden bank sync panel kept for later (but not visible) -->
-    <div class="card syncbox">
-      <!-- existing bank sync content would live here -->
+    <div class="card" style="overflow:auto;">
+      <table id="txnTable">
+        <thead>
+          <tr>
+            <th style="min-width:110px;">Date</th>
+            <th style="min-width:380px;">Description</th>
+            <th class="right" style="min-width:120px;">Amount</th>
+            <th style="min-width:90px;">Type</th>
+            <th style="min-width:160px;">Category</th>
+            <th style="min-width:180px;">Source</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
     </div>
   </main>
 
   <script>
-    // ===== Supabase client =====
+    // ===== Supabase =====
     const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
     const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // ===== DOM =====
     const $ = (id) => document.getElementById(id);
     const tbody = document.querySelector("#txnTable tbody");
 
-    // ===== Load & render =====
+    // ===== Load & Filter =====
     async function loadTransactions() {
       const from = $("fromDate").value || "1900-01-01";
       const to   = $("toDate").value   || "2999-12-31";
       const mode = $("filterMode").value;
 
-      // base query
       let q = sb
         .from("transactions")
         .select("*")
@@ -107,39 +99,66 @@
         .lte("txn_date", to)
         .order("txn_date", { ascending: false });
 
-      // matched/unmatched via matches
       if (mode !== "all") {
-        const { data: matchRows, error: mErr } = await sb.from("matches").select("transaction_id");
-        if (mErr) {
-          renderError(mErr.message);
-          return;
-        }
-        const ids = (matchRows || []).map(r => r.transaction_id);
-
-        if (mode === "matched") q = q.in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
+        const { data: mx, error: mErr } = await sb.from("matches").select("transaction_id");
+        if (mErr) return renderError(mErr.message);
+        const ids = (mx || []).map(r => r.transaction_id);
+        if (mode === "matched")   q = q.in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
         if (mode === "unmatched") q = q.not("id", "in", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
       }
 
       const { data, error } = await q;
-      if (error) { renderError(error.message); return; }
+      if (error) return renderError(error.message);
       renderTable(data || []);
     }
 
     function renderError(msg) {
       tbody.innerHTML = `<tr><td colspan="6" class="err">${msg}</td></tr>`;
       $("txnCount").textContent = "—";
-      $("debits").textContent   = "$0.00";
-      $("credits").textContent  = "$0.00";
-      $("net").textContent      = "$0.00";
+      $("debits").textContent = "$0.00";
+      $("credits").textContent = "$0.00";
+      $("net").textContent = "$0.00";
     }
+
+    // ===== Inline edit (Category) =====
+    function makeEditable(td, txnId, initialValue) {
+      if (td.classList.contains("editing")) return;
+      td.classList.add("editing");
+
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = initialValue || "";
+      input.style.width = "100%";
+      input.style.padding = ".45rem .6rem";
+      input.style.border = "1px solid #cfcfcf";
+      input.style.borderRadius = "8px";
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") input.blur();
+        if (e.key === "Escape") { input.value = initialValue || ""; input.blur(); }
+      });
+      input.addEventListener("blur", async () => {
+        const newVal = input.value.trim() || null;
+        td.innerHTML = newVal ? escapeHtml(newVal) : "";
+        td.classList.remove("editing");
+        td.classList.add("editable");
+        // Save only if changed
+        if ((initialValue || null) !== newVal) {
+          await sb.from("transactions").update({ category: newVal }).eq("id", txnId);
+        }
+      });
+
+      td.innerHTML = ""; td.appendChild(input); input.focus(); input.select();
+    }
+
+    function escapeHtml(s){ return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 
     function renderTable(rows) {
       if (!rows.length) {
         tbody.innerHTML = `<tr><td colspan="6" class="muted">No transactions found.</td></tr>`;
         $("txnCount").textContent = 0;
-        $("debits").textContent   = "$0.00";
-        $("credits").textContent  = "$0.00";
-        $("net").textContent      = "$0.00";
+        $("debits").textContent = "$0.00";
+        $("credits").textContent = "$0.00";
+        $("net").textContent = "$0.00";
         return;
       }
 
@@ -147,38 +166,42 @@
       const html = rows.map(t => {
         const amt = Number(t.amount) || 0;
         if (t.direction === "debit") debit += amt; else credit += amt;
-
-        // escape basic text to avoid accidental HTML
-        const esc = (s) => String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-        return `
-          <tr>
-            <td>${esc(t.txn_date)}</td>
-            <td>${esc(t.description)}</td>
-            <td class="right">$${amt.toFixed(2)}</td>
-            <td>${esc(t.direction)}</td>
-            <td>${esc(t.source_account_name)}</td>
-            <td>${esc(t.institution)}</td>
-          </tr>`;
+        const source = t.source_account_name || t.institution || "";
+        return `<tr data-id="${t.id}">
+          <td>${escapeHtml(t.txn_date)}</td>
+          <td>${escapeHtml(t.description)}</td>
+          <td class="right">$${amt.toFixed(2)}</td>
+          <td>${escapeHtml(t.direction)}</td>
+          <td class="editable">${escapeHtml(t.category)}</td>
+          <td>${escapeHtml(source)}</td>
+        </tr>`;
       }).join("");
 
       tbody.innerHTML = html;
+
+      // attach inline editors
+      Array.from(tbody.querySelectorAll("tr")).forEach(tr => {
+        const id = tr.getAttribute("data-id");
+        const catTd = tr.children[4];
+        catTd.classList.add("editable");
+        catTd.addEventListener("click", () => makeEditable(catTd, id, catTd.textContent.trim()));
+      });
+
       $("txnCount").textContent = rows.length;
       $("debits").textContent   = `$${debit.toFixed(2)}`;
       $("credits").textContent  = `$${credit.toFixed(2)}`;
       $("net").textContent      = `$${(credit - debit).toFixed(2)}`;
     }
 
-    // ===== Export receipts CSV (uses accountant view) =====
+    // ===== Export receipts CSV (unchanged) =====
     async function exportCSV() {
       const { data, error } = await sb.from("v_accountant_export_receipts").select("*");
       if (error || !data?.length) { alert("No export data."); return; }
-
       const header = Object.keys(data[0]);
       const lines = [header.join(",")];
       for (const row of data) {
         const line = header.map(h => {
           const v = row[h] ?? "";
-          // quote if needed
           return /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g,'""')}"` : v;
         }).join(",");
         lines.push(line);
@@ -191,11 +214,9 @@
       URL.revokeObjectURL(url);
     }
 
-    // Events
     $("filterBtn").addEventListener("click", loadTransactions);
     $("exportBtn").addEventListener("click", exportCSV);
 
-    // Initial load
     loadTransactions();
   </script>
 </body>
