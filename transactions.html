@@ -33,9 +33,9 @@
     <h2>💳 Transactions Overview</h2>
     <p class="muted">View, filter, and export all transactions. Click <b>Category</b> or <b>Source</b> to edit and save instantly.</p>
 
-    <!-- Filters -->
+    <!-- Filters / Actions -->
     <div class="card">
-      <div class="row">
+      <div class="row" style="align-items:center; gap:12px;">
         <label>Date Range:</label>
         <input type="date" id="fromDate" />
         <span>–</span>
@@ -46,9 +46,14 @@
           <option value="unmatched">Unmatched</option>
         </select>
         <button id="filterBtn">Apply</button>
+
+        <span style="flex:1 1 auto"></span>
+
+        <button id="backfillBtn" class="ghost" title="Fill missing Source from Accounts">↺ Backfill Sources</button>
         <button id="exportBtn" class="ghost">📁 Export CSV</button>
       </div>
       <div class="hint">“Source” shows the account name (or the institution if the account name is empty). Editing Source writes to <code>source_account_name</code>.</div>
+      <p id="status" class="muted" style="margin-top:6px;"></p>
     </div>
 
     <!-- Summary -->
@@ -88,6 +93,7 @@
 
     const $ = (id) => document.getElementById(id);
     const tbody = document.querySelector("#txnTable tbody");
+    const statusEl = $("status");
 
     // ===== Load & Filter =====
     async function loadTransactions() {
@@ -226,9 +232,20 @@
       URL.revokeObjectURL(url);
     }
 
+    // ===== Backfill Sources (RPC) =====
+    async function backfillSources() {
+      statusEl.textContent = "Backfilling sources…";
+      const { data, error } = await sb.rpc("backfill_transaction_sources");
+      if (error) { statusEl.className = "err"; statusEl.textContent = error.message; return; }
+      statusEl.className = "ok";
+      statusEl.textContent = `Backfilled ${data ?? 0} transactions.`;
+      await loadTransactions();
+    }
+
     // Events
     $("filterBtn").addEventListener("click", loadTransactions);
     $("exportBtn").addEventListener("click", exportCSV);
+    $("backfillBtn").addEventListener("click", backfillSources);
 
     // Initial
     loadTransactions();
