@@ -81,7 +81,7 @@
 
   <main class="container">
     <h2>💳 Transactions</h2>
-    <p class="muted">Filter, import, categorize, and export your transactions. Edit inline, attach receipts, save views, and use bulk actions for speed.</p>
+    <p class="muted">Filter, import, categorize, save views, attach receipts, create vendor rules, and use bulk actions for speed.</p>
 
     <!-- Filters / Actions -->
     <div class="card">
@@ -142,6 +142,7 @@
         <input id="bulkSource" placeholder="Set source…" />
         <button id="applySource">Apply Source</button>
         <button id="clearCategory" class="ghost">Clear Category</button>
+        <button id="bulkMakeRule" title="Create a rule from the first selected row">⚙️ Create Rule from Selection</button>
       </div>
     </div>
 
@@ -169,7 +170,7 @@
             <th style="min-width:140px;">Status</th>
             <th style="min-width:160px;">Category</th>
             <th style="min-width:180px;">Source</th>
-            <th style="min-width:140px;">Actions</th>
+            <th style="min-width:220px;">Actions</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -300,6 +301,41 @@
     </div>
   </div>
 
+  <!-- Create Rule Modal -->
+  <div id="ruleBackdrop" class="modal-backdrop">
+    <div class="modal">
+      <h3>Create Vendor Rule</h3>
+      <p class="muted">Use a pattern that matches how the vendor appears in your statements (e.g., “NO FRILLS”, “AMAZON”, “UBER * TRIP”). We’ll apply Category and/or Source to matching transactions.</p>
+
+      <div class="card">
+        <div class="grid grid-2">
+          <div>
+            <label>Vendor Pattern</label>
+            <input id="rulePattern" placeholder="e.g., NO FRILLS" />
+          </div>
+          <div>
+            <label>Category <span class="muted">(optional)</span></label>
+            <input id="ruleCategory" placeholder="e.g., Groceries" />
+          </div>
+          <div>
+            <label>Source <span class="muted">(optional)</span></label>
+            <input id="ruleSource" placeholder="e.g., CIBC Chequing" />
+          </div>
+          <div>
+            <label>Tax <span class="muted">(optional)</span></label>
+            <input id="ruleTax" type="number" step="0.01" placeholder="0.00" />
+          </div>
+        </div>
+        <p id="ruleMsg" class="muted" style="margin-top:8px;"></p>
+        <div class="row" style="justify-content:flex-end; margin-top:8px;">
+          <button id="ruleCancel" class="ghost">Cancel</button>
+          <button id="ruleSave">Save Rule</button>
+          <button id="ruleSaveApply">Save & Apply Now</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     // ===== Supabase =====
     const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
@@ -354,6 +390,14 @@
     const DEFAULT_VIEW_KEY = "kosmos_tx_default_view";
     const viewsSelect = $("viewsSelect");
     const viewsMsg = $("viewsMsg");
+
+    // Rule modal refs
+    const ruleBackdrop = $("ruleBackdrop");
+    const rulePattern = $("rulePattern");
+    const ruleCategory = $("ruleCategory");
+    const ruleSource = $("ruleSource");
+    const ruleTax = $("ruleTax");
+    const ruleMsg = $("ruleMsg");
 
     // ===== Load & Filter =====
     async function loadTransactions() {
@@ -538,7 +582,8 @@
         const statusBadge = receiptIds.length
           ? `<a class="badge ok" title="View on Receipts page" href="receipts.html?focus=${encodeURIComponent(firstRid)}">✅ Matched${receiptIds.length>1?` (${receiptIds.length})`:``}</a>`
           : `<span class="badge muted">Unmatched</span>`;
-        const btn = `<button class="ghost btn-upload" data-id="${t.id}">Upload Receipt</button>`;
+        const btnUpload = `<button class="ghost btn-upload" data-id="${t.id}">Upload Receipt</button>`;
+        const btnRule = `<button class="ghost btn-rule" data-id="${t.id}">Make Rule</button>`;
         const isChecked = selected.has(t.id) ? 'checked' : '';
 
         return `<tr data-id="${t.id}">
@@ -550,13 +595,13 @@
           <td>${statusBadge}</td>
           <td class="editable" data-field="category">${escapeHtml(t.category)}</td>
           <td class="editable" data-field="source_account_name">${escapeHtml(sourceDisplay)}</td>
-          <td>${btn}</td>
+          <td>${btnUpload} ${btnRule}</td>
         </tr>`;
       }).join("");
 
       tbody.innerHTML = html;
 
-      // attach inline editors
+      // inline editors
       Array.from(tbody.querySelectorAll("tr")).forEach(tr => {
         const id = tr.getAttribute("data-id");
         const catTd = tr.querySelector('td[data-field="category"]');
@@ -567,12 +612,17 @@
         srcTd.addEventListener("click", () => makeEditable(srcTd, id, srcTd.textContent.trim(), "source_account_name"));
       });
 
-      // bind upload buttons
+      // upload buttons
       document.querySelectorAll(".btn-upload").forEach(btn => {
         btn.addEventListener("click", () => openUploadFor(btn.getAttribute("data-id")));
       });
 
-      // bind row selectors
+      // make rule buttons
+      document.querySelectorAll(".btn-rule").forEach(btn => {
+        btn.addEventListener("click", () => openRuleFor(btn.getAttribute("data-id")));
+      });
+
+      // selection
       document.querySelectorAll(".rowSel").forEach(cb => {
         cb.addEventListener("change", (e) => {
           const id = e.target.getAttribute("data-id");
@@ -591,7 +641,7 @@
       $("ftNet").textContent    = `$${(credit - debit).toFixed(2)}`;
     }
 
-    // ===== Export receipts CSV (unchanged) =====
+    // ===== Export receipts CSV =====
     async function exportCSV() {
       const { data, error } = await sb.from("v_accountant_export_receipts").select("*");
       if (error || !data?.length) { alert("No export data."); return; }
@@ -908,7 +958,6 @@
     function loadViews(){
       let views = [];
       try { views = JSON.parse(localStorage.getItem(VIEWS_KEY) || "[]"); } catch {}
-      // Always include “— Quick —” and “Default” at top of select as placeholders
       viewsSelect.innerHTML = "";
       const placeholder = document.createElement("option");
       placeholder.value = ""; placeholder.textContent = "— Choose a view —";
@@ -948,9 +997,7 @@
       const views = JSON.parse(localStorage.getItem(VIEWS_KEY) || "[]");
       const defId = localStorage.getItem(DEFAULT_VIEW_KEY);
       const def = (views || []).find(v => v.id === defId);
-
       const last = JSON.parse(localStorage.getItem(LAST_STATE_KEY) || "null");
-      // Priority: default view if set, else last state, else no-op
       if (def) applyUiState(def.state);
       else if (last) applyUiState(last);
     }
@@ -1086,6 +1133,105 @@
       await loadTransactions();
     });
 
+    // ===== Rule creation =====
+    function defaultPatternFromRow(row){
+      // Prefer vendor_clean if present; otherwise simplify description (remove numbers/store codes)
+      const base = (row.vendor_clean || row.description || "").toUpperCase();
+      return base.replace(/\d{2,}/g, "").replace(/\s{2,}/g, " ").trim();
+    }
+
+    function openRuleFor(txnId){
+      const row = allRows.find(r => r.id === txnId);
+      if (!row) return;
+      rulePattern.value = defaultPatternFromRow(row);
+      ruleCategory.value = row.category || "";
+      ruleSource.value = row.source_account_name || row.institution || "";
+      ruleTax.value = "";
+      ruleMsg.textContent = "";
+      ruleMsg.className = "muted";
+      ruleBackdrop.style.display = "flex";
+      ruleBackdrop.setAttribute("data-txn", txnId);
+    }
+
+    // Bulk "Make Rule" uses the first selected
+    $("bulkMakeRule").addEventListener("click", ()=>{
+      const firstSel = selected.values().next().value;
+      if (!firstSel) { alert("Select at least one row."); return; }
+      openRuleFor(firstSel);
+    });
+
+    $("ruleCancel").addEventListener("click", ()=>{ ruleBackdrop.style.display = "none"; });
+
+    async function saveRuleCore(applyNow){
+      const vendor_pattern = (rulePattern.value || "").trim();
+      const category = (ruleCategory.value || "").trim();
+      const source = (ruleSource.value || "").trim();
+      const taxVal = ruleTax.value ? Number(ruleTax.value) : null;
+
+      if (!vendor_pattern){
+        ruleMsg.className="err"; ruleMsg.textContent="Vendor Pattern is required."; return;
+      }
+
+      // Insert into vendor_rules
+      ruleMsg.className="muted";
+      ruleMsg.textContent="Saving rule…";
+      const ins = {
+        vendor_pattern,
+        category: category || null,
+        source: source || null,
+        tax: Number.isFinite(taxVal) ? taxVal : null
+      };
+      const { error: rErr } = await sb.from("vendor_rules").insert(ins);
+      if (rErr){ ruleMsg.className="err"; ruleMsg.textContent=rErr.message; return; }
+
+      // Optionally apply now to existing transactions
+      if (applyNow){
+        ruleMsg.textContent = "Applying to existing transactions…";
+
+        const like = `%${vendor_pattern}%`;
+        let updated = 0;
+
+        // Apply category if provided (only where category is null)
+        if (category){
+          const { count, error: u1 } = await sb
+            .from("transactions")
+            .update({ category })
+            .ilike("description", like)
+            .is("category", null)
+            .select("id", { count: "exact", head: true });
+          if (u1) { ruleMsg.className="err"; ruleMsg.textContent=u1.message; return; }
+          updated += (count || 0);
+        }
+
+        // Apply source if provided (only where source is null)
+        if (source){
+          const { count, error: u2 } = await sb
+            .from("transactions")
+            .update({ source_account_name: source })
+            .ilike("description", like)
+            .is("source_account_name", null)
+            .select("id", { count: "exact", head: true });
+          if (u2) { ruleMsg.className="err"; ruleMsg.textContent=u2.message; return; }
+          updated += (count || 0);
+        }
+
+        ruleMsg.className="ok";
+        ruleMsg.textContent = `Rule saved and applied to ${updated} transactions.`;
+      } else {
+        ruleMsg.className="ok";
+        ruleMsg.textContent = "Rule saved.";
+      }
+
+      // Close + refresh after a beat
+      setTimeout(async ()=>{
+        ruleBackdrop.style.display = "none";
+        await loadTransactions();
+      }, 700);
+    }
+
+    $("ruleSave").addEventListener("click", ()=> saveRuleCore(false));
+    $("ruleSaveApply").addEventListener("click", ()=> saveRuleCore(true));
+
     // ===== Keyboard Shortcuts =====
     document.addEventListener("keydown", (e) => {
       if (e.target && ["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName)) return;
@@ -1114,12 +1260,18 @@
         const rid = (txToReceipts.get(firstSel) || [])[0];
         if (rid) window.location.href = `receipts.html?focus=${encodeURIComponent(rid)}`;
       }
+      if (e.key.toLowerCase() === "g") { // quick Rule from selection
+        e.preventDefault();
+        const firstSel = selected.values().next().value;
+        if (firstSel) openRuleFor(firstSel);
+      }
     });
 
     // ===== Init =====
     $("filterBtn").addEventListener("click", loadTransactions);
     $("exportBtn").addEventListener("click", exportCSV);
     $("backfillBtn").addEventListener("click", backfillSources);
+    $("bulkMakeRule").addEventListener("click", ()=>{}); // bound above, keep for clarity
 
     // Views init/load + restore state
     loadViews();
