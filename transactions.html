@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Kosmos — Transactions</title>
 
+  <!-- Shared theme -->
   <link rel="stylesheet" href="style.css" />
+
+  <!-- Supabase -->
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 
   <style>
@@ -45,7 +48,7 @@
         <button id="filterBtn">Apply</button>
         <button id="exportBtn" class="ghost">📁 Export CSV</button>
       </div>
-      <div class="hint">Tip: Source prefers the account’s name. You can override it per-transaction here.</div>
+      <div class="hint">“Source” shows the account name (or the institution if the account name is empty). Editing Source writes to <code>source_account_name</code>.</div>
     </div>
 
     <!-- Summary -->
@@ -69,8 +72,7 @@
             <th class="right" style="min-width:120px;">Amount</th>
             <th style="min-width:90px;">Type</th>
             <th style="min-width:160px;">Category</th>
-            <th style="min-width:180px;">Source</th>
-            <th style="min-width:160px;">Institution</th>
+            <th style="min-width:200px;">Source</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -114,14 +116,16 @@
     }
 
     function renderError(msg) {
-      tbody.innerHTML = `<tr><td colspan="7" class="err">${msg}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" class="err">${msg}</td></tr>`;
       $("txnCount").textContent = "—";
       $("debits").textContent = "$0.00";
       $("credits").textContent = "$0.00";
       $("net").textContent = "$0.00";
     }
 
-    // ===== Inline edit (Category & Source) =====
+    // ===== Inline edit helpers (Category & Source) =====
+    function escapeHtml(s){ return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
     function makeEditable(td, txnId, initialValue, field) {
       if (td.classList.contains("editing")) return;
       td.classList.add("editing");
@@ -151,11 +155,10 @@
       td.innerHTML = ""; td.appendChild(input); input.focus(); input.select();
     }
 
-    function escapeHtml(s){ return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
-
+    // ===== Render =====
     function renderTable(rows) {
       if (!rows.length) {
-        tbody.innerHTML = `<tr><td colspan="7" class="muted">No transactions found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="muted">No transactions found.</td></tr>`;
         $("txnCount").textContent = 0;
         $("debits").textContent = "$0.00";
         $("credits").textContent = "$0.00";
@@ -167,29 +170,30 @@
       const html = rows.map(t => {
         const amt = Number(t.amount) || 0;
         if (t.direction === "debit") debit += amt; else credit += amt;
-        const source = t.source_account_name || ""; // editable here
-        const institution = t.institution || "";    // read-only column
+
+        // Single Source: prefer account name, else institution
+        const sourceDisplay = t.source_account_name || t.institution || "";
+
         return `<tr data-id="${t.id}">
           <td>${escapeHtml(t.txn_date)}</td>
           <td>${escapeHtml(t.description)}</td>
           <td class="right">$${amt.toFixed(2)}</td>
           <td>${escapeHtml(t.direction)}</td>
           <td class="editable" data-field="category">${escapeHtml(t.category)}</td>
-          <td class="editable" data-field="source_account_name">${escapeHtml(source)}</td>
-          <td>${escapeHtml(institution)}</td>
+          <td class="editable" data-field="source_account_name">${escapeHtml(sourceDisplay)}</td>
         </tr>`;
       }).join("");
 
       tbody.innerHTML = html;
 
-      // attach inline editors
+      // attach inline editors (Category + Source)
       Array.from(tbody.querySelectorAll("tr")).forEach(tr => {
         const id = tr.getAttribute("data-id");
-        // Category cell
+
         const catTd = tr.querySelector('td[data-field="category"]');
         catTd.classList.add("editable");
         catTd.addEventListener("click", () => makeEditable(catTd, id, catTd.textContent.trim(), "category"));
-        // Source cell
+
         const srcTd = tr.querySelector('td[data-field="source_account_name"]');
         srcTd.classList.add("editable");
         srcTd.addEventListener("click", () => makeEditable(srcTd, id, srcTd.textContent.trim(), "source_account_name"));
@@ -222,9 +226,11 @@
       URL.revokeObjectURL(url);
     }
 
+    // Events
     $("filterBtn").addEventListener("click", loadTransactions);
     $("exportBtn").addEventListener("click", exportCSV);
 
+    // Initial
     loadTransactions();
   </script>
 </body>
