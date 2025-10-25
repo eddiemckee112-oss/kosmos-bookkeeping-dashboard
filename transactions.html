@@ -134,7 +134,7 @@
 <div id="impBackdrop" class="modal-backdrop">
   <div class="modal">
     <h3>Import Transactions (CSV)</h3>
-    <p class="note">No settings needed. Expected columns: <b>Date, Description, Amount, Source (optional)</b>. We’ll auto-detect delimiters and formats.</p>
+    <p class="note">No settings needed. Expected columns: <b>Date, Description, Amount, Source (optional)</b>. We’ll auto-detect delimiters and formats, and infer debit/credit correctly for banks that use all-positive amounts.</p>
     <div class="card" style="display:flex;align-items:center;gap:12px;">
       <input id="csvFile" type="file" accept=".csv,text/csv" />
       <button id="closeImport" class="ghost">Close</button>
@@ -143,7 +143,7 @@
     <div id="impPreview" class="card" style="margin-top:10px;display:none;">
       <h4 style="margin:0 0 6px;">Preview (first 20 rows)</h4>
       <table style="width:100%;border-collapse:collapse;">
-        <thead><tr><th>Date</th><th>Description</th><th class="right">Amount</th><th>Source</th></tr></thead>
+        <thead><tr><th>Date</th><th>Description</th><th class="right">Amount</th><th>Direction</th><th>Source</th></tr></thead>
         <tbody id="prevBody"></tbody>
       </table>
     </div>
@@ -322,7 +322,6 @@ function renderTable(rows){
   }).join("");
   tbody.innerHTML=html;
 
-  // wire events
   tbody.querySelectorAll(".rowSel").forEach(cb=>cb.addEventListener("change",(e)=>{
     const id=e.target.getAttribute("data-id"); e.target.checked?selected.add(id):selected.delete(id); updateBulkbar(); }));
   Array.from(tbody.querySelectorAll("tr")).forEach(tr=>{
@@ -387,46 +386,97 @@ async function exportCSV(){ const { data, error } = await sb.from("v_accountant_
 $("backfillBtn").addEventListener("click", backfillSources);
 $("exportBtn").addEventListener("click", exportCSV);
 
-/* ===== SIMPLE CSV IMPORTER ===== */
+/* ===== SIMPLE CSV IMPORTER (smart debit/credit) ===== */
 const impBackdrop=$("impBackdrop"), csvInput=$("csvFile"), impStatus=$("impStatus"), prevBody=$("prevBody"), impPrev=$("impPreview");
 $("importBtn").addEventListener("click",()=>{ impStatus.textContent=""; prevBody.innerHTML=""; impPrev.style.display="none"; csvInput.value=""; impBackdrop.style.display="flex"; });
 $("closeImport").addEventListener("click",()=>{ impBackdrop.style.display="none"; });
+
+const DEBIT_WORDS = [
+  /PRE[- ]?AUTH[ -]?DEBIT/i, /PURCHASE/i, /\bPOS\b/i, /INTERAC/i, /WITHDRAWAL/i,
+  /BILL PAYMENT/i, /PAYMENT (?!(RECEIVED|FROM))/i, /E[- ]?TRANSFER SENT/i, /ETRANSFER SENT/i
+];
+const CREDIT_WORDS = [
+  /\bCREDIT\b/i, /DEPOSIT/i, /REFUND/i, /REVERSAL/i, /PAYOUT/i, /INTEREST/i,
+  /TRANSFER FROM/i, /E[- ]?TRANSFER (RECEIVED|AUTO DEPOSIT)/i, /ETRANSFER (RECEIVED|AUTO DEPOSIT)/i,
+  /PAYMENT RECEIVED/i
+];
+
+function guessRowDirection(desc, amt, defaultPositiveIsDebit){
+  if (amt < 0) return "debit";
+  if (amt > 0) {
+    if (CREDIT_WORDS.some(rx => rx.test(desc))) return "credit";
+    if (DEBIT_WORDS.some(rx => rx.test(desc)))  return "debit";
+    return defaultPositiveIsDebit ? "debit" : "credit";
+  }
+  return "credit";
+}
 
 csvInput.addEventListener("change", async (e)=>{
   const file=e.target.files?.[0]; if(!file) return;
   impStatus.textContent="Reading file…";
   const text = await file.text();
 
-  const delim = detectDelimiter(text);               // ',', ';', or '\t'
-  const rows  = parseCSV(text, delim);               // 2D array
-  // Expect: Date, Description, Amount, (optional) Source
-  let good=[]; for(const r of rows){
-    if(!r || r.length<3) continue;
-    const dt = normalizeDate(r[0]); const desc=String(r[1]||"").trim(); const amt=parseNumberSmart(r[2]);
-    if(!dt || !desc || !Number.isFinite(amt)) continue;
-    const src = (r[3]??"").toString().trim() || null;
-    const direction = amt < 0 ? "debit" : "credit";
-    good.push({
-      txn_date: dt, post_date: dt, description: desc,
-      amount: Math.abs(amt), direction, currency:"CAD",
-      source_account_name: src, imported_via:"csv"
-    });
-  }
-  if(!good.length){ impStatus.className="err"; impStatus.textContent="No valid rows found. Expected columns: Date, Description, Amount, (optional) Source."; return; }
+  const delim = detectDelimiter(text);
+  const raw   = parseCSV(text, delim);
 
-  // preview first 20
-  prevBody.innerHTML = good.slice(0,20).map(r=>`<tr><td>${esc(r.txn_date)}</td><td>${esc(r.description)}</td><td class="right">${money(r.amount)}</td><td>${esc(r.source_account_name||"")}</td></tr>`).join("");
-  impPrev.style.display="block";
+  const prelim = [];
+  for (const r of raw){
+    if(!r || r.length < 3) continue;
+    const dt  = normalizeDate(r[0]);
+    const desc= String(r[1]||"").trim();
+    const amt = parseNumberSmart(r[2]);
+    if(!dt || !desc || !Number.isFinite(amt)) continue;
+    const src = (r[3] ?? "").toString().trim() || null;
+    prelim.push({ dt, desc, amt, src });
+  }
+  if(!prelim.length){ impStatus.className="err"; impStatus.textContent="No valid rows found. Expected columns: Date, Description, Amount, (optional) Source."; return; }
+
+  const hasNegative = prelim.some(r => r.amt < 0);
+  let defaultPositiveIsDebit = false;
+  if(!hasNegative){
+    let debitHits = 0, creditHits = 0;
+    for(const r of prelim){
+      if (CREDIT_WORDS.some(rx => rx.test(r.desc))) creditHits++;
+      if (DEBIT_WORDS.some(rx => rx.test(r.desc)))  debitHits++;
+    }
+    defaultPositiveIsDebit = (debitHits >= creditHits);
+  }
+
+  const good = prelim.map(r => {
+    const direction = guessRowDirection(r.desc, r.amt, defaultPositiveIsDebit);
+    const amountAbs = Math.abs(r.amt);
+    return {
+      txn_date: r.dt,
+      post_date: r.dt,
+      description: r.desc,
+      amount: amountAbs,
+      direction,
+      currency: "CAD",
+      source_account_name: r.src,
+      imported_via: "csv"
+    };
+  });
+
+  prevBody.innerHTML = good.slice(0,20).map(r =>
+    `<tr><td>${esc(r.txn_date)}</td><td>${esc(r.description)}</td><td class="right">${money(r.amount)}</td><td>${esc(r.direction)}</td><td>${esc(r.source_account_name||"")}</td></tr>`
+  ).join("");
+  impPrev.style.display = "block";
 
   impStatus.className="muted"; impStatus.textContent=`Importing ${good.length} rows…`;
-  // batch insert
-  let inserted=0; for(let i=0;i<good.length;i+=300){ const chunk=good.slice(i,i+300); const { error } = await sb.from("transactions").insert(chunk); if(error){ impStatus.className="err"; impStatus.textContent=error.message; return; } inserted+=chunk.length; impStatus.textContent=`Imported ${inserted}/${good.length}…`; }
+  let inserted=0;
+  for(let i=0;i<good.length;i+=300){
+    const chunk=good.slice(i,i+300);
+    const { error } = await sb.from("transactions").insert(chunk);
+    if(error){ impStatus.className="err"; impStatus.textContent=error.message; return; }
+    inserted += chunk.length;
+    impStatus.textContent = `Imported ${inserted}/${good.length}…`;
+  }
   impStatus.className="ok"; impStatus.textContent=`✅ Imported ${inserted} transactions`;
   impBackdrop.style.display="none";
   await loadTransactions();
 });
 
-/* CSV helpers */
+/* ===== CSV helpers ===== */
 function detectDelimiter(text){
   const sample=text.split(/\r?\n/).slice(0,5).join("\n");
   const c=(sample.match(/,/g)||[]).length, s=(sample.match(/;/g)||[]).length, t=(sample.match(/\t/g)||[]).length;
@@ -453,7 +503,7 @@ function parseCSV(text, delim){
 }
 function parseNumberSmart(v){
   if(v==null) return NaN; let s=String(v).trim(); if(!s) return NaN;
-  if(/,/.test(s) && /\d,\d{2}$/.test(s) && !/\.\d{2}$/.test(s)){ s=s.replace(/\./g,"").replace(",","."); } // 1.234,56
+  if(/,/.test(s) && /\d,\d{2}$/.test(s) && !/\.\d{2}$/.test(s)){ s=s.replace(/\./g,"").replace(",","."); }
   s=s.replace(/[^0-9\.\-\+]/g,"");
   return Number(s);
 }
