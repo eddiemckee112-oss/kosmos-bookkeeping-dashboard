@@ -1,92 +1,129 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
+  <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Kosmos — Home</title>
+  <title>Kosmos Bookkeeping — Dashboard</title>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <style>
-    :root{--bg:#fafafa;--card:#fff;--ink:#111;--muted:#6b7280;--border:#e5e7eb;--btn:#111;--btnH:#333;}
-    *{box-sizing:border-box}
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);margin:24px}
-    h1{margin:0 0 10px;font-size:1.6rem}
-    .grid{display:grid;gap:14px}
-    @media(min-width:980px){.grid{grid-template-columns:1fr 1fr}}
-    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px}
-    .muted{color:var(--muted)}
-    .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-    .kpi{background:#f9fafb;border:1px solid var(--border);border-radius:12px;padding:12px}
-    .kpi span{display:block;color:var(--muted);font-size:12px}
-    .kpi b{font-size:1.2rem}
-    .links{display:flex;flex-wrap:wrap;gap:10px}
-    a.btn{display:inline-block;padding:.6rem 1rem;border-radius:10px;border:1px solid #bbb;background:var(--btn);color:#fff;text-decoration:none}
-    a.btn.secondary{background:#f7f7f7;color:#111}
-    a.btn:hover{background:var(--btnH);color:#fff}
+    :root {
+      --bg:#fafafa; --card:#fff; --border:#e5e7eb;
+      --muted:#6b7280; --ok:#0a7a33; --err:#b00020;
+      --ink:#111; --btn:#111; --btnH:#333;
+    }
+    *{box-sizing:border-box;}
+    body{
+      font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      margin:0; background:var(--bg); color:var(--ink);
+    }
+    header{
+      background:#fff; border-bottom:1px solid var(--border);
+      padding:14px 24px; display:flex; justify-content:space-between; align-items:center;
+      position:sticky; top:0; z-index:10;
+    }
+    header h1{ font-size:1.2rem; margin:0; }
+    nav a{
+      margin-left:16px; color:var(--ink); text-decoration:none; font-weight:500;
+      padding:6px 10px; border-radius:8px;
+    }
+    nav a:hover, nav a.active{ background:#111; color:#fff; }
+    main{ padding:32px; max-width:1000px; margin:auto; }
+    h2{ margin-top:0; }
+    .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; }
+    .card{
+      background:var(--card); border:1px solid var(--border);
+      border-radius:14px; padding:20px; text-align:center;
+      box-shadow:0 2px 6px rgba(0,0,0,0.04);
+    }
+    .value{ font-size:2rem; font-weight:700; margin:8px 0; }
+    .muted{ color:var(--muted); }
+    .ok{ color:var(--ok); }
+    .err{ color:var(--err); }
+    .actions{ margin-top:30px; text-align:center; }
+    button{
+      padding:.7rem 1.2rem; border-radius:10px; border:1px solid #bbb;
+      background:var(--btn); color:#fff; cursor:pointer;
+      margin:0 8px; font-size:15px;
+    }
+    button:hover{ background:var(--btnH); }
+    footer{ margin-top:60px; text-align:center; color:var(--muted); font-size:13px; }
   </style>
 </head>
 <body>
-  <h1>Kosmos Bookkeeping — Home</h1>
-  <p class="muted" id="status">Connecting…</p>
+  <header>
+    <h1>📊 Kosmos Bookkeeping</h1>
+    <nav>
+      <a href="index.html" class="active">Dashboard</a>
+      <a href="receipts.html">Receipts</a>
+      <a href="transactions.html">Transactions</a>
+      <a href="matched.html">Matched</a>
+      <a href="reports.html">Reports</a>
+    </nav>
+  </header>
 
-  <div class="card">
-    <h3>Quick Actions</h3>
-    <div class="links" style="margin-top:8px">
-      <a class="btn" href="dashboard.html">Open Dashboard</a>
-      <a class="btn secondary" href="transactions.html">All Transactions</a>
-      <a class="btn secondary" href="matched.html">Matched (audit)</a>
-      <a class="btn secondary" href="unmatched-transactions.html">Unmatched Transactions</a>
-      <a class="btn" href="receipts.html">Receipts Workbench (upload + match)</a>
-    </div>
-  </div>
+  <main>
+    <h2>Dashboard Overview</h2>
+    <p class="muted">Snapshot of your bookkeeping data. Auto-refresh coming soon.</p>
 
-  <div class="card" style="margin-top:14px">
-    <h3>At a glance</h3>
-    <div class="kpis" style="margin-top:10px">
-      <div class="kpi"><span>Receipts</span><b id="kpiRc">—</b></div>
-      <div class="kpi"><span>Transactions</span><b id="kpiTx">—</b></div>
-      <div class="kpi"><span>Matches</span><b id="kpiMt">—</b></div>
-      <div class="kpi"><span>Unmatched Receipts</span><b id="kpiRcUn">—</b></div>
+    <div class="grid" style="margin-top:24px;">
+      <div class="card">
+        <div class="muted">Total Receipts</div>
+        <div id="receiptCount" class="value">—</div>
+      </div>
+      <div class="card">
+        <div class="muted">Total Transactions</div>
+        <div id="txnCount" class="value">—</div>
+      </div>
+      <div class="card">
+        <div class="muted">Matched Pairs</div>
+        <div id="matchCount" class="value">—</div>
+      </div>
+      <div class="card">
+        <div class="muted">Last Updated</div>
+        <div id="lastUpdated" class="value" style="font-size:1.1rem;">—</div>
+      </div>
     </div>
-  </div>
+
+    <div class="actions">
+      <button onclick="window.location='receipts.html'">📸 Go to Receipts</button>
+      <button onclick="window.location='transactions.html'">💳 Go to Transactions</button>
+      <button onclick="window.location='reports.html'">📁 Accountant Report</button>
+    </div>
+
+    <footer>
+      Kosmos Bookkeeping v3 • Audit-ready foundation • Powered by Supabase
+    </footer>
+  </main>
 
   <script>
-    const sb = supabase.createClient(
-      "https://advihqhjjlxumgdlbwui.supabase.co",
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY"
-    );
-    const qs=id=>document.getElementById(id);
+    const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    async function count(table, col="*"){
-      const {count,error}=await sb.from(table).select(col,{count:"exact",head:true});
-      if(error) throw error; return count||0;
-    }
-
-    async function init(){
-      try{
-        qs("status").textContent="Loading…";
-        const [rc, tx, mt] = await Promise.all([
-          count("receipts"),
-          count("transactions"),
-          count("matches")
+    async function loadStats() {
+      try {
+        const [r1, r2, r3] = await Promise.all([
+          sb.from("receipts").select("*", { count: "exact", head: true }),
+          sb.from("transactions").select("*", { count: "exact", head: true }),
+          sb.from("matches").select("*", { count: "exact", head: true })
         ]);
+        const receipts = r1.count ?? 0;
+        const txns = r2.count ?? 0;
+        const matches = r3.count ?? 0;
 
-        // unmatched receipts: use existing view if present
-        let rcUn = 0;
-        try {
-          const {count} = await sb.from("v_unmatched_receipts").select("*",{count:"exact",head:true});
-          rcUn = count||0;
-        } catch { rcUn = Math.max(rc - mt, 0); }
+        document.getElementById("receiptCount").textContent = receipts;
+        document.getElementById("txnCount").textContent = txns;
+        document.getElementById("matchCount").textContent = matches;
 
-        qs("kpiRc").textContent = rc;
-        qs("kpiTx").textContent = tx;
-        qs("kpiMt").textContent = mt;
-        qs("kpiRcUn").textContent = rcUn;
-        qs("status").textContent="Connected.";
-      }catch(e){
-        qs("status").textContent="Error: "+(e?.message||e);
+        const now = new Date().toLocaleString();
+        document.getElementById("lastUpdated").textContent = now;
+      } catch (err) {
+        console.error(err);
+        document.getElementById("lastUpdated").textContent = "Error loading stats";
       }
     }
-    init();
+
+    loadStats();
   </script>
 </body>
 </html>
