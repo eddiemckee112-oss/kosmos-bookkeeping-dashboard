@@ -61,8 +61,8 @@
 </header>
 
 <main>
-  <h2>Receipt Upload & Scanner (Local OCR + Zoom/Crop + Magnifier + Auto-Detect)</h2>
-  <p class="muted">All scanning runs in your browser. Use zoom/rotate/crop or auto-detect the totals area; then save to <code>public.receipts</code>.</p>
+  <h2>Receipt Upload & Scanner (Auto-Enhance)</h2>
+  <p class="muted">Drop a receipt image/PDF. Click <strong>Auto Enhance & Scan</strong> to auto-rotate, auto-crop, auto-zoom, and extract totals/date/vendor locally.</p>
 
   <div class="grid">
     <div>
@@ -71,6 +71,9 @@
         <h3>Preview & Enhance</h3>
         <div class="rowbtns">
           <input type="file" id="fileInput" accept="image/*,.pdf"/>
+          <button id="autoAll" class="secondary">Auto Enhance & Scan</button>
+        </div>
+        <div class="rowbtns">
           <button id="rotateBtn" class="secondary">Rotate 90°</button>
           <label class="switch">
             <span class="hint">Zoom</span>
@@ -85,18 +88,16 @@
             <span class="hint">Strength</span>
             <input id="magnifyStrength" type="range" min="1.5" max="4" step="0.1" value="2">
           </label>
-          <button id="clearCrop" class="secondary" title="Clear crop (double-click canvas also clears)">Clear crop</button>
-          <button id="autoDetect" class="secondary" title="Find the totals area automatically">Auto-Detect Totals</button>
+          <button id="clearCrop" class="secondary" title="Clear crop">Clear crop</button>
+          <button id="autoDetect" class="secondary" title="Find totals zone">Auto-Detect Totals</button>
+          <button id="scanBtn" class="secondary">Scan (manual)</button>
         </div>
-        <small class="muted">Tip: click-drag on the canvas to draw a crop box. Drag corners to adjust. Double-click to clear. Hover with “Magnifier” on to zoom in.</small>
+        <small class="muted">Tip: click-drag on the canvas to draw a crop box. Drag corners to adjust. Double-click to clear. Hover with Magnifier on to zoom in.</small>
         <div style="margin-top:10px;position:relative;">
           <canvas id="preview" width="520" height="520" aria-label="preview"></canvas>
         </div>
         <div id="scanStatus" class="muted" style="margin-top:.5rem;"></div>
         <progress id="scanProgress" max="1" value="0" style="display:none;"></progress>
-        <div class="rowbtns">
-          <button id="scanBtn" class="secondary">Scan with AI (local)</button>
-        </div>
       </div>
 
       <!-- Fields + save -->
@@ -133,8 +134,7 @@
       <div style="max-height:540px;overflow:auto;margin-top:8px;">
         <table id="unmatchedTable">
           <thead><tr><th>Date</th><th>Vendor</th><th class="right">Total</th><th class="right">Tax</th><th>Category</th><th>Source</th><th>Image</th></tr></thead>
-          <tbody><tr><td colspan="7" class="muted">Loading…</td></tr></tbody>
-        </table>
+        <tbody><tr><td colspan="7" class="muted">Loading…</td></tr></tbody></table>
       </div>
       <button id="refreshBtn" class="secondary" style="margin-top:8px;">Refresh</button>
     </div>
@@ -154,392 +154,328 @@ const msgEl=qs("msg"), autoMsg=qs("autoMsg");
 const statusEl=qs("scanStatus"), prog=qs("scanProgress");
 
 /* ---------- Preview / canvas state ---------- */
-let baseImage = null;      // HTMLImageElement of the source (image or first PDF page)
-let rotation = 0;          // 0, 90, 180, 270
-let crop = null;           // {x,y,w,h} in canvas coords
-const canvas = qs("preview");
-const ctx = canvas.getContext("2d");
-const Z = qs("zoom");
+let baseImage=null; // HTMLImageElement
+let rotation=0;    // 0/90/180/270
+let crop=null;     // {x,y,w,h} in canvas coords
+const canvas=qs("preview"); const ctx=canvas.getContext("2d"); const Z=qs("zoom");
 
 /* ---------- UI: zoom / rotate / crop ---------- */
 qs("zoom").addEventListener("input", ()=>{ qs("zoomVal").textContent = `${Number(Z.value).toFixed(1)}×`; drawPreview(); });
-qs("rotateBtn").addEventListener("click", ()=>{ rotation = (rotation + 90) % 360; drawPreview(); });
-qs("clearCrop").addEventListener("click", ()=>{ crop = null; drawPreview(); });
-canvas.addEventListener("dblclick", ()=>{ crop = null; drawPreview(); });
+qs("rotateBtn").addEventListener("click", ()=>{ rotation=(rotation+90)%360; drawPreview(); });
+qs("clearCrop").addEventListener("click", ()=>{ crop=null; drawPreview(); });
+canvas.addEventListener("dblclick", ()=>{ crop=null; drawPreview(); });
 
-let dragging = false, dragHandle = null;
-let startX=0, startY=0;
-
+let dragging=false, dragHandle=null, startX=0, startY=0;
 function hitHandle(mx,my){
   if(!crop) return null;
-  const handles = [
-    {n:"nw",x:crop.x,y:crop.y},
-    {n:"ne",x:crop.x+crop.w,y:crop.y},
-    {n:"sw",x:crop.x,y:crop.y+crop.h},
-    {n:"se",x:crop.x+crop.w,y:crop.y+crop.h}
+  const hs=[
+    {n:"nw",x:crop.x,y:crop.y},{n:"ne",x:crop.x+crop.w,y:crop.y},
+    {n:"sw",x:crop.x,y:crop.y+crop.h},{n:"se",x:crop.x+crop.w,y:crop.y+crop.h}
   ];
-  for(const h of handles){
-    if(Math.abs(mx-h.x)<=6 && Math.abs(my-h.y)<=6) return h.n;
-  }
+  for(const h of hs){ if(Math.abs(mx-h.x)<=6 && Math.abs(my-h.y)<=6) return h.n; }
   return null;
 }
-canvas.addEventListener("mousedown",(e)=>{
-  const rect=canvas.getBoundingClientRect();
-  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
-  dragHandle = hitHandle(mx,my);
-  dragging = true; startX = mx; startY = my;
-  if(!dragHandle){ crop = {x:mx,y:my,w:0,h:0}; }
+canvas.addEventListener("mousedown",e=>{
+  const r=canvas.getBoundingClientRect(); const mx=e.clientX-r.left, my=e.clientY-r.top;
+  dragHandle=hitHandle(mx,my); dragging=true; startX=mx; startY=my;
+  if(!dragHandle){ crop={x:mx,y:my,w:0,h:0}; }
 });
-canvas.addEventListener("mousemove",(e)=>{
-  // magnifier always draws on move (below)
+canvas.addEventListener("mousemove",e=>{
   if(dragging){
-    const rect=canvas.getBoundingClientRect();
-    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    const r=canvas.getBoundingClientRect(); const mx=e.clientX-r.left, my=e.clientY-r.top;
     if(dragHandle && crop){
       if(dragHandle==="nw"){ crop.w += crop.x-mx; crop.h += crop.y-my; crop.x=mx; crop.y=my; }
       if(dragHandle==="ne"){ crop.w = mx-crop.x; crop.h += crop.y-my; crop.y=my; }
       if(dragHandle==="sw"){ crop.w += crop.x-mx; crop.x=mx; crop.h = my-crop.y; }
       if(dragHandle==="se"){ crop.w = mx-crop.x; crop.h = my-crop.y; }
-      drawPreview();
     }else if(crop){
       crop.w = mx - startX; crop.h = my - startY;
-      if(crop.w<0){ crop.x = mx; crop.w = startX-mx; }
-      if(crop.h<0){ crop.y = my; crop.h = my-startY; }
-      drawPreview();
-    } else {
-      drawPreview();
+      if(crop.w<0){ crop.x=mx; crop.w=startX-mx; }
+      if(crop.h<0){ crop.y=my; crop.h=my-startY; }
     }
-    drawMagnifier(e);
-  } else {
-    drawPreview();
-    drawMagnifier(e);
   }
+  drawPreview(); drawMagnifier(e);
 });
 window.addEventListener("mouseup",()=>{ dragging=false; dragHandle=null; });
 
 /* ---------- Magnifier ---------- */
 function drawMagnifier(evt){
   if(!qs("magnifyToggle").checked || !baseImage) return;
-  const rect=canvas.getBoundingClientRect();
-  const mx=evt.clientX-rect.left, my=evt.clientY-rect.top;
-  const strength = Number(qs("magnifyStrength").value); // 1.5–4
-  const radius = 60;                                     // lens radius px
-
-  // Build a temp snapshot of the current canvas
-  const snap = ctx.getImageData(0,0,canvas.width,canvas.height);
-  // Draw lens border
-  ctx.putImageData(snap,0,0);
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(mx,my,radius,0,Math.PI*2);
-  ctx.clip();
-
-  // Zoomed draw from current canvas
-  ctx.drawImage(canvas,
-    mx - radius/strength, my - radius/strength, (radius*2)/strength, (radius*2)/strength,
-    mx - radius,          my - radius,          radius*2,            radius*2
-  );
-  ctx.restore();
-
-  // ring
-  ctx.strokeStyle="#111"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(mx,my,radius,0,Math.PI*2); ctx.stroke();
+  const rect=canvas.getBoundingClientRect(); const mx=evt.clientX-rect.left, my=evt.clientY-rect.top;
+  const k=Number(qs("magnifyStrength").value); const r=60;
+  const snap=ctx.getImageData(0,0,canvas.width,canvas.height); ctx.putImageData(snap,0,0);
+  ctx.save(); ctx.beginPath(); ctx.arc(mx,my,r,0,Math.PI*2); ctx.clip();
+  ctx.drawImage(canvas, mx-r/k, my-r/k, 2*r/k, 2*r/k, mx-r, my-r, 2*r, 2*r);
+  ctx.restore(); ctx.strokeStyle="#111"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(mx,my,r,0,Math.PI*2); ctx.stroke();
 }
 
-/* ---------- Image/PDF loading ---------- */
+/* ---------- Image/PDF load ---------- */
 qs("fileInput").addEventListener("change", async ()=>{
-  rotation = 0; crop = null;
-  const f = qs("fileInput").files?.[0];
-  if(!f){ baseImage=null; clearCanvas(); return; }
-  if(f.type === "application/pdf"){
-    const ab = await f.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({data:ab}).promise;
-    const page = await pdf.getPage(1);
-    const viewport = page.getViewport({scale:2});
-    const c = document.createElement("canvas");
-    c.width = viewport.width; c.height = viewport.height;
-    await page.render({canvasContext:c.getContext("2d"), viewport}).promise;
-    baseImage = await loadImage(c.toDataURL("image/png",1.0));
+  rotation=0; crop=null;
+  const f=qs("fileInput").files?.[0]; if(!f){ baseImage=null; clearCanvas(); return; }
+  if(f.type==="application/pdf"){
+    const ab=await f.arrayBuffer(); const pdf=await pdfjsLib.getDocument({data:ab}).promise;
+    const page=await pdf.getPage(1); const viewport=page.getViewport({scale:2});
+    const c=document.createElement("canvas"); c.width=viewport.width; c.height=viewport.height;
+    await page.render({canvasContext:c.getContext("2d"),viewport}).promise;
+    baseImage=await loadImage(c.toDataURL("image/png",1.0));
   }else{
-    baseImage = await loadImage(URL.createObjectURL(f));
+    baseImage=await loadImage(URL.createObjectURL(f));
   }
   drawPreview();
 });
-
-function loadImage(src){
-  return new Promise((res,rej)=>{
-    const img = new Image(); img.onload=()=>res(img); img.onerror=rej; img.src=src;
-  });
-}
+function loadImage(src){ return new Promise((res,rej)=>{ const img=new Image(); img.onload=()=>res(img); img.onerror=rej; img.src=src; }); }
 function clearCanvas(){ ctx.clearRect(0,0,canvas.width,canvas.height); }
 
-/* ---------- Draw preview with zoom/rotation & crop overlay ---------- */
+/* ---------- Preview draw ---------- */
 function drawPreview(){
-  clearCanvas();
-  if(!baseImage) return;
+  clearCanvas(); if(!baseImage) return;
+  const zoom=Number(Z.value);
+  const imgW=(rotation%180===0)?baseImage.width:baseImage.height;
+  const imgH=(rotation%180===0)?baseImage.height:baseImage.width;
+  const scale=Math.min(canvas.width/imgW, canvas.height/imgH)*zoom;
+  const drawW=Math.round(imgW*scale), drawH=Math.round(imgH*scale);
+  const dx=Math.round((canvas.width-drawW)/2), dy=Math.round((canvas.height-drawH)/2);
 
-  const zoom = Number(Z.value);
-  const imgW = (rotation%180===0) ? baseImage.width : baseImage.height;
-  const imgH = (rotation%180===0) ? baseImage.height : baseImage.width;
-  const scale = Math.min(canvas.width/imgW, canvas.height/imgH) * zoom;
-
-  const drawW = Math.round(imgW*scale);
-  const drawH = Math.round(imgH*scale);
-  const dx = Math.round((canvas.width - drawW)/2);
-  const dy = Math.round((canvas.height - drawH)/2);
-
-  ctx.save();
-  ctx.translate(canvas.width/2, canvas.height/2);
-  ctx.rotate(rotation*Math.PI/180);
-  ctx.drawImage(baseImage, -drawW/2, -drawH/2, drawW, drawH);
-  ctx.restore();
-
+  ctx.save(); ctx.translate(canvas.width/2,canvas.height/2); ctx.rotate(rotation*Math.PI/180);
+  ctx.drawImage(baseImage,-drawW/2,-drawH/2,drawW,drawH); ctx.restore();
   ctx.strokeStyle="#d0d0d0"; ctx.strokeRect(dx,dy,drawW,drawH);
 
   if(crop){
-    ctx.save();
-    ctx.strokeStyle="#2563eb"; ctx.lineWidth=2; ctx.setLineDash([6,4]);
-    ctx.strokeRect(crop.x, crop.y, crop.w, crop.h);
+    ctx.save(); ctx.strokeStyle="#2563eb"; ctx.lineWidth=2; ctx.setLineDash([6,4]);
+    ctx.strokeRect(crop.x,crop.y,crop.w,crop.h);
     ctx.setLineDash([]); ctx.fillStyle="#2563eb";
-    for(const [hx,hy] of [[crop.x,crop.y],[crop.x+crop.w,crop.y],[crop.x,crop.y+crop.h],[crop.x+crop.w,crop.y+crop.h]]){
-      ctx.fillRect(hx-3,hy-3,6,6);
-    }
+    for(const [hx,hy] of [[crop.x,crop.y],[crop.x+crop.w,crop.y],[crop.x,crop.y+crop.h],[crop.x+crop.w,crop.y+crop.h]]) ctx.fillRect(hx-3,hy-3,6,6);
     ctx.restore();
   }
 }
 
-/* ---------- Build OCR-ready image (apply zoom/rotation & crop) ---------- */
+/* ---------- Build OCR image (apply rotation & crop) ---------- */
 async function buildOcrDataURL(){
   if(!baseImage) throw new Error("Pick a file first.");
-  const zoom = Number(Z.value);
-  const imgW = (rotation%180===0) ? baseImage.width : baseImage.height;
-  const imgH = (rotation%180===0) ? baseImage.height : baseImage.width;
-  const fitScale = Math.min(canvas.width/imgW, canvas.height/imgH) * zoom;
-
-  const drawW = Math.round(imgW*fitScale);
-  const drawH = Math.round(imgH*fitScale);
-  const dx = Math.round((canvas.width - drawW)/2);
-  const dy = Math.round((canvas.height - drawH)/2);
+  const zoom=Number(Z.value);
+  const imgW=(rotation%180===0)?baseImage.width:baseImage.height;
+  const imgH=(rotation%180===0)?baseImage.height:baseImage.width;
+  const fitScale=Math.min(canvas.width/imgW, canvas.height/imgH)*zoom;
+  const drawW=Math.round(imgW*fitScale), drawH=Math.round(imgH*fitScale);
+  const dx=Math.round((canvas.width-drawW)/2), dy=Math.round((canvas.height-drawH)/2);
 
   let srcRect;
   if(crop){
-    const sx = Math.max(0, Math.round((crop.x - dx) / fitScale));
-    const sy = Math.max(0, Math.round((crop.y - dy) / fitScale));
-    const sw = Math.max(1, Math.round(crop.w / fitScale));
-    const sh = Math.max(1, Math.round(crop.h / fitScale));
-    srcRect = {sx,sy,sw,sh};
+    const sx=Math.max(0,Math.round((crop.x-dx)/fitScale));
+    const sy=Math.max(0,Math.round((crop.y-dy)/fitScale));
+    const sw=Math.max(1,Math.round(crop.w/fitScale));
+    const sh=Math.max(1,Math.round(crop.h/fitScale));
+    srcRect={sx,sy,sw,sh};
   }else{
-    srcRect = {sx:0,sy:0,sw:imgW,sh:imgH};
+    srcRect={sx:0,sy:0,sw:imgW,sh:imgH};
   }
 
-  // rotate original into an upright buffer first
-  const upright = document.createElement("canvas");
-  upright.width = imgW; upright.height = imgH;
-  const ug = upright.getContext("2d");
+  // rotate original to upright
+  const upright=document.createElement("canvas"); upright.width=imgW; upright.height=imgH;
+  const ug=upright.getContext("2d");
   if(rotation!==0){
-    const buf = document.createElement("canvas");
+    const buf=document.createElement("canvas");
     if(rotation%180===0){ buf.width=baseImage.width; buf.height=baseImage.height; }
     else { buf.width=baseImage.height; buf.height=baseImage.width; }
-    const bg = buf.getContext("2d");
-    bg.translate(buf.width/2, buf.height/2);
-    bg.rotate(rotation*Math.PI/180);
-    bg.drawImage(baseImage, -baseImage.width/2, -baseImage.height/2);
-    ug.drawImage(buf, 0,0, buf.width, buf.height, 0,0, imgW, imgH);
-  }else{
-    ug.drawImage(baseImage,0,0);
-  }
+    const bg=buf.getContext("2d");
+    bg.translate(buf.width/2,buf.height/2); bg.rotate(rotation*Math.PI/180);
+    bg.drawImage(baseImage,-baseImage.width/2,-baseImage.height/2);
+    ug.drawImage(buf,0,0,buf.width,buf.height,0,0,imgW,imgH);
+  }else ug.drawImage(baseImage,0,0);
 
-  // final high-res crop
-  const out = document.createElement("canvas");
-  const upscale = 2;
-  out.width = Math.min(2400, srcRect.sw * upscale);
-  out.height = Math.min(2400, srcRect.sh * upscale);
-  const g = out.getContext("2d");
-  g.imageSmoothingQuality="high";
-  g.drawImage(upright, srcRect.sx, srcRect.sy, srcRect.sw, srcRect.sh, 0,0, out.width, out.height);
+  const out=document.createElement("canvas");
+  const upscale=2; // help OCR a bit
+  out.width=Math.min(2400,srcRect.sw*upscale); out.height=Math.min(2400,srcRect.sh*upscale);
+  const g=out.getContext("2d"); g.imageSmoothingQuality="high";
+  g.drawImage(upright,srcRect.sx,srcRect.sy,srcRect.sw,srcRect.sh,0,0,out.width,out.height);
 
-  // grayscale + slight contrast
-  const id = g.getImageData(0,0,out.width,out.height);
-  const d = id.data;
-  for(let i=0;i<d.length;i+=4){
-    const r=d[i], gg=d[i+1], b=d[i+2];
-    let y = 0.299*r + 0.587*gg + 0.114*b;
-    y = (y-128)*1.15 + 128;
-    y = Math.max(0, Math.min(255, y));
-    d[i]=d[i+1]=d[i+2]=y;
-  }
+  // light grayscale/contrast
+  const id=g.getImageData(0,0,out.width,out.height), d=id.data;
+  for(let i=0;i<d.length;i+=4){ const r=d[i],gg=d[i+1],b=d[i+2]; let y=0.299*r+0.587*gg+0.114*b; y=(y-128)*1.15+128; y=Math.max(0,Math.min(255,y)); d[i]=d[i+1]=d[i+2]=y; }
   g.putImageData(id,0,0);
 
-  return out.toDataURL("image/png",1.0);
+  return { dataUrl: out.toDataURL("image/png",1.0), upscale, imgW, imgH, fitScale, dx, dy };
 }
 
 /* ---------- OCR & parsing ---------- */
-function to2(n){ if(n===null||n===undefined||n==="") return ""; const v=Number(n); return Number.isNaN(v)?"":v.toFixed(2); }
+function to2(n){ if(n==null||n==="") return ""; const v=Number(n); return Number.isNaN(v)?"":v.toFixed(2); }
 function updateSubtotalPreview(){ const t=parseFloat(qs("total").value)||0; const x=parseFloat(qs("tax").value)||0; qs("subtotal").value=(t-x).toFixed(2); }
-qs("total").addEventListener("input",updateSubtotalPreview);
-qs("tax").addEventListener("input",updateSubtotalPreview);
+qs("total").addEventListener("input",updateSubtotalPreview); qs("tax").addEventListener("input",updateSubtotalPreview);
 
 function findDate(text){
   const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
   const rx=[/\b(\d{4})[-\/\.](\d{2})[-\/\.](\d{2})\b/,/\b(\d{2})[-\/\.](\d{2})[-\/\.](\d{4})\b/,/\b([A-Za-z]{3,9})\s+(\d{1,2}),\s*(\d{4})\b/];
-  for(const line of lines){
-    for(const r of rx){
-      const m=line.match(r); if(!m) continue;
-      if(r===rx[0]) return `${m[1]}-${m[2]}-${m[3]}`;
-      if(r===rx[1]){ const mm=m[1].padStart(2,"0"), dd=m[2].padStart(2,"0"); return `${m[3]}-${mm}-${dd}`; }
-      if(r===rx[2]){ const months=["january","february","march","april","may","june","july","august","september","october","november","december"]; const mm=String(months.indexOf(m[1].toLowerCase())+1).padStart(2,"0"); const dd=String(m[2]).padStart(2,"0"); return `${m[3]}-${mm}-${dd}`; }
-    }
-  }
-  return null;
+  for(const line of lines){ for(const r of rx){ const m=line.match(r); if(!m) continue;
+    if(r===rx[0]) return `${m[1]}-${m[2]}-${m[3]}`;
+    if(r===rx[1]){ const mm=m[1].padStart(2,"0"), dd=m[2].padStart(2,"0"); return `${m[3]}-${mm}-${dd}`;}
+    if(r===rx[2]){ const months=["january","february","march","april","may","june","july","august","september","october","november","december"]; const mm=String(months.indexOf(m[1].toLowerCase())+1).padStart(2,"0"); const dd=String(m[2]).padStart(2,"0"); return `${m[3]}-${mm}-${dd}`;}
+  }} return null;
 }
 function findAmounts(text){
-  const lines=text.split(/\r?\n/);
-  const rxAmt=/([-+]?\$?\(?\d{1,3}(?:[,\s]\d{3})*(?:\.\d{2})?\)?)/g;
-  const cands=[];
-  lines.forEach((line,i)=>{
-    const lower=line.toLowerCase();
-    const nearTotal=/total|amount due|grand\s*total|balance/i.test(lower);
-    const nearTax=/\b(hst|gst|pst|tps|tvq|tax)\b/i.test(lower);
-    for(const m of line.matchAll(rxAmt)){
-      let s=m[1]; const neg=/^\(.*\)$/.test(s)||s.startsWith("-"); s=s.replace(/[\$\(\),\s]/g,"");
-      const v=Number(s); if(Number.isFinite(v)) cands.push({v:Math.abs(v), nearTotal, nearTax, i});
-    }
+  const lines=text.split(/\r?\n/); const rxAmt=/([-+]?\$?\(?\d{1,3}(?:[,\s]\d{3})*(?:\.\d{2})?\)?)/g; const c=[];
+  lines.forEach((line,i)=>{ const lower=line.toLowerCase(); const nearTotal=/total|amount due|grand\s*total|balance/i.test(lower); const nearTax=/\b(hst|gst|pst|tps|tvq|tax)\b/i.test(lower);
+    for(const m of line.matchAll(rxAmt)){ let s=m[1]; const neg=/^\(.*\)$/.test(s)||s.startsWith("-"); s=s.replace(/[\$\(\),\s]/g,""); const v=Number(s); if(Number.isFinite(v)) c.push({v:Math.abs(v),nearTotal,nearTax,i}); }
   });
-  const tax = cands.find(c=>c.nearTax)?.v ?? 0;
-  let total = cands.find(c=>c.nearTotal)?.v ?? 0;
-  if(!total) total = cands.sort((a,b)=>b.v-a.v)[0]?.v ?? 0;
-  return {total: total||null, tax: tax||0};
+  const tax=c.find(x=>x.nearTax)?.v ?? 0; let total=c.find(x=>x.nearTotal)?.v ?? 0; if(!total) total=c.sort((a,b)=>b.v-a.v)[0]?.v ?? 0;
+  return { total: total||null, tax: tax||0 };
 }
 function findVendor(text){
   const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-  for(let i=0;i<Math.min(8,lines.length);i++){
-    const s=lines[i];
-    if(/\d{5,}/.test(s)) continue;
-    if(/invoice|receipt|sale|order|transaction|subtotal|total|tax/i.test(s)) continue;
-    if(s.length>=3) return s.replace(/\s{2,}/g," ");
-  }
+  for(let i=0;i<Math.min(8,lines.length);i++){ const s=lines[i]; if(/\d{5,}/.test(s)) continue; if(/invoice|receipt|sale|order|transaction|subtotal|total|tax/i.test(s)) continue; if(s.length>=3) return s.replace(/\s{2,}/g," "); }
   return lines[0]||null;
 }
-function extractFields(text){
-  const date=findDate(text);
-  const {total,tax}=findAmounts(text);
-  const vendor=findVendor(text);
-  return {vendor,date,total,tax,rawText:text};
-}
+function extractFields(text){ const date=findDate(text); const {total,tax}=findAmounts(text); const vendor=findVendor(text); return {vendor,date,total,tax,rawText:text}; }
 
-/* ---------- OCR with Tesseract ---------- */
-async function ocrDataUrl(dataUrl, wantLayout=false){
+async function ocrText(dataUrl, wantLayout=false){
   prog.style.display="block"; prog.value=0; statusEl.textContent="Starting OCR…";
-  const worker = await Tesseract.createWorker("eng", 1, {
-    logger: m => { if(m.status) statusEl.textContent = `${m.status}…`; if(m.progress!=null) prog.value=m.progress; }
-  });
+  const worker=await Tesseract.createWorker("eng",1,{ logger:m=>{ if(m.status) statusEl.textContent=`${m.status}…`; if(m.progress!=null) prog.value=m.progress; }});
   const { data } = await worker.recognize(dataUrl);
-  await worker.terminate();
-  prog.style.display="none";
+  await worker.terminate(); prog.style.display="none";
   return wantLayout ? data : { text:data.text };
 }
 
-/* ---------- Auto-Detect Totals (uses bounding boxes) ---------- */
+/* ---------- Auto-Detect Totals & map to crop ---------- */
 async function autoDetectTotals(){
   if(!baseImage){ statusEl.className="err"; statusEl.textContent="Pick a file first."; return; }
-  try{
-    statusEl.className="muted"; statusEl.textContent="Finding totals region…";
-    // Build full, upright image (ignoring manual crop)
-    crop = null;
-    const fullUrl = await buildOcrDataURL(); // with upscale/contrast already
-    // We need layout data (words with bbox)
-    const layout = await ocrDataUrl(fullUrl, true);
+  statusEl.className="muted"; statusEl.textContent="Finding totals region…";
+  crop=null; // full frame
+  const meta = await buildOcrDataURL();
+  const layout = await ocrText(meta.dataUrl, true);
+  const words = (layout.words || layout.lines || []);
+  const rx = /(grand\s*total|amount\s*due|balance\s*due|total)/i;
+  const hits=[]; for(const w of words){ const t=(w.text||w.word||"").trim(); if(!t) continue; if(rx.test(t)) hits.push(w); }
+  if(!hits.length){ statusEl.className="err"; statusEl.textContent="Couldn’t find 'total'. Try manual crop."; return null; }
 
-    // Tesseract layout structure: layout.words[] with text + bbox (x0,y0,x1,y1) in image px
-    const words = (layout.words || layout.lines || []);
-    const hits = [];
-    const rx = /(grand\s*total|amount\s*due|balance\s*due|total)/i;
+  // expand around first hit to include amount area
+  const on = hits[0];
+  const sameLine = words.filter(w=>{
+    const y0=w.bbox?.y0 ?? w.y0 ?? 0, y1=w.bbox?.y1 ?? w.y1 ?? 0;
+    const oy0=on.bbox?.y0 ?? on.y0 ?? 0, oy1=on.bbox?.y1 ?? on.y1 ?? 0;
+    return Math.abs(((y0+y1)/2)-((oy0+oy1)/2))<20;
+  });
+  const xs=sameLine.map(w=>w.bbox?.x0 ?? w.x0 ?? 0), xe=sameLine.map(w=>w.bbox?.x1 ?? w.x1 ?? 0);
+  const ys=sameLine.map(w=>w.bbox?.y0 ?? w.y0 ?? 0), ye=sameLine.map(w=>w.bbox?.y1 ?? w.y1 ?? 0);
+  let x0=Math.min(...xs), x1=Math.max(...xe), y0=Math.min(...ys), y1=Math.max(...ye);
+  const pad=30; x0=Math.max(0,x0-pad); y0=Math.max(0,y0-pad); x1=x1+pad+250; y1=y1+pad+120;
 
-    for(const w of words){
-      const t = (w.text || w.word || "").trim();
-      if(!t) continue;
-      if(rx.test(t)){
-        hits.push(w);
-      }
-    }
-    if(!hits.length){ statusEl.className="err"; statusEl.textContent="Couldn’t find 'total' text. Try zoom/rotate/crop manually."; return; }
+  // map OCR (upscaled) → original upright px → canvas coords
+  const zoom=Number(Z.value);
+  const imgW=(rotation%180===0)?baseImage.width:baseImage.height;
+  const imgH=(rotation%180===0)?baseImage.height:baseImage.width;
+  const fitScale=Math.min(canvas.width/imgW, canvas.height/imgH)*zoom;
+  const drawW=Math.round(imgW*fitScale), drawH=Math.round(imgH*fitScale);
+  const dx=Math.round((canvas.width-drawW)/2), dy=Math.round((canvas.height-drawH)/2);
 
-    // Build a region around the FIRST hit and extend to the right to include amount
-    // Combine neighboring words on the same line to expand the box
-    const lineY = hits[0].bbox?.y0 ?? hits[0].y0 ?? 0;
-    const sameLine = words.filter(w=>{
-      const y0 = w.bbox?.y0 ?? w.y0 ?? 0;
-      const y1 = w.bbox?.y1 ?? w.y1 ?? 0;
-      return Math.abs(((y0+y1)/2) - ((hits[0].bbox?.y0+hits[0].bbox?.y1)/2)) < 20;
-    });
+  const upscale=2;
+  const bx=x0/upscale, by=y0/upscale, bw=(x1-x0)/upscale, bh=(y1-y0)/upscale;
+  const cx=dx+Math.round(bx*fitScale), cy=dy+Math.round(by*fitScale);
+  const cw=Math.round(bw*fitScale), ch=Math.round(bh*fitScale);
 
-    const xs = sameLine.map(w=>w.bbox?.x0 ?? w.x0 ?? 0);
-    const xe = sameLine.map(w=>w.bbox?.x1 ?? w.x1 ?? 0);
-    const ys = sameLine.map(w=>w.bbox?.y0 ?? w.y0 ?? 0);
-    const ye = sameLine.map(w=>w.bbox?.y1 ?? w.y1 ?? 0);
+  crop={x:cx,y:cy,w:cw,h:ch};
+  drawPreview();
+  statusEl.className="ok"; statusEl.textContent="Totals region detected.";
+  return {cx,cy,cw,ch,imgW,imgH,fitScale,dx,dy};
+}
 
-    let x0 = Math.min(...xs), x1 = Math.max(...xe);
-    let y0 = Math.min(...ys), y1 = Math.max(...ye);
-
-    // Expand region slightly and include a block to the right/down where numbers usually are
-    const pad = 30;
-    x0 = Math.max(0, x0 - pad);
-    y0 = Math.max(0, y0 - pad);
-    x1 = x1 + pad + 250; // extend to the right to catch amount column
-    y1 = y1 + pad + 120; // extend downward a bit
-
-    // Map back to canvas crop coords:
-    // We built fullUrl via buildOcrDataURL() with upscale factor 2 and using fitScale mappings.
-    // That function outputs a tightly cropped "upright" full image in OCR pixels (no manual crop).
-    // Here, we assume a direct 1:1 between OCR image px and visual “fit” inside the canvas when zoom=1.
-    // To make it robust across zooms, we compute using the same mapping as drawPreview:
-    const zoom = Number(Z.value);
-    const imgW = (rotation%180===0) ? baseImage.width : baseImage.height;
-    const imgH = (rotation%180===0) ? baseImage.height : baseImage.width;
-    const fitScale = Math.min(canvas.width/imgW, canvas.height/imgH) * zoom;
-
-    const drawW = Math.round(imgW*fitScale);
-    const drawH = Math.round(imgH*fitScale);
-    const dx = Math.round((canvas.width - drawW)/2);
-    const dy = Math.round((canvas.height - drawH)/2);
-
-    // Because buildOcrDataURL uses an upscale=2, divide bbox by 2 to map to original upright image px
-    const upscale = 2;
-    const bx = x0 / upscale, by = y0 / upscale, bw = (x1 - x0)/upscale, bh = (y1 - y0)/upscale;
-
-    // Now map upright image px → canvas coords
-    const cx = dx + Math.round(bx * fitScale);
-    const cy = dy + Math.round(by * fitScale);
-    const cw = Math.round(bw * fitScale);
-    const ch = Math.round(bh * fitScale);
-
-    crop = { x: cx, y: cy, w: cw, h: ch };
-    drawPreview();
-    statusEl.className="ok"; statusEl.textContent="Totals region detected — click Scan.";
-  }catch(e){
-    statusEl.className="err"; statusEl.textContent="Auto-detect failed: " + (e?.message || e);
+/* ---------- Auto-Rotate (0/90/180/270 quick check) ---------- */
+async function autoRotate(){
+  if(!baseImage) return;
+  statusEl.className="muted"; statusEl.textContent="Finding correct orientation…";
+  const rotations=[0,90,180,270];
+  const scores=[];
+  for(const r of rotations){
+    rotation=r;
+    // tiny quick pass: use full frame but low upscale to be fast
+    const zoomWas=Number(Z.value); Z.value="1"; // normalized
+    const { dataUrl } = await buildOcrDataURL();
+    const { text } = await ocrText(dataUrl,false);
+    const score=(text||"").replace(/[^A-Za-z0-9]/g,"").length;
+    scores.push({r,score});
+    Z.value=String(zoomWas);
   }
+  scores.sort((a,b)=>b.score-a.score);
+  rotation=scores[0]?.r ?? 0;
+  drawPreview();
+  statusEl.className="ok"; statusEl.textContent=`Orientation: ${rotation}°`;
+}
+
+/* ---------- Auto-zoom so crop fills ~80% of canvas ---------- */
+function autoZoomToCrop(){
+  if(!crop || !baseImage) return;
+  const targetFill=0.8; // fraction of canvas width/height
+  const imgW=(rotation%180===0)?baseImage.width:baseImage.height;
+  const imgH=(rotation%180===0)?baseImage.height:baseImage.width;
+
+  // current mapping
+  const curZoom=Number(Z.value);
+  const curFit=Math.min(canvas.width/imgW, canvas.height/imgH)*curZoom;
+  // crop size in original px:
+  const drawW=Math.round(imgW*curFit), drawH=Math.round(imgH*curFit);
+  const dx=Math.round((canvas.width-drawW)/2), dy=Math.round((canvas.height-drawH)/2);
+  const cwOrig = (crop.w)/curFit, chOrig = (crop.h)/curFit;
+
+  // desired fit so the crop covers ~80% of canvas
+  const desiredScale = Math.min((canvas.width*targetFill)/cwOrig, (canvas.height*targetFill)/chOrig);
+  const baseFit = Math.min(canvas.width/imgW, canvas.height/imgH);
+  const newZoom = Math.max(0.5, Math.min(3, desiredScale/baseFit));
+
+  Z.value=String(newZoom);
+  drawPreview();
+
+  // re-map crop center to stay centered after zoom change
+  const newFit=Math.min(canvas.width/imgW, canvas.height/imgH)*newZoom;
+  const newDW=Math.round(imgW*newFit), newDH=Math.round(imgH*newFit);
+  const ndx=Math.round((canvas.width-newDW)/2), ndy=Math.round((canvas.height-newDH)/2);
+
+  const centerX = dx + crop.x + crop.w/2;
+  const centerY = dy + crop.y + crop.h/2;
+
+  const centerOrigX = (centerX - dx)/curFit;
+  const centerOrigY = (centerY - dy)/curFit;
+
+  const newCenterX = ndx + centerOrigX*newFit;
+  const newCenterY = ndy + centerOrigY*newFit;
+
+  crop.x = Math.round(newCenterX - (cwOrig*newFit)/2);
+  crop.y = Math.round(newCenterY - (chOrig*newFit)/2);
+  crop.w = Math.round(cwOrig*newFit);
+  crop.h = Math.round(chOrig*newFit);
+
+  drawPreview();
 }
 
 /* ---------- Actions ---------- */
-qs("scanBtn").addEventListener("click", async ()=>{
+qs("scanBtn").addEventListener("click", manualScan);
+qs("autoDetect").addEventListener("click", autoDetectTotals);
+qs("autoAll").addEventListener("click", autoAll);
+
+async function manualScan(){
   try{
     statusEl.className="muted"; statusEl.textContent="Preparing selection…";
-    const dataUrl = await buildOcrDataURL();
+    const meta=await buildOcrDataURL();
     statusEl.textContent="Scanning locally…";
-    const { text } = await ocrDataUrl(dataUrl);
-    const out = extractFields(text);
-    if(out.vendor) qs("vendor").value = out.vendor;
-    if(out.date) qs("rdate").value = out.date;
-    if(typeof out.total==="number") qs("total").value = to2(out.total);
-    if(typeof out.tax==="number") qs("tax").value = to2(out.tax);
+    const { text } = await ocrText(meta.dataUrl,false);
+    const out=extractFields(text);
+    if(out.vendor) qs("vendor").value=out.vendor;
+    if(out.date) qs("rdate").value=out.date;
+    if(typeof out.total==="number") qs("total").value=to2(out.total);
+    if(typeof out.tax==="number") qs("tax").value=to2(out.tax);
     updateSubtotalPreview();
     statusEl.className="ok"; statusEl.textContent="Scan complete — review & save.";
-  }catch(e){
-    statusEl.className="err"; statusEl.textContent="Scan failed: " + (e?.message || e);
-  }
-});
-qs("autoDetect").addEventListener("click", autoDetectTotals);
+  }catch(e){ statusEl.className="err"; statusEl.textContent="Scan failed: "+(e?.message||e); }
+}
 
+async function autoAll(){
+  try{
+    if(!baseImage){ statusEl.className="err"; statusEl.textContent="Pick a file first."; return; }
+    await autoRotate();
+    const zone=await autoDetectTotals();
+    if(zone){ autoZoomToCrop(); await manualScan(); }
+  }catch(e){ statusEl.className="err"; statusEl.textContent="Auto-enhance failed: "+(e?.message||e); }
+}
+
+/* ---------- Unmatched table & save ---------- */
 async function loadUnmatched(){
   const tbody=qs("unmatchedTable").querySelector("tbody");
   tbody.innerHTML=`<tr><td colspan="7">Loading…</td></tr>`;
@@ -549,10 +485,10 @@ async function loadUnmatched(){
   if(error){ tbody.innerHTML = `<tr><td colspan="7" class="err">${error.message}</td></tr>`; return; }
   if(!data?.length){ tbody.innerHTML = `<tr><td colspan="7" class="muted">All caught up—no unmatched receipts.</td></tr>`; return; }
   tbody.innerHTML = data.map(r=>{
-    const tot = typeof r.total==="number" ? r.total.toFixed(2) : (r.total ?? "");
-    const tax = typeof r.tax==="number" ? r.tax.toFixed(2)   : (r.tax ?? "");
-    const img = r.image_url ? `<a href="${r.image_url}" target="_blank" class="chip">open</a>` : "";
-    return `<tr><td>${r.receipt_date??""}</td><td>${r.vendor??""}</td><td class="right">$${tot}</td><td class="right">$${tax}</td><td>${r.category??""}</td><td>${r.source??""}</td><td>${img}</td></tr>`
+    const tot=typeof r.total==="number"?r.total.toFixed(2):(r.total??"");
+    const tax=typeof r.tax==="number"?r.tax.toFixed(2):(r.tax??"");
+    const img=r.image_url?`<a href="${r.image_url}" target="_blank" class="chip">open</a>`:"";
+    return `<tr><td>${r.receipt_date??""}</td><td>${r.vendor??""}</td><td class="right">$${tot}</td><td class="right">$${tax}</td><td>${r.category??""}</td><td>${r.source??""}</td><td>${img}</td></tr>`;
   }).join("");
 }
 qs("refreshBtn").addEventListener("click",loadUnmatched);
@@ -563,9 +499,7 @@ qs("uploadBtn").addEventListener("click", async ()=>{
   if(!file){ msgEl.className="err"; msgEl.textContent="Pick a file first."; return; }
 
   const path=`${Date.now()}-${file.name}`;
-  const { error: upErr } = await sb.storage.from(BUCKET).upload(path, file, {
-    contentType:file.type||"application/octet-stream", upsert:false
-  });
+  const { error: upErr } = await sb.storage.from(BUCKET).upload(path, file, { contentType:file.type||"application/octet-stream", upsert:false });
   if(upErr){ msgEl.className="err"; msgEl.textContent="Storage error: "+upErr.message; return; }
   const { data: pub } = sb.storage.from(BUCKET).getPublicUrl(path);
   const publicUrl = pub?.publicUrl;
@@ -582,7 +516,6 @@ qs("uploadBtn").addEventListener("click", async ()=>{
   };
   const { error } = await sb.from("receipts").insert([payload]);
   if(error){ msgEl.className="err"; msgEl.textContent="DB error: " + error.message; return; }
-
   msgEl.className="ok"; msgEl.textContent="Uploaded & saved.";
   qs("fileInput").value="";
   await loadUnmatched();
@@ -592,16 +525,14 @@ qs("btnApply").addEventListener("click", async ()=>{
   autoMsg.className="muted"; autoMsg.textContent="Applying rules…";
   const { error } = await sb.rpc("apply_rules");
   if(error){ autoMsg.className="err"; autoMsg.textContent=error.message; return; }
-  autoMsg.className="ok"; autoMsg.textContent="Rules applied.";
-  loadUnmatched();
+  autoMsg.className="ok"; autoMsg.textContent="Rules applied."; loadUnmatched();
 });
 qs("btnMatch").addEventListener("click", async ()=>{
   autoMsg.className="muted"; autoMsg.textContent="Matching…";
-  const fn = qs("matchMode").value === "fuzzy" ? "match_now_fuzzy" : "match_now";
+  const fn = qs("matchMode").value==="fuzzy" ? "match_now_fuzzy" : "match_now";
   const { error } = await sb.rpc(fn);
   if(error){ autoMsg.className="err"; autoMsg.textContent=error.message; return; }
-  autoMsg.className="ok"; autoMsg.textContent="Matching complete.";
-  loadUnmatched();
+  autoMsg.className="ok"; autoMsg.textContent="Matching complete."; loadUnmatched();
 });
 qs("exportBtn").addEventListener("click", async ()=>{
   autoMsg.className="muted"; autoMsg.textContent="Building CSV…";
@@ -610,10 +541,7 @@ qs("exportBtn").addEventListener("click", async ()=>{
   if(!data?.length){ autoMsg.textContent="No data."; return; }
   const cols=["receipt_date","vendor","category","source","subtotal","tax","total","notes","image_url"];
   const header=cols.join(",");
-  const rows=data.map(r=>cols.map(k=>{
-    const v=r[k]??""; const s=String(v);
-    return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;
-  }).join(","));
+  const rows=data.map(r=>cols.map(k=>{ const v=r[k]??""; const s=String(v); return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; }).join(","));
   const csv=[header,...rows].join("\n");
   const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
   const url=URL.createObjectURL(blob); const a=document.createElement("a");
