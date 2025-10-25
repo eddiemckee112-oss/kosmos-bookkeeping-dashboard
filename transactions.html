@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Kosmos Bookkeeping — Transactions</title>
   <link rel="stylesheet" href="style.css"/>
+
+  <!-- Supabase JS (v2) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <style>
     .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .pill{padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:#fff}
@@ -34,6 +38,7 @@
       <div class="toolbar">
         <label>Date Range:</label>
         <input id="fromDate" type="date"/><span>–</span><input id="toDate" type="date"/>
+
         <select id="typeFilter">
           <option value="all">All</option>
           <option value="debit">Debits only</option>
@@ -44,12 +49,14 @@
           <option value="no_source">No Source</option>
           <option value="duplicates">Possible Duplicates</option>
         </select>
+
         <button id="applyBtn">Apply</button>
         <input id="quickSearch" placeholder="Search description/category/source…" style="flex:1;min-width:220px"/>
         <button id="importBtn" class="ghost">📥 Import CSV</button>
         <button id="backfillBtn" class="ghost">⟳ Backfill Sources</button>
         <button id="exportBtn" class="ghost">⬇️ Export CSV</button>
       </div>
+
       <div class="row" style="gap:10px;margin-top:10px;">
         <span class="pill">Unmatched: <b id="chipUnmatched">—</b></span>
         <span class="pill">Uncategorized: <b id="chipUncat">—</b></span>
@@ -92,7 +99,7 @@
       <h3>Import Transactions (CSV)</h3>
       <p class="note muted small">
         Using <b>forced mapping</b>: A=Date, B=Description, C=Debit, <b>D=Credit</b>.  
-        Optional columns after that will be treated as Source. Handles $ signs, commas, and (parentheses) negatives.
+        Optional columns after that are treated as Source. Handles $ signs, commas, and (parentheses) negatives.
       </p>
 
       <div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -117,6 +124,15 @@
     </div>
   </div>
 
+  <!-- Supabase init (sb) -->
+  <script>
+    // Replace the anon key below if yours differs
+    const SUPABASE_URL  = "https://advihqhjjlxumgdlbwui.supabase.co";
+    const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+  </script>
+
+  <!-- Page logic -->
   <script>
     const $ = id => document.getElementById(id);
     const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -204,7 +220,7 @@
 
     // ---------- IMPORTER (FORCED COLUMNS) ----------
     // Force mapping: A=Date, B=Description, C=Debit, D=Credit
-    // Optional Source starts at column E -> use the first non-empty as source.
+    // Optional Source starts at column E -> first non-empty becomes Source.
     $("importBtn").addEventListener("click", ()=>openImporter());
     $("closeImport").addEventListener("click", ()=>{ $("impBackdrop").style.display="none"; });
 
@@ -283,11 +299,10 @@
         $("impPreview").style.display="none"; return;
       }
 
-      // Header detection (skip if first cell isn't a date-like)
       let start=0;
       if(nonBlank[0] && !isDateLike(nonBlank[0][0])) start=1;
 
-      // Forced positions
+      // Forced mapping
       const DATE_COL = 0;
       const DESC_COL = 1;
       const DEBIT_COL = 2;
