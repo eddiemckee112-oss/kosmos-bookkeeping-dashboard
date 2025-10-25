@@ -139,7 +139,7 @@
     </div>
   </div>
 
-  <!-- Upload Receipt Modal: now with required fields -->
+  <!-- Upload Receipt Modal -->
   <div id="uploadBackdrop" class="modal-backdrop">
     <div class="modal">
       <h3>Attach Receipt — Review & Save</h3>
@@ -193,26 +193,18 @@
 
   <script>
   document.addEventListener('DOMContentLoaded', () => {
-    // ---- Supabase client ----
     const sb = supabase.createClient(
       "https://advihqhjjlxumgdlbwui.supabase.co",
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY"
     );
-
-    // ---- Helpers ----
     const $ = id => document.getElementById(id);
     const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const money = n => (n==null?0:n).toLocaleString(undefined,{style:"currency",currency:"CAD"});
 
-    // ---- Category options ----
+    // Category options
     let CATEGORY_OPTIONS = [];
     async function loadCategoryOptions(){
-      const defaults = [
-        "Uncategorized","Income","Sales","Refunds",
-        "Meals & Entertainment","Supplies","Software","Subscriptions",
-        "Travel","Lodging","Fuel","Utilities","Phone/Internet",
-        "Office","Professional Fees","Bank Fees","Taxes","Insurance","Repairs","Other"
-      ];
+      const defaults = ["Uncategorized","Income","Sales","Refunds","Meals & Entertainment","Supplies","Software","Subscriptions","Travel","Lodging","Fuel","Utilities","Phone/Internet","Office","Professional Fees","Bank Fees","Taxes","Insurance","Repairs","Other"];
       const set = new Set(defaults);
       const { data: txCats } = await sb.from("transactions").select("category").not("category","is","null");
       (txCats||[]).forEach(r=>{ if(r.category && String(r.category).trim()) set.add(String(r.category).trim()); });
@@ -222,11 +214,8 @@
     }
     function renderCategorySelect(value, txnId){
       const opts = CATEGORY_OPTIONS.map(c => `<option value="${esc(c)}"${c===value?' selected':''}>${esc(c)}</option>`).join("");
-      return `<select class="cat-select" data-txn="${txnId}" onchange="updateCategory(this)">
-        ${opts}
-      </select><span class="save-mark" id="sv_${txnId}">✓ saved</span>`;
+      return `<select class="cat-select" data-txn="${txnId}" onchange="updateCategory(this)">${opts}</select><span class="save-mark" id="sv_${txnId}">✓ saved</span>`;
     }
-    // expose updater (simple, safe)
     window.updateCategory = async (sel)=>{
       const id = sel.getAttribute("data-txn");
       const val = sel.value || null;
@@ -237,10 +226,8 @@
       if(mark){ mark.textContent="✓ saved"; mark.classList.add("show"); setTimeout(()=>mark.classList.remove("show"),1200); }
     };
 
-    // ---- Load & render ----
     async function loadTransactions(){
       await loadCategoryOptions();
-
       const from = $("fromDate").value || null;
       const to   = $("toDate").value || null;
       const q    = $("quickSearch").value.trim().toLowerCase();
@@ -255,7 +242,6 @@
       if (to)   query = query.lte("txn_date", to);
       if (type === "debit")  query = query.eq("direction","debit");
       if (type === "credit") query = query.eq("direction","credit");
-
       query = query.order("txn_date",{ascending:false});
 
       const { data, error } = await query;
@@ -296,7 +282,9 @@
           <td>${renderCategorySelect(r.category || "Uncategorized", r.id)}</td>
           <td>${esc(r.source_account_name||"")}</td>
           <td><button class="status-btn ${matched?'ok':'ghost'}">${matched?'Matched':'Unmatched'}</button></td>
-          <td><button class="upload-btn" onclick="openUpload('${r.id}','${esc(r.description||'')}', '${esc(r.txn_date||'')}', '${r.amount}','${esc(r.source_account_name||'')}')">📷 Upload</button></td>
+          <td><button class="upload-btn"
+                onclick="openUpload('${r.id}','${esc(r.description||'')}', '${esc(r.txn_date||'')}', '${r.amount}','${esc(r.source_account_name||'')}', '${esc(r.category||'Uncategorized')}')">
+                📷 Upload</button></td>
         </tr>`;
       }).join("");
       $("rowsCount").textContent = `Rows: ${rows.length}`;
@@ -309,11 +297,9 @@
       return rows.filter(r => map.get(key(r))>1);
     }
 
-    // ---- Filters & search ----
     $("applyBtn").addEventListener("click", loadTransactions);
     $("quickSearch").addEventListener("input", ()=>{ clearTimeout(window.__qsT); window.__qsT=setTimeout(loadTransactions,150); });
 
-    // ---- Export ----
     $("exportBtn").addEventListener("click", async ()=>{
       const { data, error } = await sb.from("transactions")
         .select("txn_date,description,amount,direction,category,source_account_name")
@@ -337,12 +323,10 @@
       const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="transactions_export.csv"; a.click(); URL.revokeObjectURL(a.href);
     });
 
-    // ---- Importer (A/B/C/D) + Source picker ----
     $("importBtn").addEventListener("click", ()=>openImporter());
     $("closeImport").addEventListener("click", ()=>{ $("impBackdrop").style.display="none"; });
 
     let __valid=[]; let __skipped=[];
-
     async function openImporter(){
       $("impStatus").className="muted small";
       $("impStatus").textContent="Select a CSV to begin.";
@@ -354,7 +338,6 @@
       __valid=[]; __skipped=[];
       await populateSourceOptions();
     }
-
     async function populateSourceOptions(){
       const sel = $("fileSourceSelect");
       const custom = $("fileSourceCustom");
@@ -460,7 +443,7 @@
         let amount=null, direction=null;
         if(cVal!=null && cVal>0){ amount = Math.abs(cVal); direction='credit'; credSum+=amount; }
         else if(dVal!=null && dVal!==0){ amount = Math.abs(dVal); direction='debit'; debSum+=amount; }
-        else { __skipped.push({line:i+1,reason:'no debit/credit'}); continue; }
+        else { __skipped.push({line+i+1,reason:'no debit/credit'}); continue; }
 
         __valid.push({date, desc, amount, direction, source: previewSource || null}); valid++;
       }
@@ -530,15 +513,16 @@
       }
     });
 
-    // ---- Upload Receipt (with required fields) ----
+    // Upload Receipt (prefill category from transaction)
     let currentTxn = null;
     function populateReceiptCategories(selected){
       const opts = CATEGORY_OPTIONS.map(c => `<option value="${esc(c)}"${c===selected?' selected':''}>${esc(c)}</option>`).join("");
       $("upCategory").innerHTML = opts;
-      if(!selected && CATEGORY_OPTIONS.includes("Uncategorized")) $("upCategory").value="Uncategorized";
+      if(selected && CATEGORY_OPTIONS.includes(selected)) $("upCategory").value = selected;
+      else if(CATEGORY_OPTIONS.includes("Uncategorized")) $("upCategory").value="Uncategorized";
     }
-    function openUpload(id, desc, date, amt, source){
-      currentTxn = { id, desc, date, amt: Number(amt)||0, source: source||"" };
+    function openUpload(id, desc, date, amt, source, category){
+      currentTxn = { id, desc, date, amt: Number(amt)||0, source: source||"", category: category||"Uncategorized" };
       $("upDesc").textContent = `${desc} — ${money(currentTxn.amt)} on ${date}`;
       $("uploadFile").value = "";
       $("uploadError").textContent = "";
@@ -549,7 +533,7 @@
       $("upTotal").value = currentTxn.amt ? currentTxn.amt.toFixed(2) : "";
       $("upTax").value = "0.00";
       $("upSource").value = source || "";
-      populateReceiptCategories("Uncategorized");
+      populateReceiptCategories(currentTxn.category);
 
       $("uploadBackdrop").style.display = "flex";
     }
@@ -557,16 +541,12 @@
 
     $("cancelUpload").onclick = ()=>{ $("uploadBackdrop").style.display="none"; };
 
-    function valNumber(el){
-      const n = Number(el.value);
-      return Number.isFinite(n) ? n : NaN;
-    }
+    function valNumber(el){ const n = Number(el.value); return Number.isFinite(n) ? n : NaN; }
 
     $("confirmUpload").onclick = async ()=>{
       $("uploadError").textContent = "";
       $("uploadStatus").textContent = "";
 
-      // Validate fields
       const vendor = $("upVendor").value.trim();
       const date   = $("upDate").value;
       const total  = valNumber($("upTotal"));
@@ -600,7 +580,6 @@
       const { data: orgRow } = await sb.from("orgs").select("id").limit(1).single();
       const org_id = orgRow?.id || null;
 
-      // Insert receipt
       const { data: rIns, error: rErr } = await sb.from("receipts").insert([{
         org_id,
         account_id: null,
@@ -639,7 +618,7 @@
       }, 700);
     };
 
-    // ---- Boot ----
+    // Boot
     $("applyBtn").addEventListener("click", loadTransactions);
     $("quickSearch").addEventListener("input", ()=>{ clearTimeout(window.__qsT); window.__qsT=setTimeout(loadTransactions,150); });
 
