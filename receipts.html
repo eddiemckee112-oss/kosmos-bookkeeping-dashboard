@@ -1,129 +1,208 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Kosmos Bookkeeping — Receipts</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Receipts – Kosmos Bookkeeping</title>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <style>
-    :root{--bg:#fafafa;--card:#fff;--border:#e5e7eb;--muted:#6b7280;
-           --ok:#0a7a33;--err:#b00020;--ink:#111;--btn:#111;--btnH:#333;}
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-         margin:0;background:var(--bg);color:var(--ink);}
-    header{background:#fff;border-bottom:1px solid var(--border);
-           padding:14px 24px;display:flex;justify-content:space-between;align-items:center;}
-    header h1{font-size:1.2rem;margin:0;}
-    nav a{margin-left:16px;color:var(--ink);text-decoration:none;font-weight:500;
-           padding:6px 10px;border-radius:8px;}
-    nav a:hover,nav a.active{background:#111;color:#fff;}
-    main{padding:32px;max-width:900px;margin:auto;}
-    h2{margin-top:0;}
-    .card{background:var(--card);border:1px solid var(--border);
-          border-radius:14px;padding:20px;margin-top:20px;}
-    label{display:block;margin-top:.7rem;font-weight:600;}
-    input{width:100%;padding:.6rem .7rem;border:1px solid #cfcfcf;
-          border-radius:10px;margin-top:.35rem;}
-    button{padding:.6rem 1rem;border-radius:10px;border:1px solid #bbb;
-            background:var(--btn);color:#fff;cursor:pointer;}
-    button:hover{background:var(--btnH);}
-    .secondary{background:#f7f7f7;color:#111;border-color:#d0d0d0;}
-    .secondary:hover{background:#eee;}
-    table{width:100%;border-collapse:collapse;font-size:14px;}
-    th,td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;}
-    th{background:#f6f7f8;}
-    .right{text-align:right;}
-    .muted{color:var(--muted);} .ok{color:var(--ok);} .err{color:var(--err);}
+    :root{ --bg:#fafafa; --card:#fff; --border:#e5e7eb; --muted:#6b7280; --ok:#0a7a33; --err:#b00020; --ink:#111; --btn:#111; --btnH:#333; }
+    *{ box-sizing:border-box; }
+    body{ font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; margin:24px; background:var(--bg); color:var(--ink); }
+    h1{ font-size:1.6rem; margin:0 0 .75rem; }
+    h3{ margin:0 0 .25rem; }
+    .wrap{ display:grid; grid-template-columns:520px 1fr; gap:24px; align-items:start; }
+    .card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px; }
+    label{ display:block; margin-top:.7rem; font-weight:600; }
+    input{ width:100%; padding:.6rem .7rem; border:1px solid #cfcfcf; border-radius:10px; margin-top:.35rem; background:#fff; }
+    input[readonly]{ background:#f7f7f7; }
+    small.muted{ color:var(--muted); display:block; margin-top:.25rem; }
+    .muted{ color:var(--muted); } .ok{ color:var(--ok); } .err{ color:var(--err); }
+    button{ padding:.6rem 1rem; border-radius:10px; border:1px solid #bbb; background:var(--btn); color:#fff; cursor:pointer; }
+    button:hover{ background:var(--btnH); }
+    .secondary{ background:#f7f7f7; color:#111; border-color:#d0d0d0; }
+    .secondary:hover{ background:#eee; }
+    .rowbtns{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; align-items:center; }
+    table{ width:100%; border-collapse:collapse; font-size:14px; }
+    th,td{ padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; }
+    th{ background:#f6f7f8; position:sticky; top:0; z-index:1; }
+    .right{ text-align:right; }
+    .chip{ font-size:12px; background:#eef2ff; border:1px solid #c7d2fe; padding:2px 6px; border-radius:999px; }
+    select{ padding:.5rem; border:1px solid #ccc; border-radius:8px; }
+    nav{ display:flex; gap:16px; margin-bottom:24px; }
+    nav a{ text-decoration:none; color:#111; font-weight:600; }
+    nav a:hover{ text-decoration:underline; }
   </style>
 </head>
 <body>
-<header>
-  <h1>📸 Kosmos Bookkeeping</h1>
   <nav>
     <a href="index.html">Dashboard</a>
-    <a href="receipts.html" class="active">Receipts</a>
     <a href="transactions.html">Transactions</a>
-    <a href="matched.html">Matched</a>
+    <a href="receipts.html" style="text-decoration:underline;">Receipts</a>
     <a href="reports.html">Reports</a>
   </nav>
-</header>
 
-<main>
-  <h2>Receipt Upload & Matching</h2>
-  <p class="muted">Add new receipts, apply vendor rules, and run matching.</p>
+  <h1>Receipts</h1>
+  <div class="wrap">
+    <div>
+      <div class="card">
+        <h3>Upload & Scan Receipt</h3>
+        <small class="muted">Uploads → OCR scan → pre-fills form → saves to <code>public.receipts</code>.</small>
+        <div class="rowbtns">
+          <input type="file" id="fileInput" accept="image/*,.pdf" />
+          <button id="scanBtn" class="secondary">Scan with AI</button>
+        </div>
+        <label>Vendor<input id="vendor" placeholder="e.g., Sysco, Costco"/></label>
+        <label>Date<input id="rdate" type="date"/></label>
+        <label>Total<input id="total" type="number" step="0.01"/></label>
+        <label>Tax<input id="tax" type="number" step="0.01"/></label>
+        <label>Subtotal<input id="subtotal" type="number" step="0.01" readonly/></label>
+        <label>Category<input id="category" placeholder="Category"/></label>
+        <label>Source<input id="source" placeholder="Bank/Card"/></label>
+        <label>Notes<input id="notes" placeholder="optional"/></label>
+        <div class="rowbtns">
+          <button id="uploadBtn">Upload & Save</button>
+        </div>
+        <p id="msg" class="muted"></p>
+      </div>
 
-  <!-- upload -->
-  <div class="card">
-    <h3>Upload Receipt</h3>
-    <input type="file" id="fileInput" accept="image/*,.pdf"/>
-    <label>Vendor<input id="vendor"/></label>
-    <label>Date<input id="rdate" type="date"/></label>
-    <label>Total<input id="total" type="number" step="0.01"/></label>
-    <label>Tax<input id="tax" type="number" step="0.01"/></label>
-    <label>Category<input id="category"/></label>
-    <label>Source<input id="source"/></label>
-    <label>Notes<input id="notes"/></label>
-    <button id="uploadBtn">Upload & Save</button>
-    <p id="msg" class="muted"></p>
-  </div>
-
-  <!-- automation -->
-  <div class="card">
-    <h3>Automation</h3>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <button id="btnApply" class="secondary">Apply Rules</button>
-      <select id="matchMode"><option value="strict" selected>Strict</option><option value="fuzzy">Fuzzy</option></select>
-      <button id="btnMatch" class="secondary">Match</button>
+      <div class="card" style="margin-top:16px;">
+        <h3>Automation</h3>
+        <div class="rowbtns">
+          <button id="btnApply" class="secondary">Apply Rules</button>
+          <select id="matchMode"><option value="strict" selected>Strict</option><option value="fuzzy">Fuzzy</option></select>
+          <button id="btnMatch" class="secondary">Match</button>
+          <button id="optCsv">Export Accountant CSV</button>
+        </div>
+        <p id="autoMsg" class="muted"></p>
+      </div>
     </div>
-    <p id="autoMsg" class="muted"></p>
-  </div>
 
-  <!-- unmatched -->
-  <div class="card">
-    <h3>Unmatched Receipts</h3>
-    <div style="max-height:400px;overflow:auto;">
-      <table id="unmatchedTable">
-        <thead><tr><th>Date</th><th>Vendor</th><th class="right">Total</th><th class="right">Tax</th><th>Category</th><th>Source</th></tr></thead>
-        <tbody><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
-      </table>
+    <div class="card">
+      <h3>Unmatched Receipts</h3>
+      <div style="max-height:540px; overflow:auto; margin-top:8px;">
+        <table id="unmatchedTable">
+          <thead><tr><th>Date</th><th>Vendor</th><th class="right">Total</th><th class="right">Tax</th><th>Category</th><th>Source</th><th>Image</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div style="margin-top:8px;"><button id="refreshBtn" class="secondary">Refresh</button></div>
     </div>
-    <button id="refreshBtn" class="secondary" style="margin-top:8px;">Refresh</button>
   </div>
-</main>
 
-<script>
-const SUPABASE_URL="https://advihqhjjlxumgdlbwui.supabase.co";
-const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
-const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
-const qs=id=>document.getElementById(id);
-const autoMsg=qs("autoMsg");
+  <script>
+    const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const BUCKET = "receipts-warm";
+    const qs = id => document.getElementById(id);
+    const msgEl = qs("msg"), autoMsg = qs("autoMsg"), countEl = qs("receiptCount");
 
-async function loadUnmatched(){
-  const tbody=qs("unmatchedTable").querySelector("tbody");
-  tbody.innerHTML="<tr><td colspan=6>Loading…</td></tr>";
-  const {data,error}=await sb.from("v_unmatched_receipts").select("*").order("created_at",{ascending:false}).limit(25);
-  if(error){tbody.innerHTML=`<tr><td colspan=6 class='err'>${error.message}</td></tr>`;return;}
-  if(!data?.length){tbody.innerHTML=`<tr><td colspan=6 class='muted'>All matched.</td></tr>`;return;}
-  tbody.innerHTML=data.map(r=>`<tr><td>${r.receipt_date||""}</td><td>${r.vendor||""}</td><td class='right'>$${r.total?.toFixed?.(2)||""}</td><td class='right'>$${r.tax?.toFixed?.(2)||""}</td><td>${r.category||""}</td><td>${r.source||""}</td></tr>`).join("");
-}
-qs("refreshBtn").addEventListener("click",loadUnmatched);
+    function updateSubtotalPreview(){
+      const t=parseFloat(qs("total").value)||0;
+      const x=parseFloat(qs("tax").value)||0;
+      qs("subtotal").value=(t-x).toFixed(2);
+    }
+    qs("total").addEventListener("input",updateSubtotalPreview);
+    qs("tax").addEventListener("input",updateSubtotalPreview);
 
-qs("btnMatch").addEventListener("click",async()=>{
-  autoMsg.textContent="Matching…";const fn=qs("matchMode").value==="fuzzy"?"match_now_fuzzy":"match_now";
-  const {error}=await sb.rpc(fn);
-  autoMsg.className=error?"err":"ok";
-  autoMsg.textContent=error?error.message:"Matching complete.";
-  loadUnmatched();
-});
+    async function loadUnmatched(){
+      const tbody=qs("unmatchedTable").querySelector("tbody");
+      const {data,error}=await sb.from("v_unmatched_receipts").select("receipt_date,vendor,total,tax,category,source,image_url").order("created_at",{ascending:false}).limit(25);
+      if(error||!data?.length){tbody.innerHTML=`<tr><td colspan="7">${error?"Error":"No unmatched receipts"}</td></tr>`;return;}
+      tbody.innerHTML=data.map(r=>`<tr><td>${r.receipt_date||""}</td><td>${r.vendor||""}</td><td class='right'>$${r.total?.toFixed(2)||""}</td><td class='right'>$${r.tax?.toFixed(2)||""}</td><td>${r.category||""}</td><td>${r.source||""}</td><td>${r.image_url?`<a href="${r.image_url}" target="_blank" class="chip">open</a>`:""}</td></tr>`).join("");
+    }
 
-qs("btnApply").addEventListener("click",async()=>{
-  autoMsg.textContent="Applying rules…";
-  const {error}=await sb.rpc("apply_rules");
-  autoMsg.className=error?"err":"ok";
-  autoMsg.textContent=error?error.message:"Rules applied.";
-  loadUnmatched();
-});
+    async function scanReceipt(){
+      msgEl.className="muted";
+      msgEl.textContent="Scanning with Mindee…";
+      const file=qs("fileInput").files?.[0];
+      if(!file){msgEl.className="err";msgEl.textContent="Pick a file first.";return;}
+      try{
+        const form=new FormData();
+        form.append("file",file);
+        const res=await fetch(`${SUPABASE_URL}/functions/v1/smart-handler?route=scan`,{method:"POST",body:form});
+        if(!res.ok) throw new Error(await res.text());
+        const data=await res.json();
+        if(data?.extracted){
+          const o=data.extracted;
+          if(o.vendor) qs("vendor").value=o.vendor;
+          if(o.date) qs("rdate").value=o.date;
+          if(o.total) qs("total").value=o.total;
+          if(o.tax) qs("tax").value=o.tax;
+          updateSubtotalPreview();
+          msgEl.className="ok";
+          msgEl.textContent="Scanned successfully — review and save.";
+        } else {
+          msgEl.className="err";
+          msgEl.textContent="Scan returned no fields.";
+        }
+      }catch(e){
+        msgEl.className="err";
+        msgEl.textContent="Scan failed: "+e.message;
+      }
+    }
+    qs("scanBtn").addEventListener("click",scanReceipt);
 
-loadUnmatched();
-</script>
+    qs("uploadBtn").addEventListener("click",async()=>{
+      msgEl.className="muted"; msgEl.textContent="Uploading…";
+      const file=qs("fileInput").files?.[0];
+      if(!file){msgEl.className="err";msgEl.textContent="Pick a file first.";return;}
+      const path=`${Date.now()}-${file.name}`;
+      const {error:upErr}=await sb.storage.from(BUCKET).upload(path,file,{contentType:file.type});
+      if(upErr){msgEl.className="err";msgEl.textContent="Storage: "+upErr.message;return;}
+      const {data:pub}=sb.storage.from(BUCKET).getPublicUrl(path);
+      const url=pub?.publicUrl;
+      const vendor=qs("vendor").value||null;
+      const date=qs("rdate").value||null;
+      const total=qs("total").value?Number(qs("total").value):null;
+      const tax=qs("tax").value?Number(qs("tax").value):0;
+      const category=qs("category").value||null;
+      const source=qs("source").value||null;
+      const notes=qs("notes").value||null;
+      const {error}=await sb.from("receipts").insert([{image_url:url,vendor,receipt_date:date,total,tax,category,source,notes}]);
+      if(error){msgEl.className="err";msgEl.textContent="DB error: "+error.message;return;}
+      msgEl.className="ok"; msgEl.textContent="Uploaded & saved.";
+      qs("fileInput").value="";
+      await loadUnmatched();
+    });
+
+    qs("btnApply").addEventListener("click",async()=>{
+      autoMsg.className="muted";autoMsg.textContent="Applying rules…";
+      const {error}=await sb.rpc("apply_rules");
+      if(error){autoMsg.className="err";autoMsg.textContent=error.message;return;}
+      autoMsg.className="ok";autoMsg.textContent="Rules applied.";
+      loadUnmatched();
+    });
+
+    qs("btnMatch").addEventListener("click",async()=>{
+      autoMsg.className="muted";autoMsg.textContent="Matching…";
+      const mode=qs("matchMode").value;
+      const fn=mode==="fuzzy"?"match_now_fuzzy":"match_now";
+      const {error}=await sb.rpc(fn);
+      if(error){autoMsg.className="err";autoMsg.textContent=error.message;return;}
+      autoMsg.className="ok";autoMsg.textContent=`Matching complete (${mode}).`;
+      loadUnmatched();
+    });
+
+    qs("optCsv").addEventListener("click",async()=>{
+      autoMsg.className="muted";autoMsg.textContent="Building CSV…";
+      const {data,error}=await sb.from("v_accountant_export_receipts").select("*");
+      if(error){autoMsg.className="err";autoMsg.textContent=error.message;return;}
+      if(!data?.length){autoMsg.textContent="No data.";return;}
+      const cols=["receipt_date","vendor","category","source","subtotal","tax","total","notes","image_url"];
+      const csv=[cols.join(","),...data.map(r=>cols.map(k=>r[k]??"").join(","))].join("\n");
+      const blob=new Blob([csv],{type:"text/csv"});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url;a.download=`accountant_export_${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      autoMsg.className="ok";autoMsg.textContent="CSV exported.";
+    });
+
+    qs("refreshBtn").addEventListener("click",loadUnmatched);
+    loadUnmatched();
+  </script>
 </body>
 </html>
