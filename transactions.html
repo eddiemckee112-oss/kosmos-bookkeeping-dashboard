@@ -19,7 +19,7 @@
     .toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
     .spacer { flex: 1 1 auto; }
 
-    /* Modal */
+    /* Modal (shared) */
     .modal-backdrop{
       position:fixed; inset:0; background:rgba(0,0,0,.35);
       display:none; align-items:center; justify-content:center; z-index:50;
@@ -41,6 +41,12 @@
       position:sticky; bottom:0; background:#fff; border-top:1px solid var(--border);
       padding:10px 12px; display:flex; gap:12px; flex-wrap:wrap; justify-content:flex-end;
     }
+
+    /* Upload Receipt modal specifics */
+    .upgrid{ display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
+    @media (max-width: 860px){ .upgrid{ grid-template-columns:1fr; } }
+    .imgbox{ border:1px solid var(--border); border-radius:12px; background:#fff; padding:10px; text-align:center }
+    .imgbox img{ max-width:100%; height:auto; border-radius:8px }
   </style>
 </head>
 <body>
@@ -56,7 +62,7 @@
 
   <main class="container">
     <h2>💳 Transactions</h2>
-    <p class="muted">Filter, import, categorize, and export your transactions. Click <b>Category</b> or <b>Source</b> to edit inline.</p>
+    <p class="muted">Filter, import, categorize, and export your transactions. Click <b>Category</b> or <b>Source</b> to edit inline. Use <b>Upload Receipt</b> to attach a receipt to a transaction.</p>
 
     <!-- Filters / Actions -->
     <div class="card">
@@ -101,17 +107,18 @@
         <thead>
           <tr>
             <th style="min-width:110px;">Date</th>
-            <th style="min-width:360px;">Description</th>
+            <th style="min-width:320px;">Description</th>
             <th class="right" style="min-width:120px;">Amount</th>
             <th style="min-width:90px;">Type</th>
             <th style="min-width:160px;">Category</th>
-            <th style="min-width:200px;">Source</th>
+            <th style="min-width:180px;">Source</th>
+            <th style="min-width:140px;">Actions</th>
           </tr>
         </thead>
         <tbody></tbody>
         <tfoot>
           <tr>
-            <td colspan="6">
+            <td colspan="7">
               <div class="sticky-footer">
                 <span class="kpill">Rows: <b id="ftRows">0</b></span>
                 <span class="kpill">Debits: <b id="ftDebits">$0.00</b></span>
@@ -189,6 +196,53 @@
     </div>
   </div>
 
+  <!-- Upload Receipt Modal -->
+  <div id="uploadBackdrop" class="modal-backdrop">
+    <div class="modal">
+      <h3>Upload Receipt</h3>
+      <p class="muted">Attach a receipt image to this transaction. We’ll prefill date and total — you can add vendor, tax, and notes.</p>
+
+      <div class="upgrid">
+        <div class="imgbox">
+          <input id="upFile" type="file" accept="image/*" />
+          <div style="margin-top:10px;">
+            <img id="upPreview" alt="" />
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="grid grid-2">
+            <div>
+              <label>Vendor</label>
+              <input id="upVendor" placeholder="e.g., NO FRILLS" />
+            </div>
+            <div>
+              <label>Date</label>
+              <input id="upDate" type="date" />
+            </div>
+            <div>
+              <label>Total</label>
+              <input id="upTotal" type="number" step="0.01" />
+            </div>
+            <div>
+              <label>Tax</label>
+              <input id="upTax" type="number" step="0.01" value="0.00" />
+            </div>
+          </div>
+          <div style="margin-top:8px;">
+            <label>Notes</label>
+            <input id="upNotes" placeholder="Optional notes" />
+          </div>
+          <p id="upMsg" class="muted" style="margin-top:8px;"></p>
+          <div class="row" style="justify-content:flex-end; margin-top:8px;">
+            <button id="upCancel" class="ghost">Cancel</button>
+            <button id="upSave">Save & Attach</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     // ===== Supabase =====
     const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
@@ -203,7 +257,18 @@
     // ===== State =====
     let allRows = [];     // raw from DB
     let viewRows = [];    // filtered by quick search
-    let csvData = null;   // parsed CSV { headers, rows }
+
+    // Upload Receipt state
+    let activeTxn = null;
+    const uploadBackdrop = $("uploadBackdrop");
+    const upFile = $("upFile");
+    const upPreview = $("upPreview");
+    const upVendor = $("upVendor");
+    const upDate = $("upDate");
+    const upTotal = $("upTotal");
+    const upTax = $("upTax");
+    const upNotes = $("upNotes");
+    const upMsg = $("upMsg");
 
     // ===== Load & Filter =====
     async function loadTransactions() {
@@ -249,7 +314,7 @@
     }
 
     function renderError(msg) {
-      tbody.innerHTML = `<tr><td colspan="6" class="err">${msg}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" class="err">${msg}</td></tr>`;
       $("txnCount").textContent = "—";
       $("debits").textContent = "$0.00";
       $("credits").textContent = "$0.00";
@@ -285,7 +350,6 @@
         td.classList.add("editable");
         if ((initialValue || null) !== newVal) {
           await sb.from("transactions").update({ [field]: newVal }).eq("id", txnId);
-          // keep allRows in sync so quick search doesn't revert values
           const row = allRows.find(r => r.id === txnId);
           if (row) row[field] = newVal;
         }
@@ -297,7 +361,7 @@
     // ===== Render Table =====
     function renderTable(rows) {
       if (!rows.length) {
-        tbody.innerHTML = `<tr><td colspan="6" class="muted">No transactions found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="muted">No transactions found.</td></tr>`;
         $("txnCount").textContent = 0;
         $("debits").textContent = "$0.00";
         $("credits").textContent = "$0.00";
@@ -315,6 +379,7 @@
         if (t.direction === "debit") debit += amt; else credit += amt;
 
         const sourceDisplay = t.source_account_name || t.institution || "";
+        const btn = `<button class="ghost btn-upload" data-id="${t.id}">Upload Receipt</button>`;
 
         return `<tr data-id="${t.id}">
           <td>${escapeHtml(t.txn_date)}</td>
@@ -323,6 +388,7 @@
           <td>${escapeHtml(t.direction)}</td>
           <td class="editable" data-field="category">${escapeHtml(t.category)}</td>
           <td class="editable" data-field="source_account_name">${escapeHtml(sourceDisplay)}</td>
+          <td>${btn}</td>
         </tr>`;
       }).join("");
 
@@ -337,6 +403,11 @@
         srcTd.classList.add("editable");
         catTd.addEventListener("click", () => makeEditable(catTd, id, catTd.textContent.trim(), "category"));
         srcTd.addEventListener("click", () => makeEditable(srcTd, id, srcTd.textContent.trim(), "source_account_name"));
+      });
+
+      // bind upload receipt buttons
+      document.querySelectorAll(".btn-upload").forEach(btn => {
+        btn.addEventListener("click", () => openUploadFor(btn.getAttribute("data-id")));
       });
 
       // top summary
@@ -403,7 +474,6 @@
     importBtn.addEventListener("click", () => {
       backdrop.style.display = "flex";
       importStatus.textContent = "";
-      previewTable.thead && (previewTable.thead.innerHTML = "");
       previewTable.querySelector("thead").innerHTML = "";
       previewTable.querySelector("tbody").innerHTML = "";
       csvFile.value = "";
@@ -412,6 +482,7 @@
     });
     closeModal.addEventListener("click", () => { backdrop.style.display = "none"; });
 
+    let csvData = null;
     csvFile.addEventListener("change", async (e) => {
       const f = e.target.files?.[0];
       if (!f) return;
@@ -530,7 +601,7 @@
       importStatus.className="muted";
       importStatus.textContent=`Importing ${rows.length} rows…`;
 
-      // Batch insert (Supabase limit safety)
+      // Batch insert
       let inserted = 0, errors = 0;
       const batchSize = 300;
       for (let i=0;i<rows.length;i+=batchSize) {
@@ -569,9 +640,7 @@
           field += ch; i++; continue;
         }
       }
-      // flush tail
       if (field.length || row.length) { pushField(); pushRow(); }
-
       if (!rows.length) return { headers: [], rows: [] };
       const headers = rows.shift().map(h => h.trim());
       return { headers, rows };
@@ -580,25 +649,112 @@
     function normalizeDate(v){
       if (!v) return null;
       const s = String(v).trim();
-      // Try YYYY-MM-DD
       let m = s.match(/^(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})$/);
       if (m) return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
-      // Try DD-MM-YYYY or DD/MM/YYYY
       m = s.match(/^(\d{1,2})[-\/\.](\d{1,2})[-\/\.](\d{4})$/);
       if (m) return `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;
-      // Try MM/DD/YYYY
       m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
       if (m) return `${m[3]}-${String(m[1]).padStart(2,'0')}-${String(m[2]).padStart(2,'0')}`;
-      // Fallback: just return as-is if it looks datey
       if (/\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
       return null;
     }
 
-    // Events
+    // ===== Backfill Sources (RPC) =====
+    $("backfillBtn").addEventListener("click", backfillSources);
+
+    // ===== Events
     $("filterBtn").addEventListener("click", loadTransactions);
     $("exportBtn").addEventListener("click", exportCSV);
-    $("backfillBtn").addEventListener("click", backfillSources);
     quickSearch.addEventListener("input", applyQuickSearch);
+
+    // ===== Upload Receipt: open + save =====
+    async function openUploadFor(txnId){
+      activeTxn = allRows.find(r => r.id === txnId);
+      if (!activeTxn) return;
+
+      // Prefill
+      upFile.value = "";
+      upPreview.src = "";
+      upVendor.value = "";
+      upDate.value = (activeTxn.txn_date || "").slice(0,10);
+      upTotal.value = Number(activeTxn.amount || 0).toFixed(2);
+      upTax.value = "0.00";
+      upNotes.value = "";
+      upMsg.textContent = "";
+      upMsg.className = "muted";
+
+      uploadBackdrop.style.display = "flex";
+    }
+
+    $("upCancel").addEventListener("click", () => { uploadBackdrop.style.display = "none"; });
+
+    upFile.addEventListener("change", (e)=>{
+      const f = e.target.files?.[0];
+      if (!f) { upPreview.src = ""; return; }
+      const url = URL.createObjectURL(f);
+      upPreview.src = url;
+    });
+
+    $("upSave").addEventListener("click", async ()=>{
+      if (!activeTxn) return;
+      const f = upFile.files?.[0];
+      if (!f){ upMsg.className="err"; upMsg.textContent="Please choose an image file."; return; }
+
+      // read form
+      const vendor = upVendor.value.trim() || null;
+      const date = upDate.value || null;
+      const total = upTotal.value ? Number(upTotal.value) : null;
+      const tax = upTax.value ? Number(upTax.value) : 0;
+      const notes = upNotes.value.trim() || null;
+
+      if (!date || !total){ upMsg.className="err"; upMsg.textContent="Date and Total are required."; return; }
+
+      upMsg.className="muted";
+      upMsg.textContent="Uploading image…";
+
+      // upload to storage
+      const fname = `txn_${activeTxn.id}_${Date.now()}.png`;
+      const { data: upRes, error: upErr } = await sb.storage.from("receipts").upload(fname, f, { contentType: f.type || "image/png", upsert:false });
+      if (upErr){ upMsg.className="err"; upMsg.textContent=upErr.message; return; }
+      const { data: pub } = sb.storage.from("receipts").getPublicUrl(upRes.path);
+      const image_url = pub?.publicUrl || null;
+
+      // insert receipt (include org_id/account_id when available)
+      const ins = {
+        org_id: activeTxn.org_id || null,
+        account_id: activeTxn.account_id || null,
+        image_url,
+        size_bytes: f.size || 0,
+        receipt_date: date,
+        total,
+        tax,
+        vendor,
+        notes,
+        source: "manual_upload"
+      };
+      upMsg.textContent="Saving receipt…";
+      const { data: rIns, error: rErr } = await sb.from("receipts").insert(ins).select("id").single();
+      if (rErr){ upMsg.className="err"; upMsg.textContent=rErr.message; return; }
+
+      // create match
+      upMsg.textContent="Linking to transaction…";
+      const matchRow = {
+        org_id: activeTxn.org_id || null,
+        transaction_id: activeTxn.id,
+        receipt_id: rIns.id,
+        matched_amount: total,
+        confidence: 0.99,
+        method: "manual",
+        match_type: "user_attach"
+      };
+      const { error: mErr } = await sb.from("matches").insert(matchRow);
+      if (mErr){ upMsg.className="err"; upMsg.textContent=mErr.message; return; }
+
+      upMsg.className="ok";
+      upMsg.textContent="Attached! This transaction is now matched to the new receipt.";
+      uploadBackdrop.style.display = "none";
+      await loadTransactions();
+    });
 
     // Initial
     loadTransactions();
