@@ -4,266 +4,169 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Kosmos Transactions</title>
+  <link rel="stylesheet" href="style.css" />
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.20.2/dist/xlsx.full.min.js"></script>
-  <style>
-    :root {
-      --bg: #fafafa;
-      --card: #fff;
-      --border: #e5e7eb;
-      --muted: #6b7280;
-      --ok: #0a7a33;
-      --err: #b00020;
-      --ink: #111;
-      --btn: #111;
-      --btnH: #333;
-      --header-bg: #111;
-      --header-text: #fff;
-    }
-    * { box-sizing: border-box; }
-    body {
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      margin: 0;
-      background: var(--bg);
-      color: var(--ink);
-    }
-    header {
-      background: var(--header-bg);
-      color: var(--header-text);
-      padding: 14px 28px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: sticky;
-      top: 0;
-      z-index: 10;
-    }
-    header h1 {
-      font-size: 1.2rem;
-      margin: 0;
-      letter-spacing: 0.5px;
-    }
-    nav {
-      display: flex;
-      gap: 16px;
-    }
-    nav a {
-      color: var(--header-text);
-      text-decoration: none;
-      font-weight: 500;
-      opacity: 0.9;
-      transition: opacity 0.2s;
-    }
-    nav a:hover {
-      opacity: 1;
-      text-decoration: underline;
-    }
-    main {
-      padding: 24px;
-      max-width: 1100px;
-      margin: auto;
-    }
-    h2 { margin-top: 0; font-size: 1.5rem; }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 18px;
-      margin-bottom: 24px;
-      box-shadow: 0 2px 6px rgba(0,0,0,.03);
-    }
-    .filters {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      align-items: center;
-      margin-bottom: 16px;
-    }
-    input, select {
-      padding: 0.5rem;
-      border-radius: 8px;
-      border: 1px solid #ccc;
-      font-size: 0.9rem;
-    }
-    button {
-      padding: 0.55rem 1rem;
-      border-radius: 10px;
-      border: 1px solid #bbb;
-      background: var(--btn);
-      color: #fff;
-      cursor: pointer;
-      font-size: 0.9rem;
-    }
-    button:hover { background: var(--btnH); }
-    .secondary {
-      background: #f7f7f7;
-      color: #111;
-      border-color: #ccc;
-    }
-    .secondary:hover { background: #eee; }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 14px;
-    }
-    th, td {
-      padding: 8px 10px;
-      border-bottom: 1px solid var(--border);
-      text-align: left;
-    }
-    th {
-      background: #f6f7f8;
-      position: sticky;
-      top: 0;
-      z-index: 1;
-    }
-    .right { text-align: right; }
-    .ok { color: var(--ok); }
-    .err { color: var(--err); }
-    .muted { color: var(--muted); }
-    @media (max-width: 700px) {
-      .filters { flex-direction: column; align-items: stretch; }
-      table { font-size: 13px; }
-    }
-  </style>
 </head>
 <body>
   <header>
     <h1>Kosmos Bookkeeping</h1>
     <nav>
       <a href="index.html">Dashboard</a>
-      <a href="transactions.html">Transactions</a>
       <a href="receipts.html">Receipts</a>
+      <a href="transactions.html" class="active">Transactions</a>
       <a href="reports.html">Reports</a>
     </nav>
   </header>
 
-  <main>
-    <h2>Transactions</h2>
-    <div class="card">
-      <div class="filters">
-        <button class="secondary" id="btnAll">All</button>
-        <button class="secondary" id="btnMatched">Matched</button>
-        <button class="secondary" id="btnUnmatched">Unmatched</button>
-        <label>Start <input type="date" id="startDate"></label>
-        <label>End <input type="date" id="endDate"></label>
-        <select id="presetRange">
-          <option value="custom">Custom</option>
-          <option value="week">This Week</option>
-          <option value="month">This Month</option>
-          <option value="year">This Year</option>
-        </select>
-        <button id="applyRange" class="secondary">Apply Filter</button>
-        <button id="exportBtn" class="secondary">Export Accountant CSV</button>
-      </div>
-
-      <p id="status" class="muted">Loading transactions…</p>
-
-      <div style="max-height: 540px; overflow:auto;">
-        <table id="txnTable">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Description</th>
-              <th class="right">Amount</th>
-              <th>Direction</th>
-              <th>Matched</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
+  <main class="container">
+    <h2>Transactions Overview</h2>
+    <div class="filters">
+      <label>Date range:</label>
+      <input type="date" id="fromDate" /> – 
+      <input type="date" id="toDate" />
+      <select id="filterMode">
+        <option value="all">All Transactions</option>
+        <option value="matched">Matched Only</option>
+        <option value="unmatched">Unmatched Only</option>
+      </select>
+      <button id="filterBtn">Apply</button>
+      <button id="exportBtn">Export Accountant CSV</button>
     </div>
+
+    <div class="syncbox">
+      <h3>Bank Sync (Mock Flinks)</h3>
+      <small>Imports sample transactions via your Edge Function <code>bank-sync</code></small>
+      <div class="row">
+        <label>Account name:</label>
+        <input id="bankAccount" placeholder="CIBC Chequing 1234" />
+        <label>Days back:</label>
+        <input id="bankDays" type="number" value="14" min="1" max="90" />
+        <button id="bankImportBtn">Import Latest</button>
+      </div>
+      <p id="bankMsg" class="muted"></p>
+    </div>
+
+    <div class="summary">
+      <p><strong>Total transactions:</strong> <span id="txnCount">—</span></p>
+      <p><strong>Debits total:</strong> <span id="debits">—</span></p>
+      <p><strong>Credits total:</strong> <span id="credits">—</span></p>
+      <p><strong>Net:</strong> <span id="net">—</span></p>
+    </div>
+
+    <table id="txnTable">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Description</th>
+          <th class="right">Amount</th>
+          <th>Type</th>
+          <th>Source</th>
+          <th>Institution</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
   </main>
 
   <script>
-    const sb = supabase.createClient(
-      "https://advihqhjjlxumgdlbwui.supabase.co",
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY"
-    );
-    const qs = id => document.getElementById(id);
-    let currentFilter = "all";
+    const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    function getPresetRange(value){
-      const now = new Date();
-      let start = null, end = new Date();
-      if(value==="week"){
-        const day = now.getDay();
-        start = new Date(now);
-        start.setDate(now.getDate()-day);
-      } else if(value==="month"){
-        start = new Date(now.getFullYear(), now.getMonth(), 1);
-      } else if(value==="year"){
-        start = new Date(now.getFullYear(), 0, 1);
+    const qs = (id) => document.getElementById(id);
+    const tableBody = qs("txnTable").querySelector("tbody");
+
+    async function loadTransactions() {
+      const from = qs("fromDate").value || "1900-01-01";
+      const to = qs("toDate").value || "2999-12-31";
+      const mode = qs("filterMode").value;
+
+      let query = sb.from("transactions").select("*").gte("txn_date", from).lte("txn_date", to).order("txn_date", { ascending: false });
+
+      if (mode === "matched") query = query.in("id", (await sb.from("matches").select("transaction_id")).data?.map(x => x.transaction_id) || []);
+      if (mode === "unmatched") query = query.not("id", "in", (await sb.from("matches").select("transaction_id")).data?.map(x => x.transaction_id) || []);
+
+      const { data, error } = await query;
+      if (error) {
+        console.error(error);
+        tableBody.innerHTML = `<tr><td colspan="6" class="err">${error.message}</td></tr>`;
+        return;
       }
-      return start ? {start, end} : null;
+      renderTable(data);
     }
 
-    async function loadTransactions(){
-      const tbody = qs("txnTable").querySelector("tbody");
-      tbody.innerHTML = "<tr><td colspan='5'>Loading…</td></tr>";
-      const start = qs("startDate").value;
-      const end = qs("endDate").value;
-      let query = sb.from("transactions")
-        .select("id, txn_date, description, amount, direction, matches(id)", {count:"exact"})
-        .order("txn_date",{ascending:false});
-      if(start) query = query.gte("txn_date", start);
-      if(end) query = query.lte("txn_date", end);
-      if(currentFilter==="matched") query = query.not("matches","is",null);
-      if(currentFilter==="unmatched") query = query.is("matches",null);
-      const { data, error } = await query;
-      if(error){ qs("status").textContent="Error: "+error.message; qs("status").className="err"; return; }
-      if(!data.length){ qs("status").textContent="No transactions found."; tbody.innerHTML=""; return; }
+    function renderTable(data) {
+      if (!data?.length) {
+        tableBody.innerHTML = `<tr><td colspan="6" class="muted">No transactions found.</td></tr>`;
+        return;
+      }
 
-      const rows = data.map(r=>{
-        const matched = r.matches?.length>0 ? "✅" : "—";
-        const amount = Number(r.amount||0).toFixed(2);
+      let debitSum = 0, creditSum = 0;
+      const rows = data.map(t => {
+        const amt = Number(t.amount) || 0;
+        if (t.direction === "debit") debitSum += amt; else creditSum += amt;
         return `<tr>
-          <td>${r.txn_date ?? ""}</td>
-          <td>${r.description ?? ""}</td>
-          <td class='right'>$${amount}</td>
-          <td>${r.direction ?? ""}</td>
-          <td>${matched}</td>
+          <td>${t.txn_date ?? ""}</td>
+          <td>${t.description ?? ""}</td>
+          <td class="right">$${amt.toFixed(2)}</td>
+          <td>${t.direction ?? ""}</td>
+          <td>${t.source_account_name ?? ""}</td>
+          <td>${t.institution ?? ""}</td>
         </tr>`;
       }).join("");
-      tbody.innerHTML = rows;
 
-      // ✅ FIXED total: credits positive, debits negative
-      const total = data.reduce((sum, r) => {
-        const amt = Number(r.amount) || 0;
-        return sum + (r.direction === "credit" ? amt : -amt);
-      }, 0);
-      qs("status").className = total >= 0 ? "ok" : "err";
-      const prefix = total >= 0 ? "+" : "-";
-      qs("status").textContent = `${data.length} transactions • Net Total ${prefix}$${Math.abs(total).toFixed(2)} (${currentFilter})`;
+      tableBody.innerHTML = rows;
+      qs("txnCount").textContent = data.length;
+      qs("debits").textContent = `$${debitSum.toFixed(2)}`;
+      qs("credits").textContent = `$${creditSum.toFixed(2)}`;
+      qs("net").textContent = `$${(creditSum - debitSum).toFixed(2)}`;
     }
 
-    qs("btnAll").onclick = ()=>{ currentFilter="all"; loadTransactions(); };
-    qs("btnMatched").onclick = ()=>{ currentFilter="matched"; loadTransactions(); };
-    qs("btnUnmatched").onclick = ()=>{ currentFilter="unmatched"; loadTransactions(); };
-    qs("applyRange").onclick = loadTransactions;
-    qs("presetRange").onchange = e=>{
-      const preset = getPresetRange(e.target.value);
-      if(preset){
-        qs("startDate").value = preset.start.toISOString().slice(0,10);
-        qs("endDate").value = preset.end.toISOString().slice(0,10);
-      }
-    };
-
-    qs("exportBtn").onclick = async ()=>{
-      qs("status").textContent="Building export…";
+    async function exportCSV() {
       const { data, error } = await sb.from("v_accountant_export_receipts").select("*");
-      if(error){ qs("status").textContent="Export failed: "+error.message; qs("status").className="err"; return; }
-      const header = Object.keys(data[0]||{});
-      const rows = [header.join(","), ...data.map(r=>header.map(h=>r[h]).join(","))];
-      const blob = new Blob([rows.join("\n")],{type:"text/csv"});
-      const a=document.createElement("a");
-      a.href=URL.createObjectURL(blob);
-      a.download=`accountant_export_${new Date().toISOString().slice(0,10)}.csv`;
+      if (error || !data?.length) { alert("No export data."); return; }
+
+      const header = Object.keys(data[0]);
+      const rows = data.map(r => header.map(h => JSON.stringify(r[h] ?? "")).join(","));
+      const csv = [header.join(","), ...rows].join("\n");
+
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "accountant_export.csv";
+      document.body.appendChild(a);
       a.click();
-      qs("status").className="ok";
-      qs("status").textContent="CSV downloaded.";
-    };
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    async function importBank() {
+      const account = qs("bankAccount").value || "CIBC Chequing";
+      const days = Number(qs("bankDays").value || 14);
+      qs("bankMsg").className = "muted";
+      qs("bankMsg").textContent = "Importing from mock Flinks…";
+
+      try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/bank-sync?route=import`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ days, account })
+        });
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || "Import failed.");
+        qs("bankMsg").className = "ok";
+        qs("bankMsg").textContent = `Imported ${json.inserted || 0} transactions.`;
+        await loadTransactions();
+      } catch (e) {
+        qs("bankMsg").className = "err";
+        qs("bankMsg").textContent = e.message;
+      }
+    }
+
+    qs("filterBtn").addEventListener("click", loadTransactions);
+    qs("exportBtn").addEventListener("click", exportCSV);
+    qs("bankImportBtn").addEventListener("click", importBank);
 
     loadTransactions();
   </script>
