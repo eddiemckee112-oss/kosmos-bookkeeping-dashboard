@@ -28,7 +28,7 @@
 
   <main class="container">
     <h2>💳 Transactions Overview</h2>
-    <p class="muted">View, filter, and export all transactions. Click a <b>Category</b> cell to edit and save instantly.</p>
+    <p class="muted">View, filter, and export all transactions. Click <b>Category</b> or <b>Source</b> to edit and save instantly.</p>
 
     <!-- Filters -->
     <div class="card">
@@ -45,7 +45,7 @@
         <button id="filterBtn">Apply</button>
         <button id="exportBtn" class="ghost">📁 Export CSV</button>
       </div>
-      <div class="hint">Tip: Use rules later to auto-fill categories by vendor; for now you can edit them inline.</div>
+      <div class="hint">Tip: Source prefers the account’s name. You can override it per-transaction here.</div>
     </div>
 
     <!-- Summary -->
@@ -65,11 +65,12 @@
         <thead>
           <tr>
             <th style="min-width:110px;">Date</th>
-            <th style="min-width:380px;">Description</th>
+            <th style="min-width:360px;">Description</th>
             <th class="right" style="min-width:120px;">Amount</th>
             <th style="min-width:90px;">Type</th>
             <th style="min-width:160px;">Category</th>
             <th style="min-width:180px;">Source</th>
+            <th style="min-width:160px;">Institution</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -113,15 +114,15 @@
     }
 
     function renderError(msg) {
-      tbody.innerHTML = `<tr><td colspan="6" class="err">${msg}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" class="err">${msg}</td></tr>`;
       $("txnCount").textContent = "—";
       $("debits").textContent = "$0.00";
       $("credits").textContent = "$0.00";
       $("net").textContent = "$0.00";
     }
 
-    // ===== Inline edit (Category) =====
-    function makeEditable(td, txnId, initialValue) {
+    // ===== Inline edit (Category & Source) =====
+    function makeEditable(td, txnId, initialValue, field) {
       if (td.classList.contains("editing")) return;
       td.classList.add("editing");
 
@@ -143,7 +144,7 @@
         td.classList.add("editable");
         // Save only if changed
         if ((initialValue || null) !== newVal) {
-          await sb.from("transactions").update({ category: newVal }).eq("id", txnId);
+          await sb.from("transactions").update({ [field]: newVal }).eq("id", txnId);
         }
       });
 
@@ -154,7 +155,7 @@
 
     function renderTable(rows) {
       if (!rows.length) {
-        tbody.innerHTML = `<tr><td colspan="6" class="muted">No transactions found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="muted">No transactions found.</td></tr>`;
         $("txnCount").textContent = 0;
         $("debits").textContent = "$0.00";
         $("credits").textContent = "$0.00";
@@ -166,14 +167,16 @@
       const html = rows.map(t => {
         const amt = Number(t.amount) || 0;
         if (t.direction === "debit") debit += amt; else credit += amt;
-        const source = t.source_account_name || t.institution || "";
+        const source = t.source_account_name || ""; // editable here
+        const institution = t.institution || "";    // read-only column
         return `<tr data-id="${t.id}">
           <td>${escapeHtml(t.txn_date)}</td>
           <td>${escapeHtml(t.description)}</td>
           <td class="right">$${amt.toFixed(2)}</td>
           <td>${escapeHtml(t.direction)}</td>
-          <td class="editable">${escapeHtml(t.category)}</td>
-          <td>${escapeHtml(source)}</td>
+          <td class="editable" data-field="category">${escapeHtml(t.category)}</td>
+          <td class="editable" data-field="source_account_name">${escapeHtml(source)}</td>
+          <td>${escapeHtml(institution)}</td>
         </tr>`;
       }).join("");
 
@@ -182,9 +185,14 @@
       // attach inline editors
       Array.from(tbody.querySelectorAll("tr")).forEach(tr => {
         const id = tr.getAttribute("data-id");
-        const catTd = tr.children[4];
+        // Category cell
+        const catTd = tr.querySelector('td[data-field="category"]');
         catTd.classList.add("editable");
-        catTd.addEventListener("click", () => makeEditable(catTd, id, catTd.textContent.trim()));
+        catTd.addEventListener("click", () => makeEditable(catTd, id, catTd.textContent.trim(), "category"));
+        // Source cell
+        const srcTd = tr.querySelector('td[data-field="source_account_name"]');
+        srcTd.classList.add("editable");
+        srcTd.addEventListener("click", () => makeEditable(srcTd, id, srcTd.textContent.trim(), "source_account_name"));
       });
 
       $("txnCount").textContent = rows.length;
