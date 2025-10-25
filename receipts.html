@@ -62,7 +62,7 @@
 
 <main>
   <h2>Receipt Upload & Scanner (Auto-Enhance)</h2>
-  <p class="muted">Drop a receipt image/PDF. Click <strong>Auto Enhance & Scan</strong> to auto-rotate, auto-crop, auto-zoom, and extract totals/date/vendor locally.</p>
+  <p class="muted">Drop a receipt image/PDF. Click <strong>Auto Enhance & Scan</strong> to auto-rotate, auto-crop, auto-zoom, and extract totals/date/vendor locally (no paid API).</p>
 
   <div class="grid">
     <div>
@@ -91,11 +91,18 @@
           <button id="clearCrop" class="secondary" title="Clear crop">Clear crop</button>
           <button id="autoDetect" class="secondary" title="Find totals zone">Auto-Detect Totals</button>
           <button id="scanBtn" class="secondary">Scan (manual)</button>
+
+          <!-- Raw OCR toggle -->
+          <label class="switch" style="margin-left:8px;">
+            <input id="showRaw" type="checkbox">
+            <span class="hint">Show OCR text</span>
+          </label>
         </div>
-        <small class="muted">Tip: click-drag on the canvas to draw a crop box. Drag corners to adjust. Double-click to clear. Hover with Magnifier on to zoom in.</small>
+
         <div style="margin-top:10px;position:relative;">
           <canvas id="preview" width="520" height="520" aria-label="preview"></canvas>
         </div>
+        <pre id="rawOut" class="muted" style="display:none;white-space:pre-wrap;max-height:180px;overflow:auto;border:1px dashed #ddd;border-radius:8px;padding:8px;margin-top:8px;"></pre>
         <div id="scanStatus" class="muted" style="margin-top:.5rem;"></div>
         <progress id="scanProgress" max="1" value="0" style="display:none;"></progress>
       </div>
@@ -250,7 +257,7 @@ function drawPreview(){
   }
 }
 
-/* ---------- Build OCR image (apply rotation & crop) ---------- */
+/* ---------- Build OCR image (rotation/crop + preprocessing) ---------- */
 async function buildOcrDataURL(){
   if(!baseImage) throw new Error("Pick a file first.");
   const zoom=Number(Z.value);
@@ -284,72 +291,155 @@ async function buildOcrDataURL(){
     ug.drawImage(buf,0,0,buf.width,buf.height,0,0,imgW,imgH);
   }else ug.drawImage(baseImage,0,0);
 
+  // Crop + upscale
   const out=document.createElement("canvas");
-  const upscale=2; // help OCR a bit
-  out.width=Math.min(2400,srcRect.sw*upscale); out.height=Math.min(2400,srcRect.sh*upscale);
+  const upscale=2.2;
+  out.width=Math.min(2400,Math.round(srcRect.sw*upscale));
+  out.height=Math.min(2400,Math.round(srcRect.sh*upscale));
   const g=out.getContext("2d"); g.imageSmoothingQuality="high";
   g.drawImage(upright,srcRect.sx,srcRect.sy,srcRect.sw,srcRect.sh,0,0,out.width,out.height);
 
-  // light grayscale/contrast
-  const id=g.getImageData(0,0,out.width,out.height), d=id.data;
-  for(let i=0;i<d.length;i+=4){ const r=d[i],gg=d[i+1],b=d[i+2]; let y=0.299*r+0.587*gg+0.114*b; y=(y-128)*1.15+128; y=Math.max(0,Math.min(255,y)); d[i]=d[i+1]=d[i+2]=y; }
-  g.putImageData(id,0,0);
+  // preprocess: grayscale + adaptive threshold + light unsharp
+  preprocessOn(g,out.width,out.height);
 
-  return { dataUrl: out.toDataURL("image/png",1.0), upscale, imgW, imgH, fitScale, dx, dy };
+  return { dataUrl: out.toDataURL("image/png",1.0) };
 }
 
-/* ---------- OCR & parsing ---------- */
-function to2(n){ if(n==null||n==="") return ""; const v=Number(n); return Number.isNaN(v)?"":v.toFixed(2); }
-function updateSubtotalPreview(){ const t=parseFloat(qs("total").value)||0; const x=parseFloat(qs("tax").value)||0; qs("subtotal").value=(t-x).toFixed(2); }
-qs("total").addEventListener("input",updateSubtotalPreview); qs("tax").addEventListener("input",updateSubtotalPreview);
+/* Preprocess pipeline */
+function preprocessOn(ctx,w,h){
+  const id=ctx.getImageData(0,0,w,h), d=id.data;
+  // grayscale
+  for(let i=0;i<d.length;i+=4){
+    const y=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+    d[i]=d[i+1]=d[i+2]=y;
+  }
+  // adaptive threshold (box mean)
+  const copy=new Uint8ClampedArray(d);
+  const k=4;
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      let sum=0,cnt=0;
+      for(let dy=-k;dy<=k;dy++){
+        const yy=y+dy; if(yy<0||yy>=h) continue;
+        for(let dx=-k;dx<=k;dx++){
+          const xx=x+dx; if(xx<0||xx>=w) continue;
+          const o=(yy*w+xx)*4; sum+=copy[o]; cnt++;
+        }
+      }
+      const o=(y*w+x)*4; const mean=sum/cnt;
+      const v = copy[o] > (mean-8) ? 255 : 0;  // slight bias
+      d[o]=d[o+1]=d[o+2]=v;
+    }
+  }
+  // light unsharp: blend with original grayscale
+  for(let i=0;i<d.length;i+=4){
+    const g=copy[i];
+    d[i]=d[i+1]=d[i+2]=Math.min(255,Math.max(0,0.7*d[i]+0.3*g));
+  }
+  ctx.putImageData(id,0,0);
+}
 
-function findDate(text){
-  const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-  const rx=[/\b(\d{4})[-\/\.](\d{2})[-\/\.](\d{2})\b/,/\b(\d{2})[-\/\.](\d{2})[-\/\.](\d{4})\b/,/\b([A-Za-z]{3,9})\s+(\d{1,2}),\s*(\d{4})\b/];
-  for(const line of lines){ for(const r of rx){ const m=line.match(r); if(!m) continue;
-    if(r===rx[0]) return `${m[1]}-${m[2]}-${m[3]}`;
-    if(r===rx[1]){ const mm=m[1].padStart(2,"0"), dd=m[2].padStart(2,"0"); return `${m[3]}-${mm}-${dd}`;}
-    if(r===rx[2]){ const months=["january","february","march","april","may","june","july","august","september","october","november","december"]; const mm=String(months.indexOf(m[1].toLowerCase())+1).padStart(2,"0"); const dd=String(m[2]).padStart(2,"0"); return `${m[3]}-${mm}-${dd}`;}
-  }} return null;
-}
-function findAmounts(text){
-  const lines=text.split(/\r?\n/); const rxAmt=/([-+]?\$?\(?\d{1,3}(?:[,\s]\d{3})*(?:\.\d{2})?\)?)/g; const c=[];
-  lines.forEach((line,i)=>{ const lower=line.toLowerCase(); const nearTotal=/total|amount due|grand\s*total|balance/i.test(lower); const nearTax=/\b(hst|gst|pst|tps|tvq|tax)\b/i.test(lower);
-    for(const m of line.matchAll(rxAmt)){ let s=m[1]; const neg=/^\(.*\)$/.test(s)||s.startsWith("-"); s=s.replace(/[\$\(\),\s]/g,""); const v=Number(s); if(Number.isFinite(v)) c.push({v:Math.abs(v),nearTotal,nearTax,i}); }
-  });
-  const tax=c.find(x=>x.nearTax)?.v ?? 0; let total=c.find(x=>x.nearTotal)?.v ?? 0; if(!total) total=c.sort((a,b)=>b.v-a.v)[0]?.v ?? 0;
-  return { total: total||null, tax: tax||0 };
-}
-function findVendor(text){
-  const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-  for(let i=0;i<Math.min(8,lines.length);i++){ const s=lines[i]; if(/\d{5,}/.test(s)) continue; if(/invoice|receipt|sale|order|transaction|subtotal|total|tax/i.test(s)) continue; if(s.length>=3) return s.replace(/\s{2,}/g," "); }
-  return lines[0]||null;
-}
-function extractFields(text){ const date=findDate(text); const {total,tax}=findAmounts(text); const vendor=findVendor(text); return {vendor,date,total,tax,rawText:text}; }
-
-async function ocrText(dataUrl, wantLayout=false){
+/* ---------- OCR core (PSM 6) ---------- */
+async function ocrText(dataUrl,wantLayout=false){
   prog.style.display="block"; prog.value=0; statusEl.textContent="Starting OCR…";
-  const worker=await Tesseract.createWorker("eng",1,{ logger:m=>{ if(m.status) statusEl.textContent=`${m.status}…`; if(m.progress!=null) prog.value=m.progress; }});
-  const { data } = await worker.recognize(dataUrl);
+  const worker=await Tesseract.createWorker("eng",1,{
+    logger:m=>{ if(m.status) statusEl.textContent=`${m.status}…`; if(m.progress!=null) prog.value=m.progress; }
+  });
+  const { data } = await worker.recognize(dataUrl, {
+    tessedit_pageseg_mode: 6,
+    preserve_interword_spaces: "1"
+  });
   await worker.terminate(); prog.style.display="none";
   return wantLayout ? data : { text:data.text };
+}
+
+/* ---------- Parsing tuned for CA receipts ---------- */
+function findDate(text){
+  const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  const rx=[
+    /\b(\d{4})[-\/\.](\d{2})[-\/\.](\d{2})\b/,
+    /\b(\d{2})[-\/\.](\d{2})[-\/\.](\d{4})\b/,
+    /\b([A-Za-z]{3,9})\s+(\d{1,2}),\s*(\d{4})\b/
+  ];
+  for(const line of lines){
+    for(const r of rx){
+      const m=line.match(r); if(!m) continue;
+      if(r===rx[0]) return `${m[1]}-${m[2]}-${m[3]}`;
+      if(r===rx[1]){ const mm=m[1].padStart(2,"0"), dd=m[2].padStart(2,"0"); return `${m[3]}-${mm}-${dd}`; }
+      if(r===rx[2]){
+        const months=["january","february","march","april","may","june","july","august","september","october","november","december"];
+        const mm=String(months.indexOf(m[1].toLowerCase())+1).padStart(2,"0");
+        const dd=String(m[2]).padStart(2,"0"); return `${m[3]}-${mm}-${dd}`;
+      }
+    }
+  }
+  return null;
+}
+
+function findAmounts(text){
+  const lines=text.split(/\r?\n/);
+  const rxAmt=/[-+]?\$?\(?\d{1,3}(?:[,\s]\d{3})*(?:\.\d{2})?\)?/g;
+  let total=null, tax=0;
+  const totalRx=/(grand\s*total|amount\s*due|balance\s*due|total)\b/i;
+  const taxRx=/\b(hst|gst|pst|tps|tvq|tax)\b/i;
+
+  for(const line of lines){
+    const lower=line.toLowerCase();
+    const amts=[...line.matchAll(rxAmt)].map(m=>m[0]);
+    if(total===null && totalRx.test(lower) && amts.length){
+      const s=amts[amts.length-1].replace(/[^\d.-]/g,"");
+      const v=Number(s); if(Number.isFinite(v)) total=Math.abs(v);
+    }
+    if(tax===0 && taxRx.test(lower) && amts.length){
+      const s=amts[amts.length-1].replace(/[^\d.-]/g,"");
+      const v=Number(s); if(Number.isFinite(v)) tax=Math.abs(v);
+    }
+  }
+  if(total===null){
+    const all=[];
+    for(const line of lines){
+      for(const m of line.matchAll(rxAmt)){
+        const v=Number(m[0].replace(/[^\d.-]/g,""));
+        if(Number.isFinite(v)) all.push(Math.abs(v));
+      }
+    }
+    if(all.length) total=all.sort((a,b)=>b-a)[0];
+  }
+  return { total, tax };
+}
+
+function findVendor(text){
+  const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  for(let i=0;i<Math.min(8,lines.length);i++){
+    const s=lines[i];
+    if(/\d{5,}/.test(s)) continue;
+    if(/invoice|receipt|sale|order|transaction|subtotal|total|tax|hst|gst|pst|tps|tvq/i.test(s)) continue;
+    if(s.length>=3) return s.replace(/\s{2,}/g," ");
+  }
+  return lines[0]||null;
+}
+
+function extractFields(text){
+  const date=findDate(text);
+  const { total, tax }=findAmounts(text);
+  const vendor=findVendor(text);
+  return { vendor, date, total, tax, rawText:text };
 }
 
 /* ---------- Auto-Detect Totals & map to crop ---------- */
 async function autoDetectTotals(){
   if(!baseImage){ statusEl.className="err"; statusEl.textContent="Pick a file first."; return; }
   statusEl.className="muted"; statusEl.textContent="Finding totals region…";
-  crop=null; // full frame
-  const meta = await buildOcrDataURL();
-  const layout = await ocrText(meta.dataUrl, true);
-  const words = (layout.words || layout.lines || []);
-  const rx = /(grand\s*total|amount\s*due|balance\s*due|total)/i;
+  crop=null;
+  const meta=await buildOcrDataURL();
+  const layout=await ocrText(meta.dataUrl,true);
+  const words=(layout.words||layout.lines||[]);
+  const rx=/(grand\s*total|amount\s*due|balance\s*due|total)/i;
   const hits=[]; for(const w of words){ const t=(w.text||w.word||"").trim(); if(!t) continue; if(rx.test(t)) hits.push(w); }
   if(!hits.length){ statusEl.className="err"; statusEl.textContent="Couldn’t find 'total'. Try manual crop."; return null; }
 
-  // expand around first hit to include amount area
-  const on = hits[0];
-  const sameLine = words.filter(w=>{
+  const on=hits[0];
+  const sameLine=words.filter(w=>{
     const y0=w.bbox?.y0 ?? w.y0 ?? 0, y1=w.bbox?.y1 ?? w.y1 ?? 0;
     const oy0=on.bbox?.y0 ?? on.y0 ?? 0, oy1=on.bbox?.y1 ?? on.y1 ?? 0;
     return Math.abs(((y0+y1)/2)-((oy0+oy1)/2))<20;
@@ -359,7 +449,6 @@ async function autoDetectTotals(){
   let x0=Math.min(...xs), x1=Math.max(...xe), y0=Math.min(...ys), y1=Math.max(...ye);
   const pad=30; x0=Math.max(0,x0-pad); y0=Math.max(0,y0-pad); x1=x1+pad+250; y1=y1+pad+120;
 
-  // map OCR (upscaled) → original upright px → canvas coords
   const zoom=Number(Z.value);
   const imgW=(rotation%180===0)?baseImage.width:baseImage.height;
   const imgH=(rotation%180===0)?baseImage.height:baseImage.width;
@@ -367,7 +456,7 @@ async function autoDetectTotals(){
   const drawW=Math.round(imgW*fitScale), drawH=Math.round(imgH*fitScale);
   const dx=Math.round((canvas.width-drawW)/2), dy=Math.round((canvas.height-drawH)/2);
 
-  const upscale=2;
+  const upscale=2.2;
   const bx=x0/upscale, by=y0/upscale, bw=(x1-x0)/upscale, bh=(y1-y0)/upscale;
   const cx=dx+Math.round(bx*fitScale), cy=dy+Math.round(by*fitScale);
   const cw=Math.round(bw*fitScale), ch=Math.round(bh*fitScale);
@@ -375,73 +464,57 @@ async function autoDetectTotals(){
   crop={x:cx,y:cy,w:cw,h:ch};
   drawPreview();
   statusEl.className="ok"; statusEl.textContent="Totals region detected.";
-  return {cx,cy,cw,ch,imgW,imgH,fitScale,dx,dy};
+  return true;
 }
 
-/* ---------- Auto-Rotate (0/90/180/270 quick check) ---------- */
+/* ---------- Auto-Rotate ---------- */
 async function autoRotate(){
   if(!baseImage) return;
   statusEl.className="muted"; statusEl.textContent="Finding correct orientation…";
-  const rotations=[0,90,180,270];
-  const scores=[];
+  const rotations=[0,90,180,270]; const scores=[];
   for(const r of rotations){
     rotation=r;
-    // tiny quick pass: use full frame but low upscale to be fast
-    const zoomWas=Number(Z.value); Z.value="1"; // normalized
-    const { dataUrl } = await buildOcrDataURL();
-    const { text } = await ocrText(dataUrl,false);
+    const zPrev=Number(Z.value); Z.value="1";
+    const { dataUrl }=await buildOcrDataURL();
+    const { text }=await ocrText(dataUrl,false);
     const score=(text||"").replace(/[^A-Za-z0-9]/g,"").length;
-    scores.push({r,score});
-    Z.value=String(zoomWas);
+    scores.push({r,score}); Z.value=String(zPrev);
   }
   scores.sort((a,b)=>b.score-a.score);
-  rotation=scores[0]?.r ?? 0;
-  drawPreview();
+  rotation=scores[0]?.r ?? 0; drawPreview();
   statusEl.className="ok"; statusEl.textContent=`Orientation: ${rotation}°`;
 }
 
-/* ---------- Auto-zoom so crop fills ~80% of canvas ---------- */
+/* ---------- Auto-zoom so crop fills ~80% ---------- */
 function autoZoomToCrop(){
   if(!crop || !baseImage) return;
-  const targetFill=0.8; // fraction of canvas width/height
+  const targetFill=0.8;
   const imgW=(rotation%180===0)?baseImage.width:baseImage.height;
   const imgH=(rotation%180===0)?baseImage.height:baseImage.width;
-
-  // current mapping
   const curZoom=Number(Z.value);
   const curFit=Math.min(canvas.width/imgW, canvas.height/imgH)*curZoom;
-  // crop size in original px:
   const drawW=Math.round(imgW*curFit), drawH=Math.round(imgH*curFit);
   const dx=Math.round((canvas.width-drawW)/2), dy=Math.round((canvas.height-drawH)/2);
-  const cwOrig = (crop.w)/curFit, chOrig = (crop.h)/curFit;
+  const cwOrig=(crop.w)/curFit, chOrig=(crop.h)/curFit;
 
-  // desired fit so the crop covers ~80% of canvas
-  const desiredScale = Math.min((canvas.width*targetFill)/cwOrig, (canvas.height*targetFill)/chOrig);
-  const baseFit = Math.min(canvas.width/imgW, canvas.height/imgH);
-  const newZoom = Math.max(0.5, Math.min(3, desiredScale/baseFit));
+  const desiredScale=Math.min((canvas.width*targetFill)/cwOrig,(canvas.height*targetFill)/chOrig);
+  const baseFit=Math.min(canvas.width/imgW, canvas.height/imgH);
+  const newZoom=Math.max(0.5,Math.min(3,desiredScale/baseFit));
 
-  Z.value=String(newZoom);
-  drawPreview();
+  Z.value=String(newZoom); drawPreview();
 
-  // re-map crop center to stay centered after zoom change
   const newFit=Math.min(canvas.width/imgW, canvas.height/imgH)*newZoom;
   const newDW=Math.round(imgW*newFit), newDH=Math.round(imgH*newFit);
   const ndx=Math.round((canvas.width-newDW)/2), ndy=Math.round((canvas.height-newDH)/2);
 
-  const centerX = dx + crop.x + crop.w/2;
-  const centerY = dy + crop.y + crop.h/2;
+  const centerX=dx+crop.x+crop.w/2, centerY=dy+crop.y+crop.h/2;
+  const centerOrigX=(centerX-dx)/curFit, centerOrigY=(centerY-dy)/curFit;
+  const newCenterX=ndx+centerOrigX*newFit, newCenterY=ndy+centerOrigY*newFit;
 
-  const centerOrigX = (centerX - dx)/curFit;
-  const centerOrigY = (centerY - dy)/curFit;
-
-  const newCenterX = ndx + centerOrigX*newFit;
-  const newCenterY = ndy + centerOrigY*newFit;
-
-  crop.x = Math.round(newCenterX - (cwOrig*newFit)/2);
-  crop.y = Math.round(newCenterY - (chOrig*newFit)/2);
-  crop.w = Math.round(cwOrig*newFit);
-  crop.h = Math.round(chOrig*newFit);
-
+  crop.x=Math.round(newCenterX-(cwOrig*newFit)/2);
+  crop.y=Math.round(newCenterY-(chOrig*newFit)/2);
+  crop.w=Math.round(cwOrig*newFit);
+  crop.h=Math.round(chOrig*newFit);
   drawPreview();
 }
 
@@ -455,27 +528,40 @@ async function manualScan(){
     statusEl.className="muted"; statusEl.textContent="Preparing selection…";
     const meta=await buildOcrDataURL();
     statusEl.textContent="Scanning locally…";
-    const { text } = await ocrText(meta.dataUrl,false);
+    const { text }=await ocrText(meta.dataUrl,false);
+
+    // raw viewer
+    const show=qs("showRaw").checked, rawOut=qs("rawOut");
+    rawOut.style.display=show?"block":"none";
+    if(show) rawOut.textContent=text;
+
     const out=extractFields(text);
     if(out.vendor) qs("vendor").value=out.vendor;
-    if(out.date) qs("rdate").value=out.date;
-    if(typeof out.total==="number") qs("total").value=to2(out.total);
-    if(typeof out.tax==="number") qs("tax").value=to2(out.tax);
+    if(out.date)   qs("rdate").value =out.date;
+    if(typeof out.total==="number") qs("total").value=out.total.toFixed(2);
+    if(typeof out.tax  ==="number") qs("tax").value  =out.tax.toFixed(2);
     updateSubtotalPreview();
+
     statusEl.className="ok"; statusEl.textContent="Scan complete — review & save.";
-  }catch(e){ statusEl.className="err"; statusEl.textContent="Scan failed: "+(e?.message||e); }
+  }catch(e){
+    statusEl.className="err"; statusEl.textContent="Scan failed: "+(e?.message||e);
+  }
 }
 
 async function autoAll(){
   try{
     if(!baseImage){ statusEl.className="err"; statusEl.textContent="Pick a file first."; return; }
     await autoRotate();
-    const zone=await autoDetectTotals();
-    if(zone){ autoZoomToCrop(); await manualScan(); }
+    const ok = await autoDetectTotals();
+    if(ok){ autoZoomToCrop(); await manualScan(); }
   }catch(e){ statusEl.className="err"; statusEl.textContent="Auto-enhance failed: "+(e?.message||e); }
 }
 
 /* ---------- Unmatched table & save ---------- */
+function to2(n){ if(n==null||n==="") return ""; const v=Number(n); return Number.isNaN(v)?"":v.toFixed(2); }
+function updateSubtotalPreview(){ const t=parseFloat(qs("total").value)||0; const x=parseFloat(qs("tax").value)||0; qs("subtotal").value=(t-x).toFixed(2); }
+qs("total").addEventListener("input",updateSubtotalPreview); qs("tax").addEventListener("input",updateSubtotalPreview);
+
 async function loadUnmatched(){
   const tbody=qs("unmatchedTable").querySelector("tbody");
   tbody.innerHTML=`<tr><td colspan="7">Loading…</td></tr>`;
@@ -552,6 +638,9 @@ qs("exportBtn").addEventListener("click", async ()=>{
 
 /* init */
 loadUnmatched();
+
+/* -------- helpers used above -------- */
+function preprocessPlaceholder(){/* kept for clarity */} // (unused)
 </script>
 </body>
 </html>
