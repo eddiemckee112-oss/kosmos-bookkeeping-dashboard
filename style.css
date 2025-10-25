@@ -1,10 +1,7 @@
-/* ====== KOSMOS THEME v1 (step 1: verify load) ====== */
-/* TEMP: Paint test so we know CSS is actually loading. We'll remove this in step 2. */
-body { background:#f0f9ff !important; }
+/* ====== KOSMOS THEME v2 (finalized) ====== */
 
-/* ====== Kosmos UI — shared theme ====== */
 :root{
-  --bg:#fafafa; --card:#fff; --border:#e5e7eb;
+  --bg:#fafafa; --card:#ffffff; --border:#e5e7eb;
   --ink:#111; --muted:#6b7280;
   --btn:#111; --btnH:#333;
   --ok:#0a7a33; --err:#b00020;
@@ -13,11 +10,11 @@ body { background:#f0f9ff !important; }
 *{ box-sizing:border-box }
 html,body{ height:100% }
 body{
-  margin:0; color:var(--ink);
+  margin:0; background:var(--bg); color:var(--ink);
   font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
 }
 
-/* Header + Nav */
+/* Header + Nav (shared) */
 header{
   position:sticky; top:0; z-index:10;
   background:#fff; border-bottom:1px solid var(--border);
@@ -55,10 +52,10 @@ button.ghost{
 .muted{ color:var(--muted) } .ok{ color:var(--ok) } .err{ color:var(--err) }
 
 /* Tables */
-table{ width:100%; border-collapse:collapse; }
+table{ width:100%; border-collapse:collapse; font-size:.95rem }
 th, td{ padding:10px 12px; border-bottom:1px solid var(--border) }
-thead th{ text-align:left; font-size:.9rem; color:var(--muted) }
-tbody tr:hover{ background:#fff }
+thead th{ text-align:left; font-size:.9rem; color:var(--muted); position:sticky; top:0; background:#fff }
+tbody tr:hover{ background:#f9fafb }
 td.right{ text-align:right }
 
 /* Utility */
@@ -78,3 +75,10 @@ td.right{ text-align:right }
 .stat{ text-align:center; padding:18px; }
 .stat h3{ margin:6px 0 0 0; font-size:1.6rem }
 .stat small{ color:var(--muted) }
+
+/* Responsive niceties */
+@media (max-width: 760px){
+  .container{ padding:0 16px }
+  table{ font-size:.9rem }
+  th, td{ padding:8px 10px }
+}
