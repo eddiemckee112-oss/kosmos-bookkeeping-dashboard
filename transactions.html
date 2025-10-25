@@ -4,39 +4,107 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Transactions – Kosmos Bookkeeping</title>
+
+  <!-- Supabase -->
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <!-- Charts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- Excel export -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.20.2/dist/xlsx.full.min.js"></script>
+
   <style>
-    body{
-      font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;
-      background:#fafafa;color:#111;margin:20px;
-    }
-    h1{font-size:1.5rem;margin-bottom:1rem;}
-    .card{background:#fff;border:1px solid #ddd;border-radius:12px;padding:16px;margin-bottom:20px;}
-    label{font-weight:600;margin-right:6px;}
-    button{padding:.5rem .9rem;border-radius:8px;border:1px solid #aaa;cursor:pointer;background:#111;color:#fff;}
-    button:hover{background:#333;}
-    .secondary{background:#f7f7f7;color:#111;border-color:#d0d0d0;}
-    table{width:100%;border-collapse:collapse;font-size:14px;}
-    th,td{padding:8px 10px;border-bottom:1px solid #eee;text-align:left;}
-    th{background:#f6f7f8;}
-    .right{text-align:right;}
-    .ok{color:#0a7a33;}
-    .muted{color:#666;}
+    :root{--bg:#fafafa;--card:#fff;--ink:#111;--muted:#6b7280;--border:#e5e7eb;}
+    *{box-sizing:border-box}
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);margin:20px}
+    h1{font-size:1.5rem;margin:0 0 1rem}
+    .grid{display:grid;gap:16px}
+    @media(min-width:1100px){.grid{grid-template-columns:1fr 1fr}}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px}
+    .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+    label{font-weight:600}
+    input,select,button{border:1px solid #d0d0d0;border-radius:10px;padding:.5rem .7rem;background:#fff}
+    button{cursor:pointer;background:#111;color:#fff}
+    button.secondary{background:#f7f7f7;color:#111}
+    button:hover{filter:brightness(1.05)}
+    .pill{border-radius:999px}
+    .muted{color:var(--muted)}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th,td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left}
+    th{background:#f6f7f8}
+    .right{text-align:right}
+    .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    .kpi{background:#f9fafb;border:1px solid var(--border);border-radius:12px;padding:10px}
+    .kpi b{display:block;font-size:1.1rem}
+    .actions{display:flex;gap:8px;flex-wrap:wrap}
+    .chart-wrap{position:relative;height:300px}
   </style>
 </head>
 <body>
   <h1>All Transactions</h1>
 
+  <!-- Filters & Actions -->
   <div class="card">
-    <label>From <input type="date" id="fromDate"></label>
-    <label>To <input type="date" id="toDate"></label>
-    <button id="loadBtn">Load</button>
-    <button id="btnMonth" class="secondary">This Month</button>
-    <button id="btnYear" class="secondary">This Year</button>
-    <span id="status" class="muted"></span>
+    <div class="row" style="gap:12px">
+      <label>From <input type="date" id="fromDate"></label>
+      <label>To <input type="date" id="toDate"></label>
+      <button id="loadBtn">Load</button>
+
+      <!-- Quick ranges -->
+      <div class="actions">
+        <button class="secondary pill" id="btnThisWeek">This Week</button>
+        <button class="secondary pill" id="btnThisMonth">This Month</button>
+        <button class="secondary pill" id="btnLastMonth">Last Month</button>
+        <button class="secondary pill" id="btn90">Last 90 Days</button>
+        <button class="secondary pill" id="btnThisYear">This Year</button>
+      </div>
+
+      <!-- Metric toggle for chart -->
+      <label>Metric
+        <select id="metric">
+          <option value="net">Net (credit − debit)</option>
+          <option value="debit">Debits (spend)</option>
+          <option value="credit">Credits (income)</option>
+        </select>
+      </label>
+
+      <!-- Export -->
+      <div class="actions">
+        <button id="btnCsv" class="secondary">Export (CSV)</button>
+        <button id="btnXlsx" class="secondary">Export (Excel)</button>
+      </div>
+
+      <span id="status" class="muted" style="margin-left:auto"></span>
+    </div>
   </div>
 
-  <div class="card">
+  <!-- Summary KPIs -->
+  <div class="summary">
+    <div class="kpi"><span class="muted">Total Debits</span><b id="kpiDebits">$0.00</b></div>
+    <div class="kpi"><span class="muted">Total Credits</span><b id="kpiCredits">$0.00</b></div>
+    <div class="kpi"><span class="muted">Net</span><b id="kpiNet">$0.00</b></div>
+  </div>
+
+  <!-- Charts -->
+  <div class="grid" style="margin-top:16px">
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <b>Totals Over Time</b>
+        <small class="muted" id="granularityHint"></small>
+      </div>
+      <div class="chart-wrap"><canvas id="timeChart"></canvas></div>
+    </div>
+    <div class="card">
+      <b>Top Vendors (by debits)</b>
+      <div class="chart-wrap"><canvas id="vendorChart"></canvas></div>
+    </div>
+    <div class="card">
+      <b>By Source (file/import)</b>
+      <div class="chart-wrap"><canvas id="sourceChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="card" style="margin-top:16px">
     <table id="txnTable">
       <thead>
         <tr>
@@ -53,14 +121,29 @@
   </div>
 
   <script>
+    // ----- Supabase -----
     const sb = supabase.createClient(
       "https://advihqhjjlxumgdlbwui.supabase.co",
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY"
     );
 
+    // ----- Utils -----
     const qs = id => document.getElementById(id);
-    const fmt = n => n?.toLocaleString("en-CA",{style:"currency",currency:"CAD"}) ?? "";
+    const fmtMoney = n => (Number(n)||0).toLocaleString("en-CA",{style:"currency",currency:"CAD"});
+    const fmtISO = d => d.toISOString().slice(0,10);
+    const addDays = (d,n)=>{ const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+    const startOfWeek = (d)=>{ const x=new Date(d); const day=(x.getDay()+6)%7; x.setDate(x.getDate()-day); x.setHours(0,0,0,0); return x; }; // ISO week (Mon)
+    const endOfWeek = (d)=> addDays(startOfWeek(d),6);
+    const startOfMonth = (y,m)=> new Date(y,m,1);
+    const endOfMonth = (y,m)=> new Date(y,m+1,0);
+    const startOfYear = (y)=> new Date(y,0,1);
+    const endOfYear = (y)=> new Date(y,11,31);
 
+    // State
+    let currentData = []; // filtered transactions currently displayed
+    let timeChart, vendorChart, sourceChart;
+
+    // ----- Load & render -----
     async function loadTxns(){
       const from = qs("fromDate").value;
       const to = qs("toDate").value;
@@ -68,58 +151,223 @@
 
       let q = sb.from("transactions").select("*").order("txn_date",{ascending:false});
       if(from && to) q = q.gte("txn_date", from).lte("txn_date", to);
-
       const { data, error } = await q;
-      if(error){ qs("status").textContent = "Error: " + error.message; return; }
+      if(error){ qs("status").textContent = "Error: "+error.message; return; }
+      currentData = Array.isArray(data) ? data : [];
 
+      renderTable(currentData);
+      renderKpis(currentData);
+      renderCharts(currentData);
+      qs("status").textContent = `Loaded ${currentData.length} rows.`;
+    }
+
+    function renderTable(data){
       const tbody = qs("txnTable").querySelector("tbody");
-      if(!data?.length){
+      if(!data.length){
         tbody.innerHTML = `<tr><td colspan="5" class="muted">No transactions found</td></tr>`;
         qs("totals").textContent = "";
-        qs("status").textContent = "";
         return;
       }
-
       tbody.innerHTML = data.map(r=>`
         <tr>
           <td>${r.txn_date ?? ""}</td>
           <td>${r.description ?? ""}</td>
-          <td class="right">${fmt(r.amount)}</td>
+          <td class="right">${fmtMoney(r.amount)}</td>
           <td>${r.direction}</td>
           <td>${r.imported_from ?? ""}</td>
         </tr>`).join("");
 
-      const total = data.reduce((a,r)=>a + (r.amount||0) * (r.direction==="debit"?-1:1), 0);
-      qs("totals").innerHTML = `Total net: <strong>${fmt(total)}</strong> • ${data.length} rows`;
-      qs("status").textContent = "Loaded.";
+      const totalNet = data.reduce((a,r)=>a+(r.amount||0)*(r.direction==="debit"?-1:1),0);
+      const debits   = data.filter(r=>r.direction==="debit").reduce((a,r)=>a+(r.amount||0),0);
+      const credits  = data.filter(r=>r.direction==="credit").reduce((a,r)=>a+(r.amount||0),0);
+      qs("totals").innerHTML = `Debits: <b>${fmtMoney(debits)}</b> • Credits: <b>${fmtMoney(credits)}</b> • Net: <b>${fmtMoney(credits - debits)}</b> • ${data.length} rows`;
     }
 
-    // Quick filters
-    qs("btnMonth").addEventListener("click", ()=>{
-      const d = new Date();
-      const y = d.getFullYear();
-      const m = String(d.getMonth()+1).padStart(2,"0");
-      qs("fromDate").value = `${y}-${m}-01`;
-      qs("toDate").value = `${y}-${m}-${String(new Date(y,m,0).getDate()).padStart(2,"0")}`;
-      loadTxns();
-    });
+    function renderKpis(data){
+      const debits   = data.filter(r=>r.direction==="debit").reduce((a,r)=>a+(r.amount||0),0);
+      const credits  = data.filter(r=>r.direction==="credit").reduce((a,r)=>a+(r.amount||0),0);
+      const net = credits - debits;
+      qs("kpiDebits").textContent = fmtMoney(debits);
+      qs("kpiCredits").textContent = fmtMoney(credits);
+      qs("kpiNet").textContent = fmtMoney(net);
+    }
 
-    qs("btnYear").addEventListener("click", ()=>{
+    // Grouping helpers
+    function groupTimeSeries(data){
+      // Decide granularity: day if <= 45d range, week if <= 180d, else month
+      const from = new Date(qs("fromDate").value);
+      const to   = new Date(qs("toDate").value);
+      const days = Math.max(1, Math.round((to - from)/86400000) + 1);
+
+      let gran = "day";
+      if(days > 45 && days <= 180) gran = "week";
+      if(days > 180) gran = "month";
+      qs("granularityHint").textContent = `Granularity: ${gran}`;
+
+      const metric = qs("metric").value; // "net" | "debit" | "credit"
+      const keyFn = (d)=>{
+        const dt = new Date(d.txn_date);
+        if(gran==="day") return fmtISO(dt);
+        if(gran==="week"){ const wStart = startOfWeek(dt); return fmtISO(wStart); }
+        if(gran==="month"){ return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-01`; }
+      };
+
+      const map = new Map();
+      for(const r of data){
+        const k = keyFn(r);
+        if(!k) continue;
+        let val = 0;
+        if(metric==="net")   val = (r.amount||0)*(r.direction==="debit"?-1:1);
+        if(metric==="debit") val = r.direction==="debit" ? (r.amount||0) : 0;
+        if(metric==="credit")val = r.direction==="credit"? (r.amount||0) : 0;
+        map.set(k, (map.get(k)||0) + val);
+      }
+
+      const entries = Array.from(map.entries()).sort((a,b)=>a[0].localeCompare(b[0]));
+      return { labels: entries.map(e=>e[0]), values: entries.map(e=>e[1]) };
+    }
+
+    function topVendors(data, take=10){
+      // Use description as vendor_clean stand-in (you populate vendor_clean with desc on import)
+      const m = new Map();
+      for(const r of data){
+        if(r.direction !== "debit") continue;
+        const v = (r.vendor_clean || r.description || "").trim();
+        if(!v) continue;
+        m.set(v, (m.get(v)||0) + (r.amount||0));
+      }
+      const arr = Array.from(m.entries()).sort((a,b)=>b[1]-a[1]).slice(0,take);
+      return { labels: arr.map(a=>a[0]), values: arr.map(a=>a[1]) };
+    }
+
+    function bySource(data){
+      const m = new Map();
+      for(const r of data){
+        const src = (r.imported_from || "Unknown").trim();
+        m.set(src, (m.get(src)||0) + (r.amount||0)*(r.direction==="debit"?1:0)); // spending by file
+      }
+      const arr = Array.from(m.entries()).sort((a,b)=>b[1]-a[1]);
+      return { labels: arr.map(a=>a[0]), values: arr.map(a=>a[1]) };
+    }
+
+    function renderCharts(data){
+      // Time series
+      const ts = groupTimeSeries(data);
+      const timeCfg = {
+        type: "bar",
+        data: { labels: ts.labels, datasets: [{ label: qs("metric").value.toUpperCase(), data: ts.values }] },
+        options: { responsive:true, maintainAspectRatio:false,
+          scales:{ y:{ beginAtZero:true } },
+          plugins:{ legend:{ display:false }, tooltip:{ callbacks:{
+            label:(ctx)=> fmtMoney(ctx.parsed.y)
+          }}}
+        }
+      };
+      if(timeChart) timeChart.destroy();
+      timeChart = new Chart(qs("timeChart"), timeCfg);
+
+      // Vendors
+      const tv = topVendors(data, 10);
+      const vendorCfg = {
+        type: "doughnut",
+        data: { labels: tv.labels, datasets: [{ data: tv.values }] },
+        options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:"bottom" }, tooltip:{ callbacks:{ label:(c)=> `${c.label}: ${fmtMoney(c.parsed)}` } } } }
+      };
+      if(vendorChart) vendorChart.destroy();
+      vendorChart = new Chart(qs("vendorChart"), vendorCfg);
+
+      // Source
+      const src = bySource(data);
+      const sourceCfg = {
+        type: "pie",
+        data: { labels: src.labels, datasets: [{ data: src.values }] },
+        options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:"bottom" }, tooltip:{ callbacks:{ label:(c)=> `${c.label}: ${fmtMoney(c.parsed)}` } } } }
+      };
+      if(sourceChart) sourceChart.destroy();
+      sourceChart = new Chart(qs("sourceChart"), sourceCfg);
+    }
+
+    // ----- Export -----
+    function currentRangeSuffix(){
+      const f = qs("fromDate").value || "start";
+      const t = qs("toDate").value || "end";
+      return `${f}_to_${t}`;
+    }
+
+    function exportCSV(){
+      const header = ["txn_date","description","amount","direction","imported_from"];
+      const rows = currentData.map(r=>[
+        r.txn_date ?? "",
+        (r.description ?? "").replace(/"/g,'""'),
+        (Number(r.amount)||0).toFixed(2),
+        r.direction ?? "",
+        r.imported_from ?? ""
+      ]);
+      const csv = [header.join(","), ...rows.map(r=>r.map((c,i)=> i===1?`"${c}"`:c ).join(","))].join("\n");
+      const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `transactions_${currentRangeSuffix()}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(a.href);
+    }
+
+    function exportXLSX(){
+      const header = ["Date","Description","Amount","Direction","Source"];
+      const body = currentData.map(r=>[
+        r.txn_date ?? "",
+        r.description ?? "",
+        Number(r.amount)||0,
+        r.direction ?? "",
+        r.imported_from ?? ""
+      ]);
+      const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Transactions");
+      XLSX.writeFile(wb, `transactions_${currentRangeSuffix()}.xlsx`);
+    }
+
+    // ----- Quick range buttons -----
+    function setRange(from, to){ qs("fromDate").value = fmtISO(from); qs("toDate").value = fmtISO(to); loadTxns(); }
+
+    qs("btnThisWeek").addEventListener("click", ()=>{
+      const today = new Date();
+      setRange(startOfWeek(today), endOfWeek(today));
+    });
+    qs("btnThisMonth").addEventListener("click", ()=>{
+      const d=new Date(); const from=startOfMonth(d.getFullYear(), d.getMonth()); const to=endOfMonth(d.getFullYear(), d.getMonth());
+      setRange(from,to);
+    });
+    qs("btnLastMonth").addEventListener("click", ()=>{
+      const d=new Date(); const m=d.getMonth()-1; const y = m<0 ? d.getFullYear()-1 : d.getFullYear();
+      const mm = (m+12)%12;
+      const from=startOfMonth(y,mm); const to=endOfMonth(y,mm);
+      setRange(from,to);
+    });
+    qs("btn90").addEventListener("click", ()=>{
+      const to=new Date(); const from=addDays(to,-89);
+      setRange(from,to);
+    });
+    qs("btnThisYear").addEventListener("click", ()=>{
       const y = new Date().getFullYear();
-      qs("fromDate").value = `${y}-01-01`;
-      qs("toDate").value = `${y}-12-31`;
-      loadTxns();
+      setRange(startOfYear(y), endOfYear(y));
     });
 
+    // ----- Events -----
     qs("loadBtn").addEventListener("click", loadTxns);
+    qs("metric").addEventListener("change", ()=> renderCharts(currentData));
+    qs("btnCsv").addEventListener("click", exportCSV);
+    qs("btnXlsx").addEventListener("click", exportXLSX);
 
-    // Default: this month
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth()+1).padStart(2,"0");
-    qs("fromDate").value = `${y}-${m}-01`;
-    qs("toDate").value = `${y}-${m}-${String(new Date(y,m,0).getDate()).padStart(2,"0")}`;
-    loadTxns();
+    // ----- Init defaults (this month) -----
+    (function init(){
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = now.getMonth();
+      qs("fromDate").value = fmtISO(startOfMonth(y,m));
+      qs("toDate").value   = fmtISO(endOfMonth(y,m));
+      loadTxns();
+    })();
   </script>
 </body>
 </html>
