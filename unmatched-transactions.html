@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Unmatched Transactions • Kosmos Bookkeeping</title>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.20.2/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root{ --bg:#fafafa; --card:#fff; --border:#e5e7eb; --muted:#6b7280; --ok:#0a7a33; --err:#b00020; --ink:#111; }
+    *{ box-sizing:border-box; } body{ font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; margin:24px; background:var(--bg); color:var(--ink); }
+    h1{ font-size:1.6rem; margin:0 0 .75rem; }
+    .card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px; margin-bottom:20px; }
+    label{ font-weight:600; display:block; margin-top:.5rem; }
+    input,select{ padding:.5rem .7rem; border:1px solid #ccc; border-radius:8px; }
+    button{ padding:.6rem 1rem; border-radius:10px; border:1px solid #bbb; background:#111; color:#fff; cursor:pointer; }
+    button:hover{ background:#333; } .secondary{ background:#f7f7f7; color:#111; border-color:#d0d0d0; }
+    table{ width:100%; border-collapse:collapse; font-size:14px; } th,td{ padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; }
+    th{ background:#f6f7f8; position:sticky; top:0; z-index:1; } .right{text-align:right;} .muted{color:var(--muted);} .ok{color:var(--ok);} .err{color:var(--err);}
+    @media(max-width:900px){ table{font-size:12px;} }
+  </style>
+</head>
+<body>
+  <h1>Unmatched Transactions</h1>
+  <p><a href="index.html" class="secondary">← Back to Home</a></p>
+
+  <div class="card">
+    <h3>Filters</h3>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;">
+      <label>Date from <input type="date" id="fromDate"></label>
+      <label>Date to <input type="date" id="toDate"></label>
+      <button id="loadBtn">Load</button>
+      <button id="exportBtn" class="secondary">Export CSV</button>
+    </div>
+    <p id="msg" class="muted"></p>
+  </div>
+
+  <div class="card">
+    <h3>Unmatched Transactions</h3>
+    <div style="overflow:auto;max-height:600px;">
+      <table id="tbl">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Description</th>
+            <th class="right">Amount</th>
+            <th>Direction</th>
+            <th>Account</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Totals / Chart</h3>
+    <canvas id="chart" height="160"></canvas>
+  </div>
+
+  <script>
+  const SUPABASE_URL="https://advihqhjjlxumgdlbwui.supabase.co";
+  const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
+  const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+  const qs=id=>document.getElementById(id);
+  const msg=qs("msg"); let chart=null;
+
+  async function loadUnmatchedTxns(){
+    msg.textContent="Loading…";
+    const from=qs("fromDate").value||"1900-01-01";
+    const to=qs("toDate").value||"2100-12-31";
+    const {data,error}=await sb
+      .from("v_unmatched_transactions")
+      .select("*")
+      .gte("txn_date",from)
+      .lte("txn_date",to)
+      .order("txn_date",{ascending:false});
+    if(error){ msg.className="err"; msg.textContent=error.message; return; }
+    const tb=qs("tbl").querySelector("tbody");
+    if(!data?.length){tb.innerHTML="<tr><td colspan=5 class='muted'>No unmatched transactions found.</td></tr>";msg.textContent="";updateChart([]);return;}
+    const rows=data.map(r=>{
+      return `<tr><td>${r.txn_date||""}</td>
+        <td>${r.description||r.vendor_clean||""}</td>
+        <td class='right'>$${Number(r.amount||0).toFixed(2)}</td>
+        <td>${r.direction||""}</td>
+        <td>${r.account_id||""}</td></tr>`;
+    }).join("");
+    tb.innerHTML=rows;
+    msg.className="ok"; msg.textContent=`Loaded ${data.length} unmatched transactions.`;
+    updateChart(data);
+  }
+
+  function updateChart(data){
+    const ctx=qs("chart");
+    if(chart){chart.destroy();}
+    if(!data.length){ctx.getContext("2d").clearRect(0,0,ctx.width,ctx.height);return;}
+    const sums={};
+    data.forEach(r=>{
+      const d=(r.txn_date||"").slice(0,10);
+      if(!d)return;
+      sums[d]=(sums[d]||0)+Number(r.amount||0);
+    });
+    const labels=Object.keys(sums).sort();
+    const vals=labels.map(k=>sums[k]);
+    chart=new Chart(ctx,{
+      type:"line",
+      data:{labels,datasets:[{label:"Unmatched $",data:vals,borderWidth:2,fill:false}]},
+      options:{scales:{y:{beginAtZero:true}}}
+    });
+  }
+
+  function exportCSV(){
+    const rows=[...qs("tbl").querySelectorAll("tbody tr")].map(tr=>[...tr.children].map(td=>td.textContent.trim()));
+    if(!rows.length){alert("No data to export");return;}
+    const header=["Date","Description","Amount","Direction","Account"];
+    const csv=[header.join(","),...rows.map(r=>r.join(","))].join("\n");
+    const blob=new Blob([csv],{type:"text/csv"});
+    const a=document.createElement("a");
+    const name=`unmatched_txns_${new Date().toISOString().slice(0,10)}.csv`;
+    a.href=URL.createObjectURL(blob); a.download=name; a.click();
+  }
+
+  qs("loadBtn").addEventListener("click",loadUnmatchedTxns);
+  qs("exportBtn").addEventListener("click",exportCSV);
+
+  const today=new Date().toISOString().slice(0,10);
+  const monthStart=today.slice(0,8)+"01";
+  qs("fromDate").value=monthStart; qs("toDate").value=today;
+  loadUnmatchedTxns();
+  </script>
+</body>
+</html>
