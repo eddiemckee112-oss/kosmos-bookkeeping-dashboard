@@ -12,12 +12,16 @@
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 
   <style>
-    /* page-local polish */
     td.editable { cursor: text; }
     td.editing  { background:#fffbe6; }
     .hint { font-size:.85rem; color:var(--muted); margin-top:6px; }
     .toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
     .spacer { flex: 1 1 auto; }
+
+    .badge{ display:inline-block; padding:4px 8px; border-radius:999px; border:1px solid var(--border); font-weight:600; font-size:.82rem; text-decoration:none }
+    .badge.ok{ background:#eef9f1; color:var(--ok); border-color:#cfe7d6 }
+    .badge.muted{ background:#f6f7f8; color:var(--muted) }
+    .badge.ok:hover{ filter:brightness(0.95) }
 
     /* Modal (shared) */
     .modal-backdrop{
@@ -36,7 +40,6 @@
       border:1px solid var(--border); border-radius:10px; overflow:auto; background:#fff;
       max-height:320px;
     }
-    .preview table{ font-size:.9rem }
     .sticky-footer{
       position:sticky; bottom:0; background:#fff; border-top:1px solid var(--border);
       padding:10px 12px; display:flex; gap:12px; flex-wrap:wrap; justify-content:flex-end;
@@ -71,10 +74,17 @@
         <input type="date" id="fromDate" />
         <span>–</span>
         <input type="date" id="toDate" />
-        <select id="filterMode" title="Match status">
+
+        <select id="filterMode" title="Filter">
           <option value="all">All</option>
           <option value="matched">Matched</option>
           <option value="unmatched">Unmatched</option>
+          <option value="categorized">Categorized</option>
+          <option value="uncategorized">Uncategorized</option>
+          <option value="with_source">With Source</option>
+          <option value="without_source">Without Source</option>
+          <option value="debits">Debits only</option>
+          <option value="credits">Credits only</option>
         </select>
         <button id="filterBtn">Apply</button>
 
@@ -86,7 +96,7 @@
         <button id="backfillBtn" class="ghost" title="Fill missing Source from Accounts">↺ Backfill Sources</button>
         <button id="exportBtn" class="ghost">📁 Export CSV</button>
       </div>
-      <div class="hint">“Source” prefers the account name, else the institution. Editing Source writes to <code>source_account_name</code>.</div>
+      <div class="hint">“Source” prefers the account name, else the institution. Editing Source writes to <code>source_account_name</code>. Status is clickable when matched and jumps to the receipt.</div>
       <p id="status" class="muted" style="margin-top:6px;"></p>
     </div>
 
@@ -110,6 +120,7 @@
             <th style="min-width:320px;">Description</th>
             <th class="right" style="min-width:120px;">Amount</th>
             <th style="min-width:90px;">Type</th>
+            <th style="min-width:140px;">Status</th>
             <th style="min-width:160px;">Category</th>
             <th style="min-width:180px;">Source</th>
             <th style="min-width:140px;">Actions</th>
@@ -118,7 +129,7 @@
         <tbody></tbody>
         <tfoot>
           <tr>
-            <td colspan="7">
+            <td colspan="8">
               <div class="sticky-footer">
                 <span class="kpill">Rows: <b id="ftRows">0</b></span>
                 <span class="kpill">Debits: <b id="ftDebits">$0.00</b></span>
@@ -255,8 +266,9 @@
     const quickSearch = $("quickSearch");
 
     // ===== State =====
-    let allRows = [];     // raw from DB
-    let viewRows = [];    // filtered by quick search
+    let allRows = [];                     // transactions in date range
+    let txToReceipts = new Map();         // transaction_id -> [receipt_id,...]
+    let viewRows = [];                    // filtered rows
 
     // Upload Receipt state
     let activeTxn = null;
@@ -274,34 +286,55 @@
     async function loadTransactions() {
       const from = $("fromDate").value || "1900-01-01";
       const to   = $("toDate").value   || "2999-12-31";
-      const mode = $("filterMode").value;
 
-      let q = sb.from("transactions")
+      // 1) Load transactions
+      let { data: txns, error: tErr } = await sb.from("transactions")
         .select("*")
         .gte("txn_date", from)
         .lte("txn_date", to)
         .order("txn_date", { ascending: false });
+      if (tErr) return renderError(tErr.message);
+      allRows = txns || [];
 
-      if (mode !== "all") {
-        const { data: mx, error: mErr } = await sb.from("matches").select("transaction_id");
-        if (mErr) return renderError(mErr.message);
-        const ids = (mx || []).map(r => r.transaction_id);
-        if (mode === "matched")   q = q.in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
-        if (mode === "unmatched") q = q.not("id", "in", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
-      }
+      // 2) Load matches with receipt ids
+      const { data: mx, error: mErr } = await sb.from("matches").select("transaction_id, receipt_id");
+      if (mErr) return renderError(mErr.message);
+      txToReceipts.clear();
+      (mx || []).forEach(({transaction_id, receipt_id}) => {
+        if (!txToReceipts.has(transaction_id)) txToReceipts.set(transaction_id, []);
+        txToReceipts.get(transaction_id).push(receipt_id);
+      });
 
-      const { data, error } = await q;
-      if (error) return renderError(error.message);
-      allRows = data || [];
-      applyQuickSearch();
+      applyAllFilters();
     }
 
-    function applyQuickSearch(){
+    function applyAllFilters(){
+      const mode = $("filterMode").value;
       const q = (quickSearch.value || "").trim().toLowerCase();
-      if (!q) {
-        viewRows = allRows.slice();
-      } else {
-        viewRows = allRows.filter(r => {
+
+      let rows = allRows.slice();
+
+      rows = rows.filter(r => {
+        const hasMatch = txToReceipts.has(r.id);
+        const hasCategory = !!(r.category && String(r.category).trim().length);
+        const sourceDisplay = r.source_account_name || r.institution || "";
+        const hasSource = !!String(sourceDisplay).trim().length;
+
+        switch(mode){
+          case "matched":        return hasMatch;
+          case "unmatched":      return !hasMatch;
+          case "categorized":    return hasCategory;
+          case "uncategorized":  return !hasCategory;
+          case "with_source":    return hasSource;
+          case "without_source": return !hasSource;
+          case "debits":         return r.direction === "debit";
+          case "credits":        return r.direction === "credit";
+          default:               return true;
+        }
+      });
+
+      if (q) {
+        rows = rows.filter(r => {
           const sourceDisplay = r.source_account_name || r.institution || "";
           return (
             String(r.description || "").toLowerCase().includes(q) ||
@@ -310,11 +343,13 @@
           );
         });
       }
+
+      viewRows = rows;
       renderTable(viewRows);
     }
 
     function renderError(msg) {
-      tbody.innerHTML = `<tr><td colspan="7" class="err">${msg}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" class="err">${msg}</td></tr>`;
       $("txnCount").textContent = "—";
       $("debits").textContent = "$0.00";
       $("credits").textContent = "$0.00";
@@ -325,7 +360,7 @@
       $("ftNet").textContent = "$0.00";
     }
 
-    // ===== Inline edit helpers (Category & Source) =====
+    // ===== Inline edit helpers =====
     function escapeHtml(s){ return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 
     function makeEditable(td, txnId, initialValue, field) {
@@ -358,10 +393,10 @@
       td.innerHTML = ""; td.appendChild(input); input.focus(); input.select();
     }
 
-    // ===== Render Table =====
+    // ===== Render =====
     function renderTable(rows) {
       if (!rows.length) {
-        tbody.innerHTML = `<tr><td colspan="7" class="muted">No transactions found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="muted">No transactions found.</td></tr>`;
         $("txnCount").textContent = 0;
         $("debits").textContent = "$0.00";
         $("credits").textContent = "$0.00";
@@ -379,6 +414,11 @@
         if (t.direction === "debit") debit += amt; else credit += amt;
 
         const sourceDisplay = t.source_account_name || t.institution || "";
+        const receiptIds = txToReceipts.get(t.id) || [];
+        const firstRid = receiptIds[0];
+        const statusBadge = receiptIds.length
+          ? `<a class="badge ok" title="View on Receipts page" href="receipts.html?focus=${encodeURIComponent(firstRid)}">✅ Matched${receiptIds.length>1?` (${receiptIds.length})`:``}</a>`
+          : `<span class="badge muted">Unmatched</span>`;
         const btn = `<button class="ghost btn-upload" data-id="${t.id}">Upload Receipt</button>`;
 
         return `<tr data-id="${t.id}">
@@ -386,6 +426,7 @@
           <td>${escapeHtml(t.description)}</td>
           <td class="right">$${amt.toFixed(2)}</td>
           <td>${escapeHtml(t.direction)}</td>
+          <td>${statusBadge}</td>
           <td class="editable" data-field="category">${escapeHtml(t.category)}</td>
           <td class="editable" data-field="source_account_name">${escapeHtml(sourceDisplay)}</td>
           <td>${btn}</td>
@@ -405,18 +446,16 @@
         srcTd.addEventListener("click", () => makeEditable(srcTd, id, srcTd.textContent.trim(), "source_account_name"));
       });
 
-      // bind upload receipt buttons
+      // bind upload buttons
       document.querySelectorAll(".btn-upload").forEach(btn => {
         btn.addEventListener("click", () => openUploadFor(btn.getAttribute("data-id")));
       });
 
-      // top summary
+      // top & footer summaries
       $("txnCount").textContent = rows.length;
       $("debits").textContent   = `$${debit.toFixed(2)}`;
       $("credits").textContent  = `$${credit.toFixed(2)}`;
       $("net").textContent      = `$${(credit - debit).toFixed(2)}`;
-
-      // sticky footer summary
       $("ftRows").textContent   = rows.length;
       $("ftDebits").textContent = `$${debit.toFixed(2)}`;
       $("ftCredits").textContent= `$${credit.toFixed(2)}`;
@@ -496,7 +535,6 @@
         return;
       }
 
-      // populate mapping selects
       for (const [key, sel] of Object.entries(mapSelects)) {
         sel.innerHTML = "";
         csvData.headers.forEach((h, idx) => {
@@ -507,10 +545,7 @@
         });
       }
 
-      // try smart defaults
       smartMap(csvData.headers, mapSelects);
-
-      // preview
       renderPreview(csvData);
       importStatus.className = "ok";
       importStatus.textContent = `Loaded ${csvData.rows.length} rows. Review mapping then click Import.`;
@@ -541,7 +576,6 @@
     startImportBtn.addEventListener("click", async () => {
       if (!csvData) { importStatus.className="err"; importStatus.textContent="Please choose a CSV first."; return; }
 
-      // Required mappings
       const m = {
         date: Number(mapSelects.date.value),
         desc: Number(mapSelects.desc.value),
@@ -556,7 +590,6 @@
         return;
       }
 
-      // Build row objects
       const rows = [];
       for (const raw of csvData.rows) {
         if (!raw.length) continue;
@@ -572,7 +605,6 @@
           if (/credit|cr|\+/.test(dval)) direction = "credit";
           if (/debit|dr|\-/.test(dval))  direction = "debit";
         } else {
-          // infer from sign
           direction = amount < 0 ? "debit" : "credit";
         }
 
@@ -583,7 +615,7 @@
           txn_date,
           post_date: txn_date,
           description,
-          amount: Math.abs(amount),   // store absolute; sign in direction
+          amount: Math.abs(amount),
           direction,
           currency: "CAD",
           source_account_name: source_account_name || null,
@@ -601,7 +633,6 @@
       importStatus.className="muted";
       importStatus.textContent=`Importing ${rows.length} rows…`;
 
-      // Batch insert
       let inserted = 0, errors = 0;
       const batchSize = 300;
       for (let i=0;i<rows.length;i+=batchSize) {
@@ -619,7 +650,6 @@
       }
     });
 
-    // Lightweight CSV parser w/ quotes + commas
     function parseCSV(text){
       const rows = [];
       let i=0, field="", row=[], inQuotes=false;
@@ -629,7 +659,7 @@
         const ch = text[i];
         if (inQuotes) {
           if (ch === '"') {
-            if (text[i+1] === '"'){ field += '"'; i+=2; continue; } // escaped quote
+            if (text[i+1] === '"'){ field += '"'; i+=2; continue; }
             inQuotes = false; i++; continue;
           } else { field += ch; i++; continue; }
         } else {
@@ -659,20 +689,19 @@
       return null;
     }
 
-    // ===== Backfill Sources (RPC) =====
+    // Backfill Sources (RPC)
     $("backfillBtn").addEventListener("click", backfillSources);
 
-    // ===== Events
+    // Events
     $("filterBtn").addEventListener("click", loadTransactions);
     $("exportBtn").addEventListener("click", exportCSV);
-    quickSearch.addEventListener("input", applyQuickSearch);
+    quickSearch.addEventListener("input", applyAllFilters);
 
     // ===== Upload Receipt: open + save =====
     async function openUploadFor(txnId){
       activeTxn = allRows.find(r => r.id === txnId);
       if (!activeTxn) return;
 
-      // Prefill
       upFile.value = "";
       upPreview.src = "";
       upVendor.value = "";
@@ -700,7 +729,6 @@
       const f = upFile.files?.[0];
       if (!f){ upMsg.className="err"; upMsg.textContent="Please choose an image file."; return; }
 
-      // read form
       const vendor = upVendor.value.trim() || null;
       const date = upDate.value || null;
       const total = upTotal.value ? Number(upTotal.value) : null;
@@ -712,14 +740,12 @@
       upMsg.className="muted";
       upMsg.textContent="Uploading image…";
 
-      // upload to storage
       const fname = `txn_${activeTxn.id}_${Date.now()}.png`;
       const { data: upRes, error: upErr } = await sb.storage.from("receipts").upload(fname, f, { contentType: f.type || "image/png", upsert:false });
       if (upErr){ upMsg.className="err"; upMsg.textContent=upErr.message; return; }
       const { data: pub } = sb.storage.from("receipts").getPublicUrl(upRes.path);
       const image_url = pub?.publicUrl || null;
 
-      // insert receipt (include org_id/account_id when available)
       const ins = {
         org_id: activeTxn.org_id || null,
         account_id: activeTxn.account_id || null,
@@ -736,7 +762,6 @@
       const { data: rIns, error: rErr } = await sb.from("receipts").insert(ins).select("id").single();
       if (rErr){ upMsg.className="err"; upMsg.textContent=rErr.message; return; }
 
-      // create match
       upMsg.textContent="Linking to transaction…";
       const matchRow = {
         org_id: activeTxn.org_id || null,
