@@ -1,600 +1,496 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Kosmos — Transactions</title>
-
-  <link rel="stylesheet" href="style.css" />
-  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Kosmos Bookkeeping — Transactions</title>
+  <link rel="stylesheet" href="style.css"/>
   <style>
-    td.editable{cursor:text} td.editing{background:#fffbe6}
-    .hint{font-size:.85rem;color:var(--muted);margin-top:6px}
-    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    .spacer{flex:1 1 auto}
-    .badge{display:inline-block;padding:4px 8px;border-radius:999px;border:1px solid var(--border);font-weight:600;font-size:.82rem;text-decoration:none}
-    .badge.ok{background:#eef9f1;color:var(--ok);border-color:#cfe7d6}
-    .badge.muted{background:#f6f7f8;color:var(--muted)}
-    .bulkbar{display:none;align-items:center;gap:10px;margin-top:12px;padding:10px;border:1px dashed var(--border);border-radius:12px;background:#fff}
-    .bulkbar.show{display:flex}
-    .chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:#fff;font-weight:600;cursor:pointer}
-    .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-    .viewsbar{display:flex;align-items:center;gap:8px}
-    .viewsbar select{min-width:200px}
-
-    /* Simple Importer Modal */
-    .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:50}
-    .modal{width:min(700px,92vw);max-height:80vh;overflow:auto;background:#fff;border:1px solid var(--border);
-           border-radius:14px;padding:16px;box-shadow:0 10px 35px rgba(0,0,0,.18)}
-    .note{font-size:.9rem;color:var(--muted)}
+    /* Page-specific tiny tweaks */
+    .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .pill { padding:4px 10px; border:1px solid var(--border); border-radius:999px; background:#fff; }
+    .status-btn { font-size:.8rem; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:#fff }
+    .status-btn.ok { background:#eef8f1; border-color:#cfe9d7; color:var(--ok) }
+    .status-btn.ghost { background:#fff }
+    .modal-backdrop{
+      position:fixed; inset:0; background:rgba(0,0,0,.18);
+      display:none; align-items:flex-start; justify-content:center; padding:40px 12px; z-index:50;
+    }
+    .modal{ background:#fff; width:min(980px,100%); border:1px solid var(--border); border-radius:16px; padding:16px 16px 18px; }
+    .note{ color:var(--muted); margin:.4rem 0 .6rem }
+    .right{text-align:right}
+    .muted{color:var(--muted)}
+    .err{color:var(--err)}
+    .ok{color:var(--ok)}
+    table tbody tr:hover{ background:#fff }
   </style>
 </head>
 <body>
-<header>
-  <h1>Kosmos Bookkeeping</h1>
-  <nav>
-    <a href="index.html">Dashboard</a>
-    <a href="receipts.html">Receipts</a>
-    <a href="transactions.html" class="active">Transactions</a>
-    <a href="reports.html">Reports</a>
-  </nav>
-</header>
+  <!-- Header / Nav -->
+  <header>
+    <h1>Kosmos Bookkeeping</h1>
+    <nav>
+      <a href="index.html">Dashboard</a>
+      <a href="receipts.html">Receipts</a>
+      <a class="active" href="transactions.html">Transactions</a>
+      <a href="reports.html">Reports</a>
+    </nav>
+  </header>
 
-<main class="container">
-  <h2>💳 Transactions</h2>
-  <p class="muted">Filter, import, categorize, save views, attach receipts, create vendor rules, and use bulk actions for speed.</p>
+  <main class="container">
+    <h2>💳 Transactions</h2>
+    <p class="muted">Filter, import, categorize, save views, attach receipts, create vendor rules, and use bulk actions for speed.</p>
 
-  <div class="card">
-    <div class="toolbar">
-      <label>Date Range:</label>
-      <input type="date" id="fromDate" /><span>–</span><input type="date" id="toDate" />
-      <select id="filterMode">
-        <option value="all">All</option>
-        <option value="matched">Matched</option>
-        <option value="unmatched">Unmatched</option>
-        <option value="categorized">Categorized</option>
-        <option value="uncategorized">Uncategorized</option>
-        <option value="with_source">With Source</option>
-        <option value="without_source">Without Source</option>
-        <option value="debits">Debits only</option>
-        <option value="credits">Credits only</option>
-      </select>
-      <button id="filterBtn">Apply</button>
-      <span class="spacer"></span>
-      <input id="quickSearch" placeholder="Search description/category/source…" style="padding:.5rem .7rem;border:1px solid #cfcfcf;border-radius:10px;min-width:260px" />
-      <button id="importBtn" class="ghost">⬆️ Import CSV</button>
-      <button id="backfillBtn" class="ghost">↺ Backfill Sources</button>
-      <button id="exportBtn" class="ghost">📁 Export CSV</button>
-    </div>
+    <!-- Filters / Actions -->
+    <div class="card" style="margin-bottom:14px;">
+      <div class="toolbar">
+        <label>Date Range:</label>
+        <input id="fromDate" type="date"/>
+        <span>–</span>
+        <input id="toDate" type="date"/>
 
-    <div class="viewsbar" style="margin-top:8px;">
-      <label>Saved View:</label>
-      <select id="viewsSelect"></select>
-      <button id="saveViewBtn" class="ghost">💾 Save Current</button>
-      <button id="setDefaultViewBtn" class="ghost">⭐ Set Default</button>
-      <button id="deleteViewBtn" class="ghost">🗑️ Delete</button>
-      <span class="muted" id="viewsMsg"></span>
-    </div>
+        <select id="typeFilter">
+          <option value="all">All</option>
+          <option value="debit">Debits only</option>
+          <option value="credit">Credits only</option>
+          <option value="matched">Matched only</option>
+          <option value="unmatched">Unmatched only</option>
+          <option value="uncategorized">Uncategorized</option>
+          <option value="no_source">No Source</option>
+          <option value="duplicates">Possible Duplicates</option>
+        </select>
 
-    <div class="hint">Status is clickable when matched and jumps to the receipt. “Source” prefers the account name (fallback: institution). Your last filters auto-restore.</div>
-    <p id="status" class="muted" style="margin-top:6px;"></p>
+        <button id="applyBtn">Apply</button>
 
-    <div class="chips">
-      <span id="chipUnmatched" class="chip">Unmatched: <b id="countUnmatched">0</b></span>
-      <span id="chipUncategorized" class="chip">Uncategorized: <b id="countUncat">0</b></span>
-      <span id="chipNoSource" class="chip">No Source: <b id="countNoSource">0</b></span>
-      <span id="chipDupes" class="chip">Duplicates: <b id="countDupes">0</b></span>
-    </div>
-  </div>
+        <input id="quickSearch" placeholder="Search description/category/source…"
+               style="flex:1; min-width:220px"/>
 
-  <div class="card">
-    <div class="grid-2">
-      <div><strong>Total Transactions:</strong> <span id="txnCount">—</span></div>
-      <div><strong>Debits:</strong> <span id="debits">—</span></div>
-      <div><strong>Credits:</strong> <span id="credits">—</span></div>
-      <div><strong>Net:</strong> <span id="net">—</span></div>
-    </div>
-    <p class="muted" style="margin-top:8px;">Numbers reflect the current filter. Use Quick Search to instantly narrow the table.</p>
-  </div>
-
-  <div class="card" style="overflow:auto;">
-    <table id="txnTable">
-      <thead>
-      <tr>
-        <th style="width:40px;"><input type="checkbox" id="selectAll" /></th>
-        <th style="min-width:110px;">Date</th>
-        <th style="min-width:320px;">Description</th>
-        <th class="right" style="min-width:120px;">Amount</th>
-        <th style="min-width:90px;">Type</th>
-        <th style="min-width:140px;">Status</th>
-        <th style="min-width:160px;">Category</th>
-        <th style="min-width:180px;">Source</th>
-        <th style="min-width:240px;">Actions</th>
-      </tr>
-      </thead>
-      <tbody></tbody>
-      <tfoot>
-      <tr>
-        <td colspan="9">
-          <div class="sticky-footer">
-            <span class="kpill">Rows: <b id="ftRows">0</b></span>
-            <span class="kpill">Debits: <b id="ftDebits">$0.00</b></span>
-            <span class="kpill">Credits: <b id="ftCredits">$0.00</b></span>
-            <span class="kpill">Net: <b id="ftNet">$0.00</b></span>
-          </div>
-        </td>
-      </tr>
-      </tfoot>
-    </table>
-  </div>
-</main>
-
-<!-- SIMPLE IMPORTER (no mapping) -->
-<div id="impBackdrop" class="modal-backdrop">
-  <div class="modal">
-    <h3>Import Transactions (CSV)</h3>
-    <p class="note">No settings needed. Expected columns: <b>Date, Description, Amount, Source (optional)</b>. We’ll auto-detect delimiters and formats, and infer debit/credit correctly for banks that use all-positive amounts.</p>
-    <div class="card" style="display:flex;align-items:center;gap:12px;">
-      <input id="csvFile" type="file" accept=".csv,text/csv" />
-      <button id="closeImport" class="ghost">Close</button>
-    </div>
-    <p id="impStatus" class="muted" style="margin-top:10px;"></p>
-    <div id="impPreview" class="card" style="margin-top:10px;display:none;">
-      <h4 style="margin:0 0 6px;">Preview (first 20 rows)</h4>
-      <table style="width:100%;border-collapse:collapse;">
-        <thead><tr><th>Date</th><th>Description</th><th class="right">Amount</th><th>Direction</th><th>Source</th></tr></thead>
-        <tbody id="prevBody"></tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-<!-- Upload Receipt Modal -->
-<div id="uploadBackdrop" class="modal-backdrop">
-  <div class="modal">
-    <h3>Upload Receipt</h3>
-    <p class="muted">Attach a receipt image to this transaction.</p>
-    <div class="grid grid-2">
-      <div>
-        <input id="upFile" type="file" accept="image/*" />
-        <div style="margin-top:10px;"><img id="upPreview" alt="" style="max-width:100%;border:1px solid var(--border);border-radius:8px"/></div>
+        <button id="importBtn" class="ghost">📥 Import CSV</button>
+        <button id="backfillBtn" class="ghost">⟳ Backfill Sources</button>
+        <button id="exportBtn" class="ghost">⬇️ Export CSV</button>
       </div>
-      <div class="card">
-        <div class="grid grid-2">
-          <div><label>Vendor</label><input id="upVendor" /></div>
-          <div><label>Date</label><input id="upDate" type="date" /></div>
-          <div><label>Total</label><input id="upTotal" type="number" step="0.01" /></div>
-          <div><label>Tax</label><input id="upTax" type="number" step="0.01" value="0.00" /></div>
-        </div>
-        <div style="margin-top:8px;"><label>Notes</label><input id="upNotes" /></div>
-        <p id="upMsg" class="muted" style="margin-top:8px;"></p>
-        <div class="row" style="justify-content:flex-end;margin-top:8px;">
-          <button id="upCancel" class="ghost">Cancel</button>
-          <button id="upSave">Save & Attach</button>
-        </div>
+
+      <div class="row" style="gap:10px; margin-top:10px;">
+        <span class="pill">Unmatched: <b id="chipUnmatched">—</b></span>
+        <span class="pill">Uncategorized: <b id="chipUncat">—</b></span>
+        <span class="pill">No Source: <b id="chipNoSource">—</b></span>
+        <span class="pill">Duplicates: <b id="chipDupes">—</b></span>
       </div>
     </div>
-  </div>
-</div>
 
-<!-- Create Rule Modal -->
-<div id="ruleBackdrop" class="modal-backdrop">
-  <div class="modal">
-    <h3>Create Vendor Rule</h3>
-    <p class="muted">Pattern matches your statement vendor text (e.g., “SQUARE”, “AMAZON”). You can restrict to credits/debits and auto-match.</p>
-    <div class="card">
+    <!-- Totals -->
+    <div class="card" style="margin-bottom:14px;">
       <div class="grid grid-2">
-        <div><label>Vendor Pattern</label><input id="rulePattern" /></div>
-        <div><label>Category (optional)</label><input id="ruleCategory" /></div>
-        <div><label>Source (optional)</label><input id="ruleSource" /></div>
-        <div><label>Tax (optional)</label><input id="ruleTax" type="number" step="0.01" /></div>
         <div>
-          <label>Apply to</label>
-          <select id="ruleDirection">
-            <option value="">Any</option><option value="credit">Credits only</option><option value="debit">Debits only</option>
-          </select>
-        </div>
-        <div class="row" style="align-items:center;gap:8px;margin-top:6px">
-          <input type="checkbox" id="ruleAutoMatch" /><label for="ruleAutoMatch">Auto-match (create virtual receipt)</label>
+          <div>Total Transactions: <b id="totalRows">—</b></div>
+          <div>Debits: <b id="totalDebits">$0.00</b></div>
+          <div>Credits: <b id="totalCredits">$0.00</b></div>
+          <div>Net: <b id="totalNet">$0.00</b></div>
+          <small class="muted">Numbers reflect the current filter.</small>
         </div>
       </div>
-      <p id="ruleMsg" class="muted" style="margin-top:8px;"></p>
-      <div class="row" style="justify-content:flex-end;margin-top:8px;">
-        <button id="ruleCancel" class="ghost">Cancel</button>
-        <button id="ruleSave">Save Rule</button>
-        <button id="ruleSaveApply">Save & Apply Now</button>
+    </div>
+
+    <!-- Table -->
+    <div class="card">
+      <table id="txTable">
+        <thead>
+          <tr>
+            <th style="width:26px"></th>
+            <th>Date</th>
+            <th>Description</th>
+            <th class="right">Amount</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Category</th>
+            <th>Source</th>
+          </tr>
+        </thead>
+        <tbody id="txBody"></tbody>
+      </table>
+      <div class="muted" id="rowsCount" style="margin-top:8px">Rows: 0</div>
+    </div>
+  </main>
+
+  <!-- ==== Importer Modal (FULL) ==== -->
+  <div id="impBackdrop" class="modal-backdrop">
+    <div class="modal">
+      <h3>Import Transactions (CSV)</h3>
+      <p class="note">
+        We auto-detect delimiter, headers, and formats. Supported layouts:
+        <b>Date, Description, Amount</b> or <b>Date, Description, Debit, Credit</b>.
+        Optional columns like <b>Type</b> (debit/credit) or <b>Source</b> are recognized.
+      </p>
+
+      <div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <input id="csvFile" type="file" accept=".csv,text/csv" />
+        <button id="closeImport" class="ghost">Close</button>
+      </div>
+
+      <p id="impStatus" class="muted" style="margin-top:10px;"></p>
+
+      <div id="impPreview" class="card" style="margin-top:10px;display:none;">
+        <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+          <h4 style="margin:0">Preview (first 20 rows)</h4>
+          <div class="kpill">
+            Debits: <b id="prevDebits">0</b> • Credits: <b id="prevCredits">0</b>
+          </div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr><th>Date</th><th>Description</th><th class="right">Amount</th><th>Direction</th><th>Source</th></tr>
+          </thead>
+          <tbody id="prevBody"></tbody>
+        </table>
       </div>
     </div>
   </div>
-</div>
 
-<script>
-/* ===== Supabase client ===== */
-const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  <!-- ====== Page Scripts ====== -->
+  <script>
+    // ---------- Tiny helpers ----------
+    const $ = id => document.getElementById(id);
+    const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const money = n => (n==null?0:n).toLocaleString(undefined,{style:"currency",currency:"CAD"});
 
-/* ===== DOM helpers ===== */
-const $ = (id) => document.getElementById(id);
-const tbody = document.querySelector("#txnTable tbody");
+    // ---------- Data render ----------
+    async function loadTransactions(){
+      const from = $("fromDate").value || null;
+      const to   = $("toDate").value || null;
+      const q    = $("quickSearch").value.trim().toLowerCase();
+      const type = $("typeFilter").value;
 
-/* ===== State ===== */
-let allRows = []; let viewRows = []; let txToReceipts = new Map(); const selected = new Set();
+      let query = sb.from("transactions").select(`
+        id, txn_date, description, amount, direction, category, source_account_name,
+        org_id, created_at,
+        matches:matches(id, transaction_id, receipt_id)
+      `);
 
-/* ===== Utils ===== */
-const esc = (s)=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-const money=(n)=>`$${(Number(n)||0).toFixed(2)}`;
+      if (from) query = query.gte("txn_date", from);
+      if (to)   query = query.lte("txn_date", to);
 
-/* ===== Load transactions ===== */
-async function loadTransactions(){
-  const from = $("fromDate").value || "1900-01-01";
-  const to   = $("toDate").value   || "2999-12-31";
+      if (type === "debit")   query = query.eq("direction","debit");
+      if (type === "credit")  query = query.eq("direction","credit");
 
-  const { data: txns, error: tErr } = await sb.from("transactions")
-    .select("*").gte("txn_date", from).lte("txn_date", to).order("txn_date", { ascending:false });
+      // We'll fetch and then filter client-side for advanced chips/search
+      query = query.order("txn_date", {ascending:false});
 
-  if(tErr){ tbody.innerHTML=`<tr><td colspan="9" class="err">${esc(tErr.message)}</td></tr>`; return; }
-  allRows = txns || [];
+      const { data, error } = await query;
+      if (error){ alert(error.message); return; }
 
-  const { data: mx } = await sb.from("matches").select("transaction_id,receipt_id");
-  txToReceipts = new Map();
-  (mx||[]).forEach(({transaction_id,receipt_id})=>{
-    if(!txToReceipts.has(transaction_id)) txToReceipts.set(transaction_id,[]);
-    txToReceipts.get(transaction_id).push(receipt_id);
-  });
+      // Client-side filters
+      let rows = data || [];
+      if (type === "matched")   rows = rows.filter(r => r.matches && r.matches.length);
+      if (type === "unmatched") rows = rows.filter(r => !r.matches || r.matches.length===0);
+      if (type === "uncategorized") rows = rows.filter(r => !r.category);
+      if (type === "no_source")     rows = rows.filter(r => !r.source_account_name);
+      if (type === "duplicates")    rows = findDuplicates(rows);
 
-  selected.clear(); $("selectAll").checked=false;
-  refreshChips(); applyAllFilters();
-}
-function refreshChips(){
-  let unmatched=0, uncat=0, noSrc=0, dupes=0;
-  const seen=new Map();
-  for(const r of allRows){
-    if(!txToReceipts.has(r.id)) unmatched++;
-    if(!(r.category && String(r.category).trim())) uncat++;
-    const src=r.source_account_name||r.institution||"";
-    if(!String(src).trim()) noSrc++;
-    const key=`${r.txn_date}|${Number(r.amount)||0}|${(r.vendor_clean||r.description||"").trim().toUpperCase()}`;
-    const c=(seen.get(key)||0)+1; seen.set(key,c); if(c===2) dupes++;
-  }
-  $("countUnmatched").textContent=unmatched;
-  $("countUncat").textContent=uncat;
-  $("countNoSource").textContent=noSrc;
-  $("countDupes").textContent=dupes;
-}
-function applyAllFilters(){
-  const mode=$("filterMode").value;
-  const q=($("quickSearch").value||"").toLowerCase().trim();
-  let rows=allRows.slice();
-  rows=rows.filter(r=>{
-    const hasMatch=txToReceipts.has(r.id);
-    const hasCat=!!(r.category&&String(r.category).trim());
-    const src=r.source_account_name||r.institution||""; const hasSrc=!!String(src).trim();
-    switch(mode){
-      case "matched": return hasMatch;
-      case "unmatched": return !hasMatch;
-      case "categorized": return hasCat;
-      case "uncategorized": return !hasCat;
-      case "with_source": return hasSrc;
-      case "without_source": return !hasSrc;
-      case "debits": return r.direction==="debit";
-      case "credits": return r.direction==="credit";
-      default: return true;
+      if (q) rows = rows.filter(r =>
+        (r.description||"").toLowerCase().includes(q) ||
+        (r.source_account_name||"").toLowerCase().includes(q) ||
+        (r.category||"").toLowerCase().includes(q)
+      );
+
+      // Totals
+      const d = rows.filter(r=>r.direction==='debit').reduce((s,r)=>s+(+r.amount||0),0);
+      const c = rows.filter(r=>r.direction==='credit').reduce((s,r)=>s+(+r.amount||0),0);
+      $("totalRows").textContent = rows.length;
+      $("totalDebits").textContent = money(d);
+      $("totalCredits").textContent = money(c);
+      $("totalNet").textContent = money(c - d);
+
+      // Chips (based on current set)
+      $("chipUnmatched").textContent = rows.filter(r => !r.matches || r.matches.length===0).length;
+      $("chipUncat").textContent     = rows.filter(r => !r.category).length;
+      $("chipNoSource").textContent  = rows.filter(r => !r.source_account_name).length;
+      $("chipDupes").textContent     = findDuplicates(rows).length;
+
+      // Render
+      const body = $("txBody");
+      body.innerHTML = rows.map(r => {
+        const statusOk = r.matches && r.matches.length;
+        return `
+          <tr>
+            <td><input type="checkbox" data-id="${esc(r.id)}"/></td>
+            <td>${esc(r.txn_date||"")}</td>
+            <td>${esc(r.description||"")}</td>
+            <td class="right">${money(r.amount)}</td>
+            <td>${esc(r.direction||"")}</td>
+            <td><button class="status-btn ${statusOk?'ok':'ghost'}">${statusOk?'Matched':'Unmatched'}</button></td>
+            <td>${esc(r.category||"")}</td>
+            <td>${esc(r.source_account_name||"")}</td>
+          </tr>
+        `;
+      }).join("");
+
+      $("rowsCount").textContent = `Rows: ${rows.length}`;
     }
-  });
-  if(q){
-    rows=rows.filter(r=>{
-      const src=r.source_account_name||r.institution||"";
-      return String(r.description||"").toLowerCase().includes(q)
-          || String(r.category||"").toLowerCase().includes(q)
-          || String(src).toLowerCase().includes(q);
+
+    function findDuplicates(rows){
+      const key = r => `${(r.txn_date||"").slice(0,10)}|${(r.amount||0)}|${(r.description||"").toLowerCase().replace(/\s+/g,' ').trim().slice(0,64)}`;
+      const map = new Map();
+      rows.forEach(r => {
+        const k = key(r);
+        map.set(k, (map.get(k)||0)+1);
+      });
+      return rows.filter(r => map.get(key(r))>1);
+    }
+
+    // ---------- Buttons ----------
+    $("applyBtn").addEventListener("click", loadTransactions);
+    $("quickSearch").addEventListener("input", () => {
+      // Light debounce
+      clearTimeout(window.__qsTimer);
+      window.__qsTimer = setTimeout(loadTransactions, 150);
     });
-  }
-  viewRows=rows; renderTable(rows);
-}
-function renderTable(rows){
-  if(!rows.length){
-    tbody.innerHTML=`<tr><td colspan="9" class="muted">No transactions found.</td></tr>`;
-    ["txnCount","debits","credits","net","ftRows","ftDebits","ftCredits","ftNet"].forEach(id=>$(id).textContent="0");
-    return;
-  }
-  let debit=0, credit=0;
-  const html=rows.map(t=>{
-    const amt=Number(t.amount)||0; if(t.direction==="debit") debit+=amt; else credit+=amt;
-    const src=t.source_account_name||t.institution||"";
-    const rids=txToReceipts.get(t.id)||[];
-    const sb=rids.length?`<a class="badge ok" href="receipts.html?focus=${encodeURIComponent(rids[0])}">✅ Matched${rids.length>1?` (${rids.length})`:``}</a>`:`<span class="badge muted">Unmatched</span>`;
-    const btnU=`<button class="ghost btn-upload" data-id="${t.id}">Upload Receipt</button>`;
-    const btnR=`<button class="ghost btn-rule" data-id="${t.id}">Make Rule</button>`;
-    const checked = selected.has(t.id) ? "checked" : "";
-    return `<tr data-id="${t.id}">
-      <td><input type="checkbox" class="rowSel" data-id="${t.id}" ${checked}/></td>
-      <td>${esc(t.txn_date)}</td>
-      <td>${esc(t.description)}</td>
-      <td class="right">${money(amt)}</td>
-      <td>${esc(t.direction)}</td>
-      <td>${sb}</td>
-      <td class="editable" data-field="category">${esc(t.category)}</td>
-      <td class="editable" data-field="source_account_name">${esc(src)}</td>
-      <td>${btnU} ${btnR}</td>
-    </tr>`;
-  }).join("");
-  tbody.innerHTML=html;
 
-  tbody.querySelectorAll(".rowSel").forEach(cb=>cb.addEventListener("change",(e)=>{
-    const id=e.target.getAttribute("data-id"); e.target.checked?selected.add(id):selected.delete(id); updateBulkbar(); }));
-  Array.from(tbody.querySelectorAll("tr")).forEach(tr=>{
-    const id=tr.getAttribute("data-id");
-    const cat=tr.querySelector('td[data-field="category"]');
-    const src=tr.querySelector('td[data-field="source_account_name"]');
-    cat.addEventListener("click",()=>inlineEdit(cat,id,cat.textContent.trim(),"category"));
-    src.addEventListener("click",()=>inlineEdit(src,id,src.textContent.trim(),"source_account_name"));
-  });
-  document.querySelectorAll(".btn-upload").forEach(b=>b.addEventListener("click",()=>openUpload(b.getAttribute("data-id"))));
-  document.querySelectorAll(".btn-rule").forEach(b=>b.addEventListener("click",()=>openRule(b.getAttribute("data-id"))));
+    $("backfillBtn").addEventListener("click", async ()=>{
+      // Derive a source from description if missing (simple heuristic)
+      const { error } = await sb.rpc("backfill_sources_simple");
+      if (error) return alert(error.message);
+      await loadTransactions();
+    });
 
-  $("txnCount").textContent=rows.length;
-  $("debits").textContent=money(debit);
-  $("credits").textContent=money(credit);
-  $("net").textContent=money(credit-debit);
-  $("ftRows").textContent=rows.length;
-  $("ftDebits").textContent=money(debit);
-  $("ftCredits").textContent=money(credit);
-  $("ftNet").textContent=money(credit-debit);
-}
+    $("exportBtn").addEventListener("click", exportCSV);
 
-/* ===== Inline edit ===== */
-function inlineEdit(td,id,val,field){
-  if(td.classList.contains("editing")) return;
-  td.classList.add("editing");
-  const input=document.createElement("input");
-  input.type="text"; input.value=val||""; input.style.width="100%";
-  input.style.padding=".45rem .6rem"; input.style.border="1px solid #cfcfcf"; input.style.borderRadius="8px";
-  input.addEventListener("keydown",e=>{ if(e.key==="Enter") input.blur(); if(e.key==="Escape"){input.value=val||""; input.blur();}});
-  input.addEventListener("blur",async ()=>{
-    const newVal=input.value.trim()||null; td.innerHTML=newVal?esc(newVal):""; td.classList.remove("editing");
-    if((val||null)!==newVal){ await sb.from("transactions").update({[field]:newVal}).eq("id",id); const r=allRows.find(x=>x.id===id); if(r) r[field]=newVal; }
-  });
-  td.innerHTML=""; td.appendChild(input); input.focus(); input.select();
-}
+    // ---------- Import Modal logic (FULL) ----------
+    $("importBtn").addEventListener("click",()=>{
+      $("impStatus").textContent="";
+      $("prevBody").innerHTML="";
+      $("impPreview").style.display="none";
+      $("csvFile").value="";
+      $("impBackdrop").style.display="flex";
+    });
+    $("closeImport").addEventListener("click",()=>{ $("impBackdrop").style.display="none"; });
 
-/* ===== Selection / bulk ===== */
-function updateBulkbar(){ $("selCount").textContent=String(selected.size); document.querySelector(".bulkbar").classList.toggle("show", selected.size>0); }
-$("selectAll").addEventListener("change", (e)=>{ if(e.target.checked) viewRows.forEach(r=>selected.add(r.id)); else selected.clear(); updateBulkbar(); renderTable(viewRows); });
-$("chipUnmatched").addEventListener("click",()=>{$("filterMode").value="unmatched"; applyAllFilters();});
-$("chipUncategorized").addEventListener("click",()=>{$("filterMode").value="uncategorized"; applyAllFilters();});
-$("chipNoSource").addEventListener("click",()=>{$("filterMode").value="without_source"; applyAllFilters();});
-$("chipDupes").addEventListener("click",()=>{ const seen=new Map(),dups=new Set(); for(const r of allRows){ const k=`${r.txn_date}|${Number(r.amount)||0}|${(r.vendor_clean||r.description||"").trim().toUpperCase()}`; const a=seen.get(k)||[]; a.push(r.id); seen.set(k,a);} for(const [,a] of seen) if(a.length>1) a.forEach(id=>dups.add(id)); viewRows=allRows.filter(r=>dups.has(r.id)); renderTable(viewRows); });
+    const CREDIT_WORDS = [
+      /\bCREDIT\b/i, /DEPOSIT/i, /REFUND/i, /REVERSAL/i, /PAYOUT/i, /INTEREST/i,
+      /TRANSFER FROM/i, /PAYMENT RECEIVED/i,
+      /E[ -]?TRANSFER.*(RECEIVED|AUTO DEPOSIT)/i,
+      /SQUARE CANADA INC/i, /STRIPE/i, /PAYPAL/i
+    ];
+    const DEBIT_WORDS = [
+      /PRE[ -]?AUTH[ -]?DEBIT/i, /PURCHASE/i, /\bPOS\b/i, /INTERAC/i, /WITHDRAWAL/i,
+      /BILL PAYMENT/i, /PAYMENT(?! RECEIVED)/i,
+      /E[ -]?TRANSFER(?!.*(RECEIVED|AUTO DEPOSIT))/i
+    ];
 
-/* ===== Views + filters ===== */
-const VIEWS_KEY="kosmos_tx_views", DEFAULT_VIEW_KEY="kosmos_tx_default_view", LAST_STATE_KEY="kosmos_tx_last_state";
-const getState=()=>({fromDate:$("fromDate").value||"",toDate:$("toDate").value||"",mode:$("filterMode").value||"all",search:$("quickSearch").value||""});
-const setState=(s)=>{$("fromDate").value=s.fromDate||"";$("toDate").value=s.toDate||"";$("filterMode").value=s.mode||"all";$("quickSearch").value=s.search||"";applyAllFilters();};
-function loadViews(){ const sel=$("viewsSelect"); sel.innerHTML=""; const ph=document.createElement("option"); ph.value=""; ph.textContent="— Choose a view —"; sel.appendChild(ph); const v=JSON.parse(localStorage.getItem(VIEWS_KEY)||"[]"); const def=localStorage.getItem(DEFAULT_VIEW_KEY); (v||[]).forEach(x=>{const o=document.createElement("option"); o.value=x.id; o.textContent=x.name+(x.id===def?" ⭐":""); sel.appendChild(o);}); }
-function restore(){ const v=JSON.parse(localStorage.getItem(VIEWS_KEY)||"[]"); const def=localStorage.getItem(DEFAULT_VIEW_KEY); const d=(v||[]).find(x=>x.id===def); const last=JSON.parse(localStorage.getItem(LAST_STATE_KEY)||"null"); if(d) setState(d.state); else if(last) setState(last); }
-function persist(){ localStorage.setItem(LAST_STATE_KEY, JSON.stringify(getState())); }
-$("saveViewBtn").addEventListener("click",()=>{ const name=prompt("Name this view:"); if(!name) return; const views=JSON.parse(localStorage.getItem(VIEWS_KEY)||"[]"); const id="v_"+Date.now(); views.push({id,name,state:getState()}); localStorage.setItem(VIEWS_KEY,JSON.stringify(views)); loadViews(); $("viewsMsg").textContent=`Saved view “${name}”.`; setTimeout(()=>$("viewsMsg").textContent="",1500); });
-$("setDefaultViewBtn").addEventListener("click",()=>{ const id=$("viewsSelect").value; if(!id) return alert("Pick a view first."); localStorage.setItem(DEFAULT_VIEW_KEY,id); loadViews(); $("viewsMsg").textContent="Default set."; setTimeout(()=>$("viewsMsg").textContent="",1200); });
-$("deleteViewBtn").addEventListener("click",()=>{ const id=$("viewsSelect").value; if(!id) return alert("Pick a view to delete."); let v=JSON.parse(localStorage.getItem(VIEWS_KEY)||"[]"); const it=v.find(x=>x.id===id); if(!confirm(`Delete view “${it?.name||id}”?`)) return; v=v.filter(x=>x.id!==id); localStorage.setItem(VIEWS_KEY,JSON.stringify(v)); if(localStorage.getItem(DEFAULT_VIEW_KEY)===id) localStorage.removeItem(DEFAULT_VIEW_KEY); loadViews(); $("viewsSelect").value=""; $("viewsMsg").textContent="Deleted."; setTimeout(()=>$("viewsMsg").textContent="",1000); });
-$("filterBtn").addEventListener("click",()=>{ loadTransactions(); });
-let qd; $("quickSearch").addEventListener("input",()=>{ clearTimeout(qd); qd=setTimeout(()=>{applyAllFilters(); persist();},200); });
+    $("csvFile").addEventListener("change", async (e)=>{
+      const file=e.target.files?.[0]; if(!file) return;
+      const impStatus=$("impStatus"), impPrev=$("impPreview");
+      impStatus.textContent="Reading file…";
+      const text = await file.text();
 
-/* ===== Backfill & Export ===== */
-async function backfillSources(){ $("status").textContent="Backfilling sources…"; const { data, error } = await sb.rpc("backfill_transaction_sources"); if(error){ $("status").className="err"; $("status").textContent=error.message; return;} $("status").className="ok"; $("status").textContent=`Backfilled ${data??0} transactions.`; await loadTransactions(); }
-async function exportCSV(){ const { data, error } = await sb.from("v_accountant_export_receipts").select("*"); if(error||!data?.length){ alert("No export data."); return; } const head=Object.keys(data[0]); const out=[head.join(",")]; for(const row of data){ const line=head.map(h=>{const v=row[h]??""; return /[",\n]/.test(String(v))?`"${String(v).replace(/"/g,'""')}"`:v;}).join(","); out.push(line);} const blob=new Blob([out.join("\n")],{type:"text/csv"}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="accountant_export.csv"; a.click(); URL.revokeObjectURL(url); }
-$("backfillBtn").addEventListener("click", backfillSources);
-$("exportBtn").addEventListener("click", exportCSV);
+      const delim = detectDelimiter(text);
+      const rows  = parseCSV(text, delim);
+      if(!rows.length){ impStatus.className="err"; impStatus.textContent="Empty CSV."; return; }
 
-/* ===== SIMPLE CSV IMPORTER (smart debit/credit) ===== */
-const impBackdrop=$("impBackdrop"), csvInput=$("csvFile"), impStatus=$("impStatus"), prevBody=$("prevBody"), impPrev=$("impPreview");
-$("importBtn").addEventListener("click",()=>{ impStatus.textContent=""; prevBody.innerHTML=""; impPrev.style.display="none"; csvInput.value=""; impBackdrop.style.display="flex"; });
-$("closeImport").addEventListener("click",()=>{ impBackdrop.style.display="none"; });
+      const first = rows[0].map(x=>String(x||"").trim());
+      const headerHints = first.map(s=>s.toLowerCase());
+      const looksHeader =
+        headerHints.some(h => /(date|description|desc|memo|amount|debit|credit|withdrawal|deposit|type|institution|account|source)/.test(h)) ||
+        !likelyDate(first[0]);
 
-const DEBIT_WORDS = [
-  /PRE[- ]?AUTH[ -]?DEBIT/i, /PURCHASE/i, /\bPOS\b/i, /INTERAC/i, /WITHDRAWAL/i,
-  /BILL PAYMENT/i, /PAYMENT (?!(RECEIVED|FROM))/i, /E[- ]?TRANSFER SENT/i, /ETRANSFER SENT/i
-];
-const CREDIT_WORDS = [
-  /\bCREDIT\b/i, /DEPOSIT/i, /REFUND/i, /REVERSAL/i, /PAYOUT/i, /INTEREST/i,
-  /TRANSFER FROM/i, /E[- ]?TRANSFER (RECEIVED|AUTO DEPOSIT)/i, /ETRANSFER (RECEIVED|AUTO DEPOSIT)/i,
-  /PAYMENT RECEIVED/i
-];
+      const startRow = looksHeader ? 1 : 0;
+      const headers  = looksHeader ? headerHints : [];
 
-function guessRowDirection(desc, amt, defaultPositiveIsDebit){
-  if (amt < 0) return "debit";
-  if (amt > 0) {
-    if (CREDIT_WORDS.some(rx => rx.test(desc))) return "credit";
-    if (DEBIT_WORDS.some(rx => rx.test(desc)))  return "debit";
-    return defaultPositiveIsDebit ? "debit" : "credit";
-  }
-  return "credit";
-}
+      const dateIdx  = findIdx(headers, rows, startRow, ['date','transaction date','posting date'], 0, isDateCell);
+      const descIdx  = findIdx(headers, rows, startRow, ['description','desc','memo','name','details'], 1);
+      const amtIdx   = findIdx(headers, rows, startRow, ['amount','amt','value'], -1, isNumericCell);
+      const debitIdx = findIdx(headers, rows, startRow, ['debit','withdrawal','payment','charge']);
+      const creditIdx= findIdx(headers, rows, startRow, ['credit','deposit','refund','payout']);
+      const typeIdx  = findIdx(headers, rows, startRow, ['type','direction','dr/cr','drcr']);
+      const srcIdx   = findIdx(headers, rows, startRow, ['source','account','institution','account name','account description'], -1);
 
-csvInput.addEventListener("change", async (e)=>{
-  const file=e.target.files?.[0]; if(!file) return;
-  impStatus.textContent="Reading file…";
-  const text = await file.text();
+      const prelim=[];
+      for(let i=startRow;i<rows.length;i++){
+        const r = rows[i]; if(!r) continue;
+        const dRaw = r[dateIdx] ?? r[0];
+        const date = normalizeDate(dRaw);
+        const desc = String(r[descIdx] ?? r[1] ?? "").trim();
+        if(!date || !desc) continue;
 
-  const delim = detectDelimiter(text);
-  const raw   = parseCSV(text, delim);
+        let src = null;
+        if(srcIdx >= 0) src = String(r[srcIdx]||"").trim() || null;
 
-  const prelim = [];
-  for (const r of raw){
-    if(!r || r.length < 3) continue;
-    const dt  = normalizeDate(r[0]);
-    const desc= String(r[1]||"").trim();
-    const amt = parseNumberSmart(r[2]);
-    if(!dt || !desc || !Number.isFinite(amt)) continue;
-    const src = (r[3] ?? "").toString().trim() || null;
-    prelim.push({ dt, desc, amt, src });
-  }
-  if(!prelim.length){ impStatus.className="err"; impStatus.textContent="No valid rows found. Expected columns: Date, Description, Amount, (optional) Source."; return; }
+        let amount = null, direction = null;
 
-  const hasNegative = prelim.some(r => r.amt < 0);
-  let defaultPositiveIsDebit = false;
-  if(!hasNegative){
-    let debitHits = 0, creditHits = 0;
-    for(const r of prelim){
-      if (CREDIT_WORDS.some(rx => rx.test(r.desc))) creditHits++;
-      if (DEBIT_WORDS.some(rx => rx.test(r.desc)))  debitHits++;
+        // Prefer separate debit/credit columns when present
+        if(debitIdx >= 0 || creditIdx >= 0){
+          const d = debitIdx  >= 0 ? parseNumberSmart(r[debitIdx])  : NaN;
+          const c = creditIdx >= 0 ? parseNumberSmart(r[creditIdx]) : NaN;
+          if(Number.isFinite(d) && d>0 && (!Number.isFinite(c) || c===0)){ amount = d; direction = 'debit'; }
+          else if(Number.isFinite(c) && c>0 && (!Number.isFinite(d) || d===0)){ amount = c; direction = 'credit'; }
+          else if(Number.isFinite(c) && c>0 && Number.isFinite(d) && d>0){
+            if(c>d) { amount=c; direction='credit'; }
+            else if(d>c){ amount=d; direction='debit'; }
+            else {
+              const creditHit=CREDIT_WORDS.some(rx=>rx.test(desc));
+              const debitHit =DEBIT_WORDS.some(rx=>rx.test(desc));
+              direction = creditHit && !debitHit ? 'credit' : 'debit';
+              amount = c;
+            }
+          }
+        }
+
+        // Single amount? use sign or type column
+        if(amount===null && amtIdx >= 0){
+          let a = parseNumberSmart(r[amtIdx]);
+          if(Number.isFinite(a)){
+            const tRaw = typeIdx>=0 ? String(r[typeIdx]||"").toLowerCase() : "";
+            if(tRaw.includes('debit') || tRaw==='dr') { direction='debit'; amount=Math.abs(a); }
+            else if(tRaw.includes('credit') || tRaw==='cr'){ direction='credit'; amount=Math.abs(a); }
+            else {
+              if(a<0){ direction='debit'; amount=Math.abs(a); }
+              else if(a>0){
+                const creditHit=CREDIT_WORDS.some(rx=>rx.test(desc));
+                const debitHit =DEBIT_WORDS.some(rx=>rx.test(desc));
+                if(creditHit && !debitHit){ direction='credit'; amount=a; }
+                else if(debitHit && !creditHit){ direction='debit'; amount=a; }
+                else { direction='debit'; amount=a; } // conservative default
+              }
+            }
+          }
+        }
+
+        if(amount===null || !Number.isFinite(amount)) continue;
+        prelim.push({ date, desc, amount, direction, src });
+      }
+
+      if(!prelim.length){ impStatus.className="err"; impStatus.textContent="No valid rows after parsing. Check column layout."; return; }
+
+      // Preview
+      let dCount=0, cCount=0;
+      $("prevBody").innerHTML = prelim.slice(0,20).map(r=>{
+        (r.direction==='debit'?dCount++:cCount++);
+        return `<tr><td>${esc(r.date)}</td><td>${esc(r.desc)}</td><td class="right">${money(r.amount)}</td><td>${r.direction}</td><td>${esc(r.src||"")}</td></tr>`;
+      }).join("");
+      $("prevDebits").textContent = dCount; $("prevCredits").textContent = cCount;
+      impPrev.style.display = "block";
+
+      // Insert
+      impStatus.className="muted"; impStatus.textContent=`Importing ${prelim.length} rows…`;
+      let inserted=0;
+      for(let i=0;i<prelim.length;i+=300){
+        const chunk = prelim.slice(i,i+300).map(r=>({
+          txn_date: r.date,
+          post_date: r.date,
+          description: r.desc,
+          amount: r.amount,
+          direction: r.direction,
+          currency: "CAD",
+          source_account_name: r.src,
+          imported_via: "csv"
+        }));
+        const { error } = await sb.from("transactions").insert(chunk);
+        if(error){ impStatus.className="err"; impStatus.textContent=error.message; return; }
+        inserted += chunk.length;
+        impStatus.textContent = `Imported ${inserted}/${prelim.length}…`;
+      }
+      impStatus.className="ok"; impStatus.textContent=`✅ Imported ${inserted} transactions`;
+      $("impBackdrop").style.display="none";
+      await loadTransactions();
+    });
+
+    // ---------- CSV helpers ----------
+    function detectDelimiter(text){
+      const sample=text.split(/\r?\n/).slice(0,5).join("\n");
+      const c=(sample.match(/,/g)||[]).length, s=(sample.match(/;/g)||[]).length, t=(sample.match(/\t/g)||[]).length;
+      if(Math.max(c,s,t)===s) return ";"; if(Math.max(c,s,t)===t) return "\t"; return ",";
     }
-    defaultPositiveIsDebit = (debitHits >= creditHits);
-  }
-
-  const good = prelim.map(r => {
-    const direction = guessRowDirection(r.desc, r.amt, defaultPositiveIsDebit);
-    const amountAbs = Math.abs(r.amt);
-    return {
-      txn_date: r.dt,
-      post_date: r.dt,
-      description: r.desc,
-      amount: amountAbs,
-      direction,
-      currency: "CAD",
-      source_account_name: r.src,
-      imported_via: "csv"
-    };
-  });
-
-  prevBody.innerHTML = good.slice(0,20).map(r =>
-    `<tr><td>${esc(r.txn_date)}</td><td>${esc(r.description)}</td><td class="right">${money(r.amount)}</td><td>${esc(r.direction)}</td><td>${esc(r.source_account_name||"")}</td></tr>`
-  ).join("");
-  impPrev.style.display = "block";
-
-  impStatus.className="muted"; impStatus.textContent=`Importing ${good.length} rows…`;
-  let inserted=0;
-  for(let i=0;i<good.length;i+=300){
-    const chunk=good.slice(i,i+300);
-    const { error } = await sb.from("transactions").insert(chunk);
-    if(error){ impStatus.className="err"; impStatus.textContent=error.message; return; }
-    inserted += chunk.length;
-    impStatus.textContent = `Imported ${inserted}/${good.length}…`;
-  }
-  impStatus.className="ok"; impStatus.textContent=`✅ Imported ${inserted} transactions`;
-  impBackdrop.style.display="none";
-  await loadTransactions();
-});
-
-/* ===== CSV helpers ===== */
-function detectDelimiter(text){
-  const sample=text.split(/\r?\n/).slice(0,5).join("\n");
-  const c=(sample.match(/,/g)||[]).length, s=(sample.match(/;/g)||[]).length, t=(sample.match(/\t/g)||[]).length;
-  if(Math.max(c,s,t)===s) return ";"; if(Math.max(c,s,t)===t) return "\t"; return ",";
-}
-function parseCSV(text, delim){
-  const rows=[]; let i=0, field="", row=[], inQ=false;
-  const pushF=()=>{ row.push(field); field=""; }, pushR=()=>{ rows.push(row); row=[]; };
-  while(i<text.length){
-    const ch=text[i];
-    if(inQ){
-      if(ch==='"'){ if(text[i+1]==='"'){ field+='"'; i+=2; continue; } inQ=false; i++; continue; }
-      field+=ch; i++; continue;
-    }else{
-      if(ch==='"'){ inQ=true; i++; continue; }
-      if(ch===delim){ pushF(); i++; continue; }
-      if(ch==='\r'){ i++; continue; }
-      if(ch==='\n'){ pushF(); pushR(); i++; continue; }
-      field+=ch; i++; continue;
+    function parseCSV(text, delim){
+      const rows=[]; let i=0, field="", row=[], inQ=false;
+      const pushF=()=>{ row.push(field); field=""; }, pushR=()=>{ rows.push(row); row=[]; };
+      while(i<text.length){
+        const ch=text[i];
+        if(inQ){
+          if(ch==='"'){ if(text[i+1]==='"'){ field+='"'; i+=2; continue; } inQ=false; i++; continue; }
+          field+=ch; i++; continue;
+        }else{
+          if(ch==='"'){ inQ=true; i++; continue; }
+          if(ch===delim){ pushF(); i++; continue; }
+          if(ch==='\r'){ i++; continue; }
+          if(ch==='\n'){ pushF(); pushR(); i++; continue; }
+          field+=ch; i++; continue;
+        }
+      }
+      if(field.length||row.length){ pushF(); pushR(); }
+      return rows.filter(r=>r.some(c=>String(c).trim().length));
     }
-  }
-  if(field.length||row.length){ pushF(); pushR(); }
-  return rows.filter(r=>r.some(c=>String(c).trim().length));
-}
-function parseNumberSmart(v){
-  if(v==null) return NaN; let s=String(v).trim(); if(!s) return NaN;
-  if(/,/.test(s) && /\d,\d{2}$/.test(s) && !/\.\d{2}$/.test(s)){ s=s.replace(/\./g,"").replace(",","."); }
-  s=s.replace(/[^0-9\.\-\+]/g,"");
-  return Number(s);
-}
-function normalizeDate(v){
-  if(!v) return null; const s=String(v).trim();
-  let m=s.match(/^(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})$/); if(m) return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
-  m=s.match(/^(\d{1,2})[-\/\.](\d{1,2})[-\/\.](\d{4})$/); if(m) return `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;
-  if(/\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
-  return null;
-}
-
-/* ===== Upload Receipt ===== */
-let activeTxn=null;
-$("upCancel").addEventListener("click",()=> $("uploadBackdrop").style.display="none");
-$("upFile").addEventListener("change",(e)=>{ const f=e.target.files?.[0]; $("upPreview").src=f?URL.createObjectURL(f):""; });
-async function openUpload(id){
-  activeTxn = allRows.find(r=>r.id===id); if(!activeTxn) return;
-  $("upFile").value=""; $("upPreview").src="";
-  $("upVendor").value=""; $("upDate").value=(activeTxn.txn_date||"").slice(0,10);
-  $("upTotal").value=Number(activeTxn.amount||0).toFixed(2); $("upTax").value="0.00";
-  $("upNotes").value=""; $("upMsg").textContent="";
-  $("uploadBackdrop").style.display="flex";
-}
-$("upSave").addEventListener("click", async ()=>{
-  if(!activeTxn) return; const f=$("upFile").files?.[0]; if(!f){ $("upMsg").className="err"; $("upMsg").textContent="Please choose an image."; return; }
-  const vendor=$("upVendor").value.trim()||null, date=$("upDate").value||null,
-        total=$("upTotal").value?Number($("upTotal").value):null, tax=$("upTax").value?Number($("upTax").value):0,
-        notes=$("upNotes").value.trim()||null;
-  if(!date||!total){ $("upMsg").className="err"; $("upMsg").textContent="Date and Total are required."; return; }
-  $("upMsg").textContent="Uploading…";
-  const fname=`txn_${activeTxn.id}_${Date.now()}.png`;
-  const { data:upRes, error:upErr } = await sb.storage.from("receipts").upload(fname,f,{contentType:f.type||"image/png"});
-  if(upErr){ $("upMsg").className="err"; $("upMsg").textContent=upErr.message; return; }
-  const { data:pub } = sb.storage.from("receipts").getPublicUrl(upRes.path);
-  const image_url=pub?.publicUrl||null;
-  const ins={ org_id:activeTxn.org_id||null, account_id:activeTxn.account_id||null, image_url, size_bytes:f.size||0, receipt_date:date, total, tax, vendor, notes, source:"manual_upload" };
-  $("upMsg").textContent="Saving…";
-  const { data:rIns, error:rErr } = await sb.from("receipts").insert(ins).select("id").single();
-  if(rErr){ $("upMsg").className="err"; $("upMsg").textContent=rErr.message; return; }
-  const match={ org_id:activeTxn.org_id||null, transaction_id:activeTxn.id, receipt_id:rIns.id, matched_amount:total, confidence:0.99, method:"manual", match_type:"user_attach" };
-  const { error:mErr } = await sb.from("matches").insert(match);
-  if(mErr){ $("upMsg").className="err"; $("upMsg").textContent=mErr.message; return; }
-  $("uploadBackdrop").style.display="none"; await loadTransactions();
-});
-
-/* ===== Rules ===== */
-const ruleBackdrop=$("ruleBackdrop");
-$("ruleCancel").addEventListener("click",()=> ruleBackdrop.style.display="none");
-function openRule(id){
-  const r=allRows.find(x=>x.id===id); if(!r) return;
-  $("rulePattern").value=(r.vendor_clean||r.description||"").toUpperCase().replace(/\d{2,}/g,"").replace(/\s{2,}/g," ").trim();
-  $("ruleCategory").value=r.category||""; $("ruleSource").value=r.source_account_name||r.institution||""; $("ruleTax").value=""; $("ruleDirection").value=""; $("ruleAutoMatch").checked=false;
-  $("ruleMsg").textContent=""; ruleBackdrop.style.display="flex"; ruleBackdrop.setAttribute("data-txn",id);
-}
-async function saveRule(applyNow){
-  const vendor_pattern=$("rulePattern").value.trim(); const category=$("ruleCategory").value.trim(); const source=$("ruleSource").value.trim();
-  const taxVal=$("ruleTax").value?Number($("ruleTax").value):null; const direction_filter=$("ruleDirection").value||null; const auto_match=$("ruleAutoMatch").checked;
-  if(!vendor_pattern){ $("ruleMsg").className="err"; $("ruleMsg").textContent="Vendor Pattern is required."; return; }
-  $("ruleMsg").className="muted"; $("ruleMsg").textContent="Saving rule…";
-  const { error:rErr } = await sb.from("vendor_rules").insert({ vendor_pattern, category:category||null, source:source||null, tax:Number.isFinite(taxVal)?taxVal:null, direction_filter, auto_match });
-  if(rErr){ $("ruleMsg").className="err"; $("ruleMsg").textContent=rErr.message; return; }
-  if(!applyNow){ $("ruleMsg").className="ok"; $("ruleMsg").textContent="Rule saved."; setTimeout(()=>{ ruleBackdrop.style.display="none"; },600); return; }
-
-  $("ruleMsg").textContent="Applying…";
-  const like=`%${vendor_pattern}%`; let q=sb.from("transactions").select("id,org_id,account_id,txn_date,amount,direction,description").ilike("description",like);
-  if(direction_filter) q=q.eq("direction",direction_filter);
-  const { data:rows, error:sErr } = await q; if(sErr){ $("ruleMsg").className="err"; $("ruleMsg").textContent=sErr.message; return; }
-
-  let updated=0;
-  if(category){ const { count } = await sb.from("transactions").update({category}).ilike("description",like).is("category",null).select("id",{count:"exact",head:true}).maybeSingle(); updated += (count||0); }
-  if(source){ const { count } = await sb.from("transactions").update({source_account_name:source}).ilike("description",like).is("source_account_name",null).select("id",{count:"exact",head:true}).maybeSingle(); updated += (count||0); }
-
-  if(auto_match && rows?.length){
-    const ids=rows.map(r=>r.id); const { data:mrows } = await sb.from("matches").select("transaction_id").in("transaction_id",ids);
-    const matched=new Set((mrows||[]).map(m=>m.transaction_id)); const toCreate=rows.filter(r=>!matched.has(r.id));
-    if(toCreate.length){
-      const receipts=toCreate.map(r=>({ org_id:r.org_id||null, account_id:r.account_id||null, image_url:null, size_bytes:0, receipt_date:r.txn_date, total:Number(r.amount)||0, tax:0, vendor:vendor_pattern, source:"virtual_rule", notes:"Virtual receipt generated by rule" }));
-      const { data:insR, error:insErr } = await sb.from("receipts").insert(receipts).select("id"); if(insErr){ $("ruleMsg").className="err"; $("ruleMsg").textContent=insErr.message; return; }
-      const matches = toCreate.map((r,i)=>({ org_id:r.org_id||null, transaction_id:r.id, receipt_id:insR[i].id, matched_amount:Number(r.amount)||0, confidence:0.98, method:"rule_auto", match_type:"auto" }));
-      const { error:mErr } = await sb.from("matches").insert(matches); if(mErr){ $("ruleMsg").className="err"; $("ruleMsg").textContent=mErr.message; return; }
-      updated += toCreate.length;
+    function parseNumberSmart(v){
+      if(v==null) return NaN;
+      let s=String(v).trim(); if(!s) return NaN;
+      // Accounting negatives: (1,234.56)
+      const negParen = /^\(.*\)$/.test(s);
+      if(negParen) s = s.replace(/[()]/g,"");
+      // Euro style: 1.234,56 → 1234.56 (when comma is decimal)
+      if(/,/.test(s) && /\d,\d{2}$/.test(s) && !/\.\d{2}$/.test(s)){ s=s.replace(/\./g,"").replace(",","."); }
+      s=s.replace(/[^0-9\.\-\+]/g,"");
+      const num=Number(s);
+      return negParen ? -Math.abs(num) : num;
     }
-  }
-  $("ruleMsg").className="ok"; $("ruleMsg").textContent=`Rule saved and applied. Updated ${updated} rows.`;
-  setTimeout(async ()=>{ ruleBackdrop.style.display="none"; await loadTransactions(); },700);
-}
-$("ruleSave").addEventListener("click",()=>saveRule(false));
-$("ruleSaveApply").addEventListener("click",()=>saveRule(true));
+    function normalizeDate(v){
+      if(!v) return null; const s=String(v).trim();
+      let m=s.match(/^(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})$/); if(m) return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+      m=s.match(/^(\d{1,2})[-\/\.](\d{1,2})[-\/\.](\d{4})$/); if(m) return `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;
+      if(/\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+      return null;
+    }
+    function likelyDate(v){
+      const s=String(v||"").trim();
+      return /^(\d{4}[-\/\.]\d{1,2}[-\/\.]\d{1,2}|\d{1,2}[-\/\.]\d{1,2}[-\/\.]\d{4})$/.test(s);
+    }
+    function isNumericCell(v){ const n=parseNumberSmart(v); return Number.isFinite(n); }
+    function isDateCell(v){ return !!normalizeDate(v); }
+    function findIdx(headers, rows, startRow, names, fallbackIdx=-1, validator){
+      if(headers.length){
+        for(let i=0;i<headers.length;i++){
+          const h=headers[i];
+          if(names.some(n=> h.includes(n))) return i;
+        }
+      }
+      if(validator){
+        for(let i=0;i<Math.min(6, rows[startRow]?.length||0); i++){
+          if(validator(rows[startRow]?.[i])) return i;
+        }
+      }
+      return fallbackIdx;
+    }
 
-/* ===== Init ===== */
-loadViews(); restore(); loadTransactions();
-</script>
+    // ---------- CSV Export ----------
+    async function exportCSV(){
+      const { data, error } = await sb.from("transactions")
+        .select("txn_date,description,amount,direction,category,source_account_name")
+        .order("txn_date",{ascending:false});
+      if(error){ alert(error.message); return; }
+      const rows = [
+        ["Date","Description","Amount","Type","Category","Source"],
+        ...data.map(r => [
+          r.txn_date||"",
+          (r.description||"").replace(/[\r\n]+/g,' '),
+          r.amount,
+          r.direction,
+          r.category||"",
+          r.source_account_name||""
+        ])
+      ];
+      const csv = rows.map(r => r.map(cell => {
+        const s = String(cell??"");
+        return /[",\n;]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+      }).join("," )).join("\n");
+      const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "transactions_export.csv";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    // Initial load
+    loadTransactions();
+  </script>
+
+  <!-- Supabase init should already exist globally; if not, include your init script here. -->
 </body>
 </html>
