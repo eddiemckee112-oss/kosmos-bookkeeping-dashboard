@@ -19,6 +19,11 @@
     .cat-select{min-width:150px}
     .save-mark{font-size:12px;margin-left:6px;opacity:0;transition:opacity .2s}
     .save-mark.show{opacity:1}
+    .grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+    .field{display:flex;flex-direction:column;gap:6px}
+    .field label{font-weight:600}
+    .error{color:var(--err)}
   </style>
 </head>
 <body>
@@ -134,17 +139,55 @@
     </div>
   </div>
 
-  <!-- Upload Receipt Modal -->
+  <!-- Upload Receipt Modal: now with required fields -->
   <div id="uploadBackdrop" class="modal-backdrop">
     <div class="modal">
-      <h3>Attach Receipt</h3>
-      <p id="upDesc" class="muted small"></p>
-      <input id="uploadFile" type="file" accept="image/*" capture="environment"/>
+      <h3>Attach Receipt — Review & Save</h3>
+      <p id="upDesc" class="muted small" style="margin-top:-6px"></p>
+
+      <div class="grid-2" style="margin-top:12px">
+        <div class="field">
+          <label>Vendor<span class="err"> *</span></label>
+          <input id="upVendor" placeholder="Store or vendor name"/>
+        </div>
+        <div class="field">
+          <label>Receipt Date<span class="err"> *</span></label>
+          <input id="upDate" type="date"/>
+        </div>
+      </div>
+
+      <div class="grid-3" style="margin-top:8px">
+        <div class="field">
+          <label>Total<span class="err"> *</span></label>
+          <input id="upTotal" type="number" step="0.01" min="0"/>
+        </div>
+        <div class="field">
+          <label>Tax<span class="err"> *</span></label>
+          <input id="upTax" type="number" step="0.01" min="0" placeholder="0.00"/>
+        </div>
+        <div class="field">
+          <label>Category<span class="err"> *</span></label>
+          <select id="upCategory"></select>
+        </div>
+      </div>
+
+      <div class="field" style="margin-top:8px">
+        <label>Source (account)<span class="err"> *</span></label>
+        <input id="upSource" placeholder="e.g., CIBC Bank Account"/>
+      </div>
+
+      <div class="field" style="margin-top:8px">
+        <label>Upload image<span class="err"> *</span></label>
+        <input id="uploadFile" type="file" accept="image/*" capture="environment"/>
+      </div>
+
+      <p id="uploadError" class="error small" style="margin-top:6px"></p>
+      <p id="uploadStatus" class="small muted" style="margin-top:4px;"></p>
+
       <div class="row" style="justify-content:flex-end;margin-top:12px">
         <button id="cancelUpload" class="ghost">Cancel</button>
-        <button id="confirmUpload">Upload</button>
+        <button id="confirmUpload">Save receipt</button>
       </div>
-      <p id="uploadStatus" class="small muted" style="margin-top:10px;"></p>
     </div>
   </div>
 
@@ -253,7 +296,7 @@
           <td>${renderCategorySelect(r.category || "Uncategorized", r.id)}</td>
           <td>${esc(r.source_account_name||"")}</td>
           <td><button class="status-btn ${matched?'ok':'ghost'}">${matched?'Matched':'Unmatched'}</button></td>
-          <td><button class="upload-btn" onclick="openUpload('${r.id}','${esc(r.description||'')}', '${esc(r.txn_date||'')}', '${r.amount}')">📷 Upload</button></td>
+          <td><button class="upload-btn" onclick="openUpload('${r.id}','${esc(r.description||'')}', '${esc(r.txn_date||'')}', '${r.amount}','${esc(r.source_account_name||'')}')">📷 Upload</button></td>
         </tr>`;
       }).join("");
       $("rowsCount").textContent = `Rows: ${rows.length}`;
@@ -487,48 +530,113 @@
       }
     });
 
-    // ---- Upload Receipt ----
+    // ---- Upload Receipt (with required fields) ----
     let currentTxn = null;
-    function openUpload(id, desc, date, amt){
-      currentTxn = { id, desc, date, amt };
-      $("upDesc").textContent = `${desc} — ${money(amt)} on ${date}`;
+    function populateReceiptCategories(selected){
+      const opts = CATEGORY_OPTIONS.map(c => `<option value="${esc(c)}"${c===selected?' selected':''}>${esc(c)}</option>`).join("");
+      $("upCategory").innerHTML = opts;
+      if(!selected && CATEGORY_OPTIONS.includes("Uncategorized")) $("upCategory").value="Uncategorized";
+    }
+    function openUpload(id, desc, date, amt, source){
+      currentTxn = { id, desc, date, amt: Number(amt)||0, source: source||"" };
+      $("upDesc").textContent = `${desc} — ${money(currentTxn.amt)} on ${date}`;
       $("uploadFile").value = "";
+      $("uploadError").textContent = "";
       $("uploadStatus").textContent = "";
+
+      $("upVendor").value = desc || "";
+      $("upDate").value = (date||"").slice(0,10);
+      $("upTotal").value = currentTxn.amt ? currentTxn.amt.toFixed(2) : "";
+      $("upTax").value = "0.00";
+      $("upSource").value = source || "";
+      populateReceiptCategories("Uncategorized");
+
       $("uploadBackdrop").style.display = "flex";
     }
     window.openUpload = openUpload;
 
     $("cancelUpload").onclick = ()=>{ $("uploadBackdrop").style.display="none"; };
 
-    $("confirmUpload").onclick = async ()=>{
-      const file = $("uploadFile").files[0];
-      if(!file){ alert("Select a file first."); return; }
-      $("uploadStatus").textContent = "Uploading…";
+    function valNumber(el){
+      const n = Number(el.value);
+      return Number.isFinite(n) ? n : NaN;
+    }
 
+    $("confirmUpload").onclick = async ()=>{
+      $("uploadError").textContent = "";
+      $("uploadStatus").textContent = "";
+
+      // Validate fields
+      const vendor = $("upVendor").value.trim();
+      const date   = $("upDate").value;
+      const total  = valNumber($("upTotal"));
+      const tax    = valNumber($("upTax"));
+      const cat    = $("upCategory").value;
+      const src    = $("upSource").value.trim();
+      const file   = $("uploadFile").files[0];
+
+      if(!vendor || !date || !src || !file || !Number.isFinite(total) || !Number.isFinite(tax)){
+        $("uploadError").textContent = "Please complete all fields (Vendor, Date, Total, Tax, Category, Source, and Image).";
+        return;
+      }
+      if(total < 0 || tax < 0){
+        $("uploadError").textContent = "Amounts must be zero or positive.";
+        return;
+      }
+      if(tax > total){
+        $("uploadError").textContent = "Tax cannot exceed Total.";
+        return;
+      }
+
+      $("uploadStatus").textContent = "Uploading image…";
       const filename = `${Date.now()}_${file.name}`;
-      const { error } = await sb.storage.from("receipts-warm").upload(filename, file);
-      if(error){ $("uploadStatus").textContent = "Error: " + error.message; return; }
+      const { error: upErr } = await sb.storage.from("receipts-warm").upload(filename, file);
+      if(upErr){ $("uploadStatus").textContent = ""; $("uploadError").textContent = "Upload failed: " + upErr.message; return; }
 
       const imageUrl = `https://advihqhjjlxumgdlbwui.supabase.co/storage/v1/object/public/receipts-warm/${filename}`;
+
+      $("uploadStatus").textContent = "Saving receipt…";
 
       const { data: orgRow } = await sb.from("orgs").select("id").limit(1).single();
       const org_id = orgRow?.id || null;
 
-      const { error: err2 } = await sb.from("receipts").insert({
+      // Insert receipt
+      const { data: rIns, error: rErr } = await sb.from("receipts").insert([{
         org_id,
         account_id: null,
         image_url: imageUrl,
-        receipt_date: currentTxn.date,
-        total: currentTxn.amt,
-        vendor: currentTxn.desc,
-        source: "Manual Upload",
-        notes: "Uploaded from transaction view",
+        size_bytes: file.size || 0,
+        receipt_date: date,
+        total: total,
+        tax: tax,
+        category: cat || null,
+        vendor: vendor,
+        source: src,
+        notes: `Uploaded from transaction view for txn ${currentTxn.id}`,
         entered_by: "You"
-      });
-      if(err2){ $("uploadStatus").textContent = "Insert failed: "+err2.message; return; }
+      }]).select("id").single();
 
-      $("uploadStatus").textContent = "✅ Uploaded!";
-      setTimeout(()=>{ $("uploadBackdrop").style.display="none"; },800);
+      if(rErr){ $("uploadStatus").textContent = ""; $("uploadError").textContent = "Insert failed: " + rErr.message; return; }
+
+      const receipt_id = rIns?.id;
+      if(receipt_id){
+        $("uploadStatus").textContent = "Linking to transaction…";
+        await sb.from("matches").insert([{
+          org_id,
+          transaction_id: currentTxn.id,
+          receipt_id,
+          matched_amount: total,
+          confidence: 1,
+          method: "manual",
+          match_type: "exact"
+        }]);
+      }
+
+      $("uploadStatus").textContent = "✅ Saved & linked!";
+      setTimeout(async ()=>{
+        $("uploadBackdrop").style.display="none";
+        await loadTransactions();
+      }, 700);
     };
 
     // ---- Boot ----
