@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Kosmos Bookkeeping — Reports</title>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <style>
+    :root{--bg:#fafafa;--card:#fff;--border:#e5e7eb;
+           --muted:#6b7280;--ok:#0a7a33;--err:#b00020;
+           --ink:#111;--btn:#111;--btnH:#333;}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+         margin:0;background:var(--bg);color:var(--ink);}
+    header{background:#fff;border-bottom:1px solid var(--border);
+           padding:14px 24px;display:flex;justify-content:space-between;align-items:center;}
+    header h1{font-size:1.2rem;margin:0;}
+    nav a{margin-left:16px;color:var(--ink);text-decoration:none;font-weight:500;
+           padding:6px 10px;border-radius:8px;}
+    nav a:hover,nav a.active{background:#111;color:#fff;}
+    main{padding:32px;max-width:800px;margin:auto;}
+    h2{margin-top:0;}
+    .card{background:var(--card);border:1px solid var(--border);
+          border-radius:14px;padding:20px;margin-top:20px;}
+    label{display:inline-block;margin-right:10px;font-weight:600;}
+    input{padding:.55rem .75rem;border-radius:10px;border:1px solid #cfcfcf;background:#fff;}
+    button{padding:.6rem 1rem;border-radius:10px;border:1px solid #bbb;
+            background:var(--btn);color:#fff;cursor:pointer;}
+    button:hover{background:var(--btnH);}
+    .muted{color:var(--muted);} .ok{color:var(--ok);} .err{color:var(--err);}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📁 Kosmos Bookkeeping</h1>
+    <nav>
+      <a href="index.html">Dashboard</a>
+      <a href="receipts.html">Receipts</a>
+      <a href="transactions.html">Transactions</a>
+      <a href="matched.html">Matched</a>
+      <a href="reports.html" class="active">Reports</a>
+    </nav>
+  </header>
+
+  <main>
+    <h2>Accountant Export</h2>
+    <p class="muted">Download a full accountant-ready CSV for any period. It includes all receipts with tax, category, and totals.</p>
+
+    <div class="card">
+      <div style="margin-bottom:1rem;">
+        <label>From <input type="date" id="fromDate"></label>
+        <label>To <input type="date" id="toDate"></label>
+        <button id="exportBtn">Export Accountant CSV</button>
+      </div>
+      <p id="msg" class="muted"></p>
+    </div>
+  </main>
+
+  <script>
+    const SUPABASE_URL="https://advihqhjjlxumgdlbwui.supabase.co";
+    const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
+    const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+    const qs=id=>document.getElementById(id);
+    const msg=qs("msg");
+
+    function escCSV(v){ if(v==null)return""; const s=String(v); return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; }
+    function to2(n){ const v=Number(n); return Number.isNaN(v)?"":v.toFixed(2); }
+
+    async function exportCSV(){
+      msg.className="muted"; msg.textContent="Building export…";
+      const from=qs("fromDate").value||"1900-01-01";
+      const to=qs("toDate").value||"2100-12-31";
+      const {data,error}=await sb.from("v_accountant_export_receipts")
+        .select("*").gte("receipt_date",from).lte("receipt_date",to)
+        .order("receipt_date",{ascending:true});
+      if(error){ msg.className="err"; msg.textContent=error.message; return; }
+      if(!data.length){ msg.textContent="No receipts found for that range."; return; }
+
+      const cols=[
+        ["Date","receipt_date"],["Vendor","vendor"],["Category","category"],
+        ["Source","source"],["Subtotal","subtotal"],["Tax","tax"],
+        ["Total","total"],["Notes","notes"],["Image URL","image_url"]
+      ];
+      const header=cols.map(c=>c[0]).join(",");
+      const rows=data.map(r=>cols.map(c=>{
+        const key=c[1];
+        if(["subtotal","tax","total"].includes(key))return escCSV(to2(r[key]));
+        if(key==="receipt_date")return escCSV(String(r[key]).slice(0,10));
+        return escCSV(r[key]);
+      }).join(","));
+      const csv=[header,...rows].join("\n");
+
+      const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      const today=new Date().toISOString().slice(0,10);
+      a.href=url;
+      a.download=`kosmos_accountant_export_${today}.csv`;
+      document.body.appendChild(a);
+      a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      msg.className="ok"; msg.textContent=`Exported ${data.length} receipts to CSV.`;
+    }
+
+    qs("exportBtn").addEventListener("click",exportCSV);
+  </script>
+</body>
+</html>
