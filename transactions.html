@@ -6,23 +6,15 @@
   <title>Kosmos Bookkeeping — Transactions</title>
   <link rel="stylesheet" href="style.css"/>
   <style>
-    /* Page-specific tiny tweaks */
-    .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-    .pill { padding:4px 10px; border:1px solid var(--border); border-radius:999px; background:#fff; }
-    .status-btn { font-size:.8rem; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:#fff }
-    .status-btn.ok { background:#eef8f1; border-color:#cfe9d7; color:var(--ok) }
-    .status-btn.ghost { background:#fff }
-    .modal-backdrop{
-      position:fixed; inset:0; background:rgba(0,0,0,.18);
-      display:none; align-items:flex-start; justify-content:center; padding:40px 12px; z-index:50;
-    }
-    .modal{ background:#fff; width:min(980px,100%); border:1px solid var(--border); border-radius:16px; padding:16px 16px 18px; }
-    .note{ color:var(--muted); margin:.4rem 0 .6rem }
-    .right{text-align:right}
-    .muted{color:var(--muted)}
-    .err{color:var(--err)}
-    .ok{color:var(--ok)}
-    table tbody tr:hover{ background:#fff }
+    /* Page tweaks */
+    .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .pill{padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:#fff}
+    .status-btn{font-size:.8rem;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#fff}
+    .status-btn.ok{background:#eef8f1;border-color:#cfe9d7;color:var(--ok)}
+    .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.18);display:none;align-items:flex-start;justify-content:center;padding:40px 12px;z-index:50}
+    .modal{background:#fff;width:min(1100px,100%);max-height:85vh;overflow:auto;border:1px solid var(--border);border-radius:16px;padding:16px 16px 18px}
+    .right{text-align:right} .muted{color:var(--muted)} .ok{color:var(--ok)} .err{color:var(--err)}
+    .small{font-size:.85rem}
   </style>
 </head>
 <body>
@@ -39,7 +31,7 @@
 
   <main class="container">
     <h2>💳 Transactions</h2>
-    <p class="muted">Filter, import, categorize, save views, attach receipts, create vendor rules, and use bulk actions for speed.</p>
+    <p class="muted">Filter, import, categorize, attach receipts, create vendor rules, and use bulk actions for speed.</p>
 
     <!-- Filters / Actions -->
     <div class="card" style="margin-bottom:14px;">
@@ -62,15 +54,14 @@
 
         <button id="applyBtn">Apply</button>
 
-        <input id="quickSearch" placeholder="Search description/category/source…"
-               style="flex:1; min-width:220px"/>
+        <input id="quickSearch" placeholder="Search description/category/source…" style="flex:1;min-width:220px"/>
 
         <button id="importBtn" class="ghost">📥 Import CSV</button>
         <button id="backfillBtn" class="ghost">⟳ Backfill Sources</button>
         <button id="exportBtn" class="ghost">⬇️ Export CSV</button>
       </div>
 
-      <div class="row" style="gap:10px; margin-top:10px;">
+      <div class="row" style="gap:10px;margin-top:10px;">
         <span class="pill">Unmatched: <b id="chipUnmatched">—</b></span>
         <span class="pill">Uncategorized: <b id="chipUncat">—</b></span>
         <span class="pill">No Source: <b id="chipNoSource">—</b></span>
@@ -80,15 +71,11 @@
 
     <!-- Totals -->
     <div class="card" style="margin-bottom:14px;">
-      <div class="grid grid-2">
-        <div>
-          <div>Total Transactions: <b id="totalRows">—</b></div>
-          <div>Debits: <b id="totalDebits">$0.00</b></div>
-          <div>Credits: <b id="totalCredits">$0.00</b></div>
-          <div>Net: <b id="totalNet">$0.00</b></div>
-          <small class="muted">Numbers reflect the current filter.</small>
-        </div>
-      </div>
+      <div>Total Transactions: <b id="totalRows">—</b></div>
+      <div>Debits: <b id="totalDebits">$0.00</b></div>
+      <div>Credits: <b id="totalCredits">$0.00</b></div>
+      <div>Net: <b id="totalNet">$0.00</b></div>
+      <small class="muted">Numbers reflect the current filter.</small>
     </div>
 
     <!-- Table -->
@@ -112,48 +99,50 @@
     </div>
   </main>
 
-  <!-- ==== Importer Modal (FULL) ==== -->
+  <!-- ===== Importer Modal (FULL) ===== -->
   <div id="impBackdrop" class="modal-backdrop">
     <div class="modal">
       <h3>Import Transactions (CSV)</h3>
-      <p class="note">
-        We auto-detect delimiter, headers, and formats. Supported layouts:
-        <b>Date, Description, Amount</b> or <b>Date, Description, Debit, Credit</b>.
-        Optional columns like <b>Type</b> (debit/credit) or <b>Source</b> are recognized.
+      <p class="note muted small">
+        Auto-detects: <b>Date, Description, Amount</b> or <b>Date, Description, Debit, Credit</b>.  
+        Optional columns like <b>Type</b> (debit/credit) or <b>Source</b> are recognized. Handles $ signs, commas, and (parentheses) negatives.
       </p>
 
       <div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-        <input id="csvFile" type="file" accept=".csv,text/csv" />
+        <input id="csvFile" type="file" accept=".csv,text/csv"/>
         <button id="closeImport" class="ghost">Close</button>
       </div>
 
-      <p id="impStatus" class="muted" style="margin-top:10px;"></p>
+      <p id="impStatus" class="muted small" style="margin-top:10px;">Select a CSV to begin.</p>
+      <div class="kpill small" id="countPill" style="display:inline-block;margin-top:6px;">
+        Parsed — · Valid — · Skipped — · Debits — · Credits —
+      </div>
 
-      <div id="impPreview" class="card" style="margin-top:10px;display:none;">
+      <div id="impPreview" class="card" style="margin-top:12px;display:none;">
         <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
           <h4 style="margin:0">Preview (first 20 rows)</h4>
-          <div class="kpill">
-            Debits: <b id="prevDebits">0</b> • Credits: <b id="prevCredits">0</b>
-          </div>
         </div>
         <table style="width:100%;border-collapse:collapse;">
           <thead>
             <tr><th>Date</th><th>Description</th><th class="right">Amount</th><th>Direction</th><th>Source</th></tr>
           </thead>
-          <tbody id="prevBody"></tbody>
+          <tbody id="prevBody"><tr><td colspan="5" class="muted">No rows yet</td></tr></tbody>
         </table>
+      </div>
+
+      <div class="row" style="justify-content:flex-end;margin-top:12px">
+        <button id="importGo" class="ghost">Import</button>
       </div>
     </div>
   </div>
 
-  <!-- ====== Page Scripts ====== -->
+  <!-- ===== Scripts ===== -->
   <script>
-    // ---------- Tiny helpers ----------
     const $ = id => document.getElementById(id);
     const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const money = n => (n==null?0:n).toLocaleString(undefined,{style:"currency",currency:"CAD"});
 
-    // ---------- Data render ----------
+    // Load transactions
     async function loadTransactions(){
       const from = $("fromDate").value || null;
       const to   = $("toDate").value || null;
@@ -162,23 +151,19 @@
 
       let query = sb.from("transactions").select(`
         id, txn_date, description, amount, direction, category, source_account_name,
-        org_id, created_at,
-        matches:matches(id, transaction_id, receipt_id)
+        created_at, matches:matches(id, transaction_id, receipt_id)
       `);
 
       if (from) query = query.gte("txn_date", from);
       if (to)   query = query.lte("txn_date", to);
+      if (type === "debit")  query = query.eq("direction","debit");
+      if (type === "credit") query = query.eq("direction","credit");
 
-      if (type === "debit")   query = query.eq("direction","debit");
-      if (type === "credit")  query = query.eq("direction","credit");
-
-      // We'll fetch and then filter client-side for advanced chips/search
-      query = query.order("txn_date", {ascending:false});
+      query = query.order("txn_date",{ascending:false});
 
       const { data, error } = await query;
       if (error){ alert(error.message); return; }
 
-      // Client-side filters
       let rows = data || [];
       if (type === "matched")   rows = rows.filter(r => r.matches && r.matches.length);
       if (type === "unmatched") rows = rows.filter(r => !r.matches || r.matches.length===0);
@@ -195,270 +180,256 @@
       // Totals
       const d = rows.filter(r=>r.direction==='debit').reduce((s,r)=>s+(+r.amount||0),0);
       const c = rows.filter(r=>r.direction==='credit').reduce((s,r)=>s+(+r.amount||0),0);
-      $("totalRows").textContent = rows.length;
+      $("totalRows").textContent   = rows.length;
       $("totalDebits").textContent = money(d);
-      $("totalCredits").textContent = money(c);
-      $("totalNet").textContent = money(c - d);
+      $("totalCredits").textContent= money(c);
+      $("totalNet").textContent    = money(c-d);
 
-      // Chips (based on current set)
       $("chipUnmatched").textContent = rows.filter(r => !r.matches || r.matches.length===0).length;
       $("chipUncat").textContent     = rows.filter(r => !r.category).length;
       $("chipNoSource").textContent  = rows.filter(r => !r.source_account_name).length;
       $("chipDupes").textContent     = findDuplicates(rows).length;
 
-      // Render
-      const body = $("txBody");
-      body.innerHTML = rows.map(r => {
+      // Render table
+      $("txBody").innerHTML = rows.map(r=>{
         const statusOk = r.matches && r.matches.length;
-        return `
-          <tr>
-            <td><input type="checkbox" data-id="${esc(r.id)}"/></td>
-            <td>${esc(r.txn_date||"")}</td>
-            <td>${esc(r.description||"")}</td>
-            <td class="right">${money(r.amount)}</td>
-            <td>${esc(r.direction||"")}</td>
-            <td><button class="status-btn ${statusOk?'ok':'ghost'}">${statusOk?'Matched':'Unmatched'}</button></td>
-            <td>${esc(r.category||"")}</td>
-            <td>${esc(r.source_account_name||"")}</td>
-          </tr>
-        `;
+        return `<tr>
+          <td><input type="checkbox" data-id="${esc(r.id)}"/></td>
+          <td>${esc(r.txn_date||"")}</td>
+          <td>${esc(r.description||"")}</td>
+          <td class="right">${money(r.amount)}</td>
+          <td>${esc(r.direction||"")}</td>
+          <td><button class="status-btn ${statusOk?'ok':'ghost'}">${statusOk?'Matched':'Unmatched'}</button></td>
+          <td>${esc(r.category||"")}</td>
+          <td>${esc(r.source_account_name||"")}</td>
+        </tr>`;
       }).join("");
-
       $("rowsCount").textContent = `Rows: ${rows.length}`;
     }
 
     function findDuplicates(rows){
       const key = r => `${(r.txn_date||"").slice(0,10)}|${(r.amount||0)}|${(r.description||"").toLowerCase().replace(/\s+/g,' ').trim().slice(0,64)}`;
       const map = new Map();
-      rows.forEach(r => {
-        const k = key(r);
-        map.set(k, (map.get(k)||0)+1);
-      });
+      rows.forEach(r => map.set(key(r), (map.get(key(r))||0)+1));
       return rows.filter(r => map.get(key(r))>1);
     }
 
-    // ---------- Buttons ----------
     $("applyBtn").addEventListener("click", loadTransactions);
-    $("quickSearch").addEventListener("input", () => {
-      // Light debounce
-      clearTimeout(window.__qsTimer);
-      window.__qsTimer = setTimeout(loadTransactions, 150);
-    });
+    $("quickSearch").addEventListener("input", ()=>{ clearTimeout(window.__qsT); window.__qsT=setTimeout(loadTransactions,150); });
 
     $("backfillBtn").addEventListener("click", async ()=>{
-      // Derive a source from description if missing (simple heuristic)
-      const { error } = await sb.rpc("backfill_sources_simple");
-      if (error) return alert(error.message);
-      await loadTransactions();
+      if (!sb?.rpc){ alert("Supabase client not found."); return; }
+      const { error } = await sb.rpc("backfill_sources_simple"); // optional RPC you may have
+      if (error) alert(error.message); else loadTransactions();
     });
 
     $("exportBtn").addEventListener("click", exportCSV);
 
-    // ---------- Import Modal logic (FULL) ----------
-    $("importBtn").addEventListener("click",()=>{
-      $("impStatus").textContent="";
-      $("prevBody").innerHTML="";
+    // ------- Importer (auto-detect Amount OR Debit/Credit) -------
+    const CREDIT_RX = [/\bCREDIT\b/i,/DEPOSIT/i,/REFUND/i,/REVERSAL/i,/PAYOUT/i,/INTEREST/i,/TRANSFER FROM/i,/PAYMENT RECEIVED/i,/E[ -]?TRANSFER.*(RECEIVED|AUTO DEPOSIT)/i,/SQUARE CANADA INC/i,/STRIPE/i,/PAYPAL/i];
+    const DEBIT_RX  = [/PRE[ -]?AUTH[ -]?DEBIT/i,/PURCHASE/i,/\bPOS\b/i,/INTERAC/i,/WITHDRAWAL/i,/BILL PAYMENT/i,/PAYMENT(?! RECEIVED)/i,/E[ -]?TRANSFER(?!.*(RECEIVED|AUTO DEPOSIT))/i];
+
+    $("importBtn").addEventListener("click", ()=>{ openImporter(); });
+    $("closeImport").addEventListener("click", ()=>{ $("impBackdrop").style.display="none"; });
+
+    function openImporter(){
+      $("impStatus").className="muted small";
+      $("impStatus").textContent="Select a CSV to begin.";
+      $("countPill").textContent="Parsed — · Valid — · Skipped — · Debits — · Credits —";
+      $("prevBody").innerHTML=`<tr><td colspan="5" class="muted">No rows yet</td></tr>`;
       $("impPreview").style.display="none";
       $("csvFile").value="";
       $("impBackdrop").style.display="flex";
-    });
-    $("closeImport").addEventListener("click",()=>{ $("impBackdrop").style.display="none"; });
+      __valid=[]; __skipped=[]; __mode='A';
+    }
 
-    const CREDIT_WORDS = [
-      /\bCREDIT\b/i, /DEPOSIT/i, /REFUND/i, /REVERSAL/i, /PAYOUT/i, /INTEREST/i,
-      /TRANSFER FROM/i, /PAYMENT RECEIVED/i,
-      /E[ -]?TRANSFER.*(RECEIVED|AUTO DEPOSIT)/i,
-      /SQUARE CANADA INC/i, /STRIPE/i, /PAYPAL/i
-    ];
-    const DEBIT_WORDS = [
-      /PRE[ -]?AUTH[ -]?DEBIT/i, /PURCHASE/i, /\bPOS\b/i, /INTERAC/i, /WITHDRAWAL/i,
-      /BILL PAYMENT/i, /PAYMENT(?! RECEIVED)/i,
-      /E[ -]?TRANSFER(?!.*(RECEIVED|AUTO DEPOSIT))/i
-    ];
-
-    $("csvFile").addEventListener("change", async (e)=>{
-      const file=e.target.files?.[0]; if(!file) return;
-      const impStatus=$("impStatus"), impPrev=$("impPreview");
-      impStatus.textContent="Reading file…";
-      const text = await file.text();
-
-      const delim = detectDelimiter(text);
-      const rows  = parseCSV(text, delim);
-      if(!rows.length){ impStatus.className="err"; impStatus.textContent="Empty CSV."; return; }
-
-      const first = rows[0].map(x=>String(x||"").trim());
-      const headerHints = first.map(s=>s.toLowerCase());
-      const looksHeader =
-        headerHints.some(h => /(date|description|desc|memo|amount|debit|credit|withdrawal|deposit|type|institution|account|source)/.test(h)) ||
-        !likelyDate(first[0]);
-
-      const startRow = looksHeader ? 1 : 0;
-      const headers  = looksHeader ? headerHints : [];
-
-      const dateIdx  = findIdx(headers, rows, startRow, ['date','transaction date','posting date'], 0, isDateCell);
-      const descIdx  = findIdx(headers, rows, startRow, ['description','desc','memo','name','details'], 1);
-      const amtIdx   = findIdx(headers, rows, startRow, ['amount','amt','value'], -1, isNumericCell);
-      const debitIdx = findIdx(headers, rows, startRow, ['debit','withdrawal','payment','charge']);
-      const creditIdx= findIdx(headers, rows, startRow, ['credit','deposit','refund','payout']);
-      const typeIdx  = findIdx(headers, rows, startRow, ['type','direction','dr/cr','drcr']);
-      const srcIdx   = findIdx(headers, rows, startRow, ['source','account','institution','account name','account description'], -1);
-
-      const prelim=[];
-      for(let i=startRow;i<rows.length;i++){
-        const r = rows[i]; if(!r) continue;
-        const dRaw = r[dateIdx] ?? r[0];
-        const date = normalizeDate(dRaw);
-        const desc = String(r[descIdx] ?? r[1] ?? "").trim();
-        if(!date || !desc) continue;
-
-        let src = null;
-        if(srcIdx >= 0) src = String(r[srcIdx]||"").trim() || null;
-
-        let amount = null, direction = null;
-
-        // Prefer separate debit/credit columns when present
-        if(debitIdx >= 0 || creditIdx >= 0){
-          const d = debitIdx  >= 0 ? parseNumberSmart(r[debitIdx])  : NaN;
-          const c = creditIdx >= 0 ? parseNumberSmart(r[creditIdx]) : NaN;
-          if(Number.isFinite(d) && d>0 && (!Number.isFinite(c) || c===0)){ amount = d; direction = 'debit'; }
-          else if(Number.isFinite(c) && c>0 && (!Number.isFinite(d) || d===0)){ amount = c; direction = 'credit'; }
-          else if(Number.isFinite(c) && c>0 && Number.isFinite(d) && d>0){
-            if(c>d) { amount=c; direction='credit'; }
-            else if(d>c){ amount=d; direction='debit'; }
-            else {
-              const creditHit=CREDIT_WORDS.some(rx=>rx.test(desc));
-              const debitHit =DEBIT_WORDS.some(rx=>rx.test(desc));
-              direction = creditHit && !debitHit ? 'credit' : 'debit';
-              amount = c;
-            }
-          }
-        }
-
-        // Single amount? use sign or type column
-        if(amount===null && amtIdx >= 0){
-          let a = parseNumberSmart(r[amtIdx]);
-          if(Number.isFinite(a)){
-            const tRaw = typeIdx>=0 ? String(r[typeIdx]||"").toLowerCase() : "";
-            if(tRaw.includes('debit') || tRaw==='dr') { direction='debit'; amount=Math.abs(a); }
-            else if(tRaw.includes('credit') || tRaw==='cr'){ direction='credit'; amount=Math.abs(a); }
-            else {
-              if(a<0){ direction='debit'; amount=Math.abs(a); }
-              else if(a>0){
-                const creditHit=CREDIT_WORDS.some(rx=>rx.test(desc));
-                const debitHit =DEBIT_WORDS.some(rx=>rx.test(desc));
-                if(creditHit && !debitHit){ direction='credit'; amount=a; }
-                else if(debitHit && !creditHit){ direction='debit'; amount=a; }
-                else { direction='debit'; amount=a; } // conservative default
-              }
-            }
-          }
-        }
-
-        if(amount===null || !Number.isFinite(amount)) continue;
-        prelim.push({ date, desc, amount, direction, src });
-      }
-
-      if(!prelim.length){ impStatus.className="err"; impStatus.textContent="No valid rows after parsing. Check column layout."; return; }
-
-      // Preview
-      let dCount=0, cCount=0;
-      $("prevBody").innerHTML = prelim.slice(0,20).map(r=>{
-        (r.direction==='debit'?dCount++:cCount++);
-        return `<tr><td>${esc(r.date)}</td><td>${esc(r.desc)}</td><td class="right">${money(r.amount)}</td><td>${r.direction}</td><td>${esc(r.src||"")}</td></tr>`;
-      }).join("");
-      $("prevDebits").textContent = dCount; $("prevCredits").textContent = cCount;
-      impPrev.style.display = "block";
-
-      // Insert
-      impStatus.className="muted"; impStatus.textContent=`Importing ${prelim.length} rows…`;
-      let inserted=0;
-      for(let i=0;i<prelim.length;i+=300){
-        const chunk = prelim.slice(i,i+300).map(r=>({
-          txn_date: r.date,
-          post_date: r.date,
-          description: r.desc,
-          amount: r.amount,
-          direction: r.direction,
-          currency: "CAD",
-          source_account_name: r.src,
-          imported_via: "csv"
-        }));
-        const { error } = await sb.from("transactions").insert(chunk);
-        if(error){ impStatus.className="err"; impStatus.textContent=error.message; return; }
-        inserted += chunk.length;
-        impStatus.textContent = `Imported ${inserted}/${prelim.length}…`;
-      }
-      impStatus.className="ok"; impStatus.textContent=`✅ Imported ${inserted} transactions`;
-      $("impBackdrop").style.display="none";
-      await loadTransactions();
-    });
-
-    // ---------- CSV helpers ----------
-    function detectDelimiter(text){
-      const sample=text.split(/\r?\n/).slice(0,5).join("\n");
+    // CSV utils
+    function detectDelimiterBlock(sample){
       const c=(sample.match(/,/g)||[]).length, s=(sample.match(/;/g)||[]).length, t=(sample.match(/\t/g)||[]).length;
       if(Math.max(c,s,t)===s) return ";"; if(Math.max(c,s,t)===t) return "\t"; return ",";
     }
-    function parseCSV(text, delim){
-      const rows=[]; let i=0, field="", row=[], inQ=false;
-      const pushF=()=>{ row.push(field); field=""; }, pushR=()=>{ rows.push(row); row=[]; };
-      while(i<text.length){
-        const ch=text[i];
-        if(inQ){
-          if(ch==='"'){ if(text[i+1]==='"'){ field+='"'; i+=2; continue; } inQ=false; i++; continue; }
-          field+=ch; i++; continue;
-        }else{
-          if(ch==='"'){ inQ=true; i++; continue; }
-          if(ch===delim){ pushF(); i++; continue; }
-          if(ch==='\r'){ i++; continue; }
-          if(ch==='\n'){ pushF(); pushR(); i++; continue; }
-          field+=ch; i++; continue;
-        }
+    function parseLine(line, delim){
+      const out=[]; let cur='', q=false;
+      for(let i=0;i<line.length;i++){
+        const ch=line[i];
+        if(ch==='"'){ if(q && line[i+1]==='"'){cur+='"';i++;} else q=!q; }
+        else if(ch===delim && !q){ out.push(cur); cur=''; }
+        else cur+=ch;
       }
-      if(field.length||row.length){ pushF(); pushR(); }
-      return rows.filter(r=>r.some(c=>String(c).trim().length));
+      out.push(cur);
+      return out.map(x=>x.trim());
     }
-    function parseNumberSmart(v){
-      if(v==null) return NaN;
-      let s=String(v).trim(); if(!s) return NaN;
-      // Accounting negatives: (1,234.56)
-      const negParen = /^\(.*\)$/.test(s);
-      if(negParen) s = s.replace(/[()]/g,"");
-      // Euro style: 1.234,56 → 1234.56 (when comma is decimal)
-      if(/,/.test(s) && /\d,\d{2}$/.test(s) && !/\.\d{2}$/.test(s)){ s=s.replace(/\./g,"").replace(",","."); }
-      s=s.replace(/[^0-9\.\-\+]/g,"");
-      const num=Number(s);
-      return negParen ? -Math.abs(num) : num;
-    }
-    function normalizeDate(v){
-      if(!v) return null; const s=String(v).trim();
-      let m=s.match(/^(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})$/); if(m) return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
-      m=s.match(/^(\d{1,2})[-\/\.](\d{1,2})[-\/\.](\d{4})$/); if(m) return `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;
-      if(/\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
-      return null;
-    }
-    function likelyDate(v){
-      const s=String(v||"").trim();
-      return /^(\d{4}[-\/\.]\d{1,2}[-\/\.]\d{1,2}|\d{1,2}[-\/\.]\d{1,2}[-\/\.]\d{4})$/.test(s);
-    }
-    function isNumericCell(v){ const n=parseNumberSmart(v); return Number.isFinite(n); }
-    function isDateCell(v){ return !!normalizeDate(v); }
-    function findIdx(headers, rows, startRow, names, fallbackIdx=-1, validator){
-      if(headers.length){
-        for(let i=0;i<headers.length;i++){
-          const h=headers[i];
-          if(names.some(n=> h.includes(n))) return i;
-        }
+    function parseCSV(text){
+      const firstBlock = text.split(/\r?\n/).slice(0,8).join("\n");
+      const delim = detectDelimiterBlock(firstBlock);
+      const lines = text.replace(/\r\n/g,"\n").replace(/\r/g,"\n").split("\n");
+      const rows = [];
+      for(const l of lines){
+        if(l.trim()===""){ rows.push(null); continue; }
+        rows.push(parseLine(l,delim));
       }
-      if(validator){
-        for(let i=0;i<Math.min(6, rows[startRow]?.length||0); i++){
-          if(validator(rows[startRow]?.[i])) return i;
-        }
-      }
-      return fallbackIdx;
+      return { rows, delim };
+    }
+    function isDateLike(s){
+      if(!s) return false;
+      const t=String(s).trim();
+      if(/^\d{4}[-/]\d{2}[-/]\d{2}$/.test(t)) return true;
+      const d=new Date(t); return !isNaN(d.valueOf());
+    }
+    function toISO(s){
+      if(!s) return null;
+      const t=String(s).trim();
+      if(/^\d{4}[-/]\d{2}[-/]\d{2}$/.test(t)) return t.replace(/\//g,"-");
+      const d=new Date(t); if(isNaN(d.valueOf())) return null;
+      return d.toISOString().slice(0,10);
+    }
+    function parseNum(s){
+      if(s==null) return null;
+      let v=String(s).trim();
+      if(!v) return null;
+      const paren = /^\(.*\)$/.test(v); if(paren) v=v.replace(/[()]/g,"");
+      v = v.replace(/\$/g,"").replace(/,/g,"");
+      const n = Number(v); if(Number.isNaN(n)) return null;
+      return paren ? -Math.abs(n) : n;
     }
 
-    // ---------- CSV Export ----------
+    let __valid = [];   // {date, desc, amount, direction, source}
+    let __skipped = []; // {line, reason}
+    let __mode = 'A';   // 'A' amount OR 'B' debit/credit
+
+    $("csvFile").addEventListener("change", async (e)=>{
+      __valid=[]; __skipped=[];
+      const f=e.target.files?.[0]; if(!f) return;
+      $("impStatus").textContent="Reading file…";
+
+      const text = await f.text();
+      const { rows } = parseCSV(text);
+
+      // Count parsed lines (non-null in array, including header/blank handling)
+      const parsedLines = rows.filter(r => r !== undefined).length;
+
+      // Remove completely null/blank rows for mapping purposes (keep count with __skipped later)
+      const nonBlank = rows.filter(r => r && r.some(x=>String(x).trim().length));
+
+      if(nonBlank.length===0){
+        $("impStatus").className="err small";
+        $("impStatus").textContent="No rows detected in this file.";
+        $("countPill").textContent=`Parsed ${parsedLines} · Valid 0 · Skipped ${parsedLines} · Debits 0 · Credits 0`;
+        $("impPreview").style.display="none";
+        return;
+      }
+
+      // Header?
+      let start = 0;
+      if(nonBlank[0] && !isDateLike(nonBlank[0][0])) start = 1;
+
+      // Column layout detection (A: Amount; B: Debit/Credit)
+      __mode = 'A';
+      const hdr = nonBlank[start-1] || [];
+      const h2 = (hdr[2]||'').toLowerCase();
+      const h3 = (hdr[3]||'').toLowerCase();
+      if(/debit|withdrawal/.test(h2) || /credit|deposit/.test(h3)) __mode='B';
+
+      let debSum=0, credSum=0;
+
+      for(let i=start;i<nonBlank.length;i++){
+        const r = nonBlank[i];
+        const date = toISO(r[0]);
+        const desc = String(r[1]||"").trim();
+        if(!date || !desc){ __skipped.push({line:i+1,reason:'bad date/desc'}); continue; }
+
+        let amount=null, direction='', src = (r[4]||"").trim() || null;
+
+        if(__mode==='B'){
+          const debit  = parseNum(r[2]);
+          const credit = parseNum(r[3]);
+          if(credit!=null && credit>0){ amount=credit; direction='credit'; credSum+=amount; }
+          else if(debit!=null && debit!==0){ amount=Math.abs(debit); direction='debit'; debSum+=amount; }
+          else { __skipped.push({line:i+1,reason:'no debit/credit'}); continue; }
+        } else {
+          const a = parseNum(r[2]);
+          if(a==null){ __skipped.push({line:i+1,reason:'no amount'}); continue; }
+          if(a<0){ amount=Math.abs(a); direction='debit'; debSum+=amount; }
+          else if(a>0){ 
+            // Use description hints for all-positive files
+            const creditHit = CREDIT_RX.some(rx=>rx.test(desc));
+            const debitHit  = DEBIT_RX.some(rx=>rx.test(desc));
+            direction = creditHit && !debitHit ? 'credit' : (debitHit && !creditHit ? 'debit' : 'debit');
+            amount = a; 
+            if(direction==='credit') credSum+=amount; else debSum+=amount;
+          } else { __skipped.push({line:i+1,reason:'zero amount'}); continue; }
+        }
+
+        __valid.push({date, desc, amount, direction, source: src});
+      }
+
+      const validCount   = __valid.length;
+      const skippedCount = Math.max(parsedLines - (start>0?1:0) - validCount, 0);
+
+      $("countPill").textContent = `Parsed ${parsedLines} · Valid ${validCount} · Skipped ${skippedCount} · Debits ${debSum.toFixed(2)} · Credits ${credSum.toFixed(2)}`;
+
+      if(validCount===0){
+        $("impStatus").className="err small";
+        $("impStatus").textContent="No valid rows after parsing. Check date/amount formats.";
+        $("impPreview").style.display="none";
+        return;
+      }
+
+      // Preview first 20
+      const first20 = __valid.slice(0,20);
+      $("prevBody").innerHTML = first20.map(v => `
+        <tr>
+          <td>${esc(v.date)}</td>
+          <td>${esc(v.desc)}</td>
+          <td class="right">${money(v.amount)}</td>
+          <td>${v.direction}</td>
+          <td>${esc(v.source||"")}</td>
+        </tr>
+      `).join("");
+      $("impPreview").style.display="block";
+
+      $("impStatus").className="muted small";
+      $("impStatus").textContent = `Ready to import ${validCount} transactions.`;
+    });
+
+    $("importGo").addEventListener("click", async ()=>{
+      if(!__valid.length){ alert("No valid rows."); return; }
+      if(!sb?.from){ alert("Supabase client not found."); return; }
+
+      $("impStatus").className="muted small";
+      $("impStatus").textContent=`Importing ${__valid.length} transactions…`;
+
+      const rows = __valid.map(v=>({
+        txn_date: v.date,
+        post_date: v.date,
+        description: v.desc,
+        amount: v.amount,
+        direction: v.direction,
+        source_account_name: v.source,
+        currency: "CAD",
+        imported_via: "csv"
+      }));
+
+      try{
+        for(let i=0;i<rows.length;i+=300){
+          const chunk = rows.slice(i,i+300);
+          const { error } = await sb.from("transactions").insert(chunk);
+          if(error) throw error;
+          $("impStatus").textContent = `Importing ${rows.length}… ${Math.min(i+300,rows.length)}/${rows.length}`;
+        }
+        $("impStatus").className="ok small";
+        $("impStatus").textContent=`✅ Imported ${rows.length} transactions.`;
+        $("impBackdrop").style.display="none";
+        await loadTransactions();
+      }catch(err){
+        $("impStatus").className="err small";
+        $("impStatus").textContent=String(err.message||err);
+      }
+    });
+
+    // Open/close modal
+    function openImporter(){ $("impBackdrop").style.display="flex"; }
+    // -------- Export ----------
     async function exportCSV(){
       const { data, error } = await sb.from("transactions")
         .select("txn_date,description,amount,direction,category,source_account_name")
@@ -466,31 +437,27 @@
       if(error){ alert(error.message); return; }
       const rows = [
         ["Date","Description","Amount","Type","Category","Source"],
-        ...data.map(r => [
+        ...data.map(r=>[
           r.txn_date||"",
-          (r.description||"").replace(/[\r\n]+/g,' '),
+          (r.description||"").replace(/[\r\n]+/g," "),
           r.amount,
           r.direction,
           r.category||"",
           r.source_account_name||""
         ])
       ];
-      const csv = rows.map(r => r.map(cell => {
-        const s = String(cell??"");
-        return /[",\n;]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
-      }).join("," )).join("\n");
-      const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "transactions_export.csv";
-      a.click();
+      const csv = rows.map(r=>r.map(cell=>{
+        const s=String(cell??"");
+        return /[",\n;]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;
+      }).join(",")).join("\n");
+      const blob = new Blob([csv],{type:"text/csv;charset=utf-8"});
+      const a=document.createElement("a");
+      a.href=URL.createObjectURL(blob); a.download="transactions_export.csv"; a.click();
       URL.revokeObjectURL(a.href);
     }
 
-    // Initial load
+    // Boot
     loadTransactions();
   </script>
-
-  <!-- Supabase init should already exist globally; if not, include your init script here. -->
 </body>
 </html>
