@@ -62,6 +62,10 @@
 
     /* Health chips row */
     .chips{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+
+    /* Views control */
+    .viewsbar{ display:flex; align-items:center; gap:8px; }
+    .viewsbar select{ min-width:200px; }
   </style>
 </head>
 <body>
@@ -77,7 +81,7 @@
 
   <main class="container">
     <h2>💳 Transactions</h2>
-    <p class="muted">Filter, import, categorize, and export your transactions. Edit inline, attach receipts, and use bulk actions for speed.</p>
+    <p class="muted">Filter, import, categorize, and export your transactions. Edit inline, attach receipts, save views, and use bulk actions for speed.</p>
 
     <!-- Filters / Actions -->
     <div class="card">
@@ -108,7 +112,18 @@
         <button id="backfillBtn" class="ghost" title="Fill missing Source from Accounts">↺ Backfill Sources</button>
         <button id="exportBtn" class="ghost">📁 Export CSV</button>
       </div>
-      <div class="hint">Status is clickable when matched and jumps to the receipt. “Source” prefers the account name (or falls back to institution).</div>
+
+      <!-- Views row -->
+      <div class="viewsbar" style="margin-top:8px;">
+        <label>Saved View:</label>
+        <select id="viewsSelect"></select>
+        <button id="saveViewBtn" class="ghost" title="Save current filters as a preset">💾 Save Current</button>
+        <button id="setDefaultViewBtn" class="ghost" title="Make selected view the default">⭐ Set Default</button>
+        <button id="deleteViewBtn" class="ghost" title="Delete selected view">🗑️ Delete</button>
+        <span class="muted" id="viewsMsg"></span>
+      </div>
+
+      <div class="hint">Status is clickable when matched and jumps to the receipt. “Source” prefers the account name (or falls back to institution). Your last filters auto-restore.</div>
       <p id="status" class="muted" style="margin-top:6px;"></p>
 
       <!-- Health chips -->
@@ -333,6 +348,13 @@
     const countNoSource = $("countNoSource");
     const countDupes = $("countDupes");
 
+    // Views (localStorage)
+    const VIEWS_KEY = "kosmos_tx_views";
+    const LAST_STATE_KEY = "kosmos_tx_last_state";
+    const DEFAULT_VIEW_KEY = "kosmos_tx_default_view";
+    const viewsSelect = $("viewsSelect");
+    const viewsMsg = $("viewsMsg");
+
     // ===== Load & Filter =====
     async function loadTransactions() {
       const from = $("fromDate").value || "1900-01-01";
@@ -366,7 +388,7 @@
     }
 
     function refreshHealthChips(){
-      // Unmatched
+      // Unmatched / Uncategorized / No Source
       let unmatched = 0, uncat = 0, noSrc = 0;
       for (const r of allRows) {
         const hasMatch = txToReceipts.has(r.id);
@@ -381,14 +403,14 @@
       countUncat.textContent = uncat;
       countNoSource.textContent = noSrc;
 
-      // Simple duplicate detector: key by (date, amount, vendor_clean or description)
+      // Simple duplicate detector
       const seen = new Map();
       let dupes = 0;
       for (const r of allRows) {
         const key = `${r.txn_date}|${Number(r.amount)||0}|${(r.vendor_clean||r.description||"").trim().toUpperCase()}`;
         const c = (seen.get(key) || 0) + 1;
         seen.set(key, c);
-        if (c === 2) dupes++; // count only additional groups once
+        if (c === 2) dupes++;
       }
       countDupes.textContent = dupes;
     }
@@ -431,6 +453,7 @@
 
       viewRows = rows;
       renderTable(viewRows);
+      persistLastState(); // save current UI state
     }
 
     function renderError(msg) {
@@ -451,7 +474,6 @@
       selCount.textContent = String(count);
       bulkbar.classList.toggle("show", count > 0);
     }
-
     function toggleRowSelection(id, checked){
       if (checked) selected.add(id); else selected.delete(id);
       updateBulkbar();
@@ -517,7 +539,6 @@
           ? `<a class="badge ok" title="View on Receipts page" href="receipts.html?focus=${encodeURIComponent(firstRid)}">✅ Matched${receiptIds.length>1?` (${receiptIds.length})`:``}</a>`
           : `<span class="badge muted">Unmatched</span>`;
         const btn = `<button class="ghost btn-upload" data-id="${t.id}">Upload Receipt</button>`;
-
         const isChecked = selected.has(t.id) ? 'checked' : '';
 
         return `<tr data-id="${t.id}">
@@ -797,11 +818,9 @@
       return null;
     }
 
-    // Backfill Sources (RPC)
-    $("backfillBtn").addEventListener("click", backfillSources);
-
-    // Filters & search
+    // ===== Filters & search =====
     $("filterBtn").addEventListener("click", loadTransactions);
+
     // Debounced quick search
     let qd;
     quickSearch.addEventListener("input", () => {
@@ -818,7 +837,7 @@
         viewRows.forEach(r => selected.delete(r.id));
       }
       updateBulkbar();
-      renderTable(viewRows); // reflect checkboxes
+      renderTable(viewRows);
     });
 
     // Bulk apply: Category
@@ -871,8 +890,7 @@
     chipUnmatched.addEventListener("click", ()=>{ $("filterMode").value="unmatched"; applyAllFilters(); });
     chipUncategorized.addEventListener("click", ()=>{ $("filterMode").value="uncategorized"; applyAllFilters(); });
     chipNoSource.addEventListener("click", ()=>{ $("filterMode").value="without_source"; applyAllFilters(); });
-    chipDupes.addEventListener("click", ()=>{ // simple dupe filter
-      // show only duplicates in current date range
+    chipDupes.addEventListener("click", ()=>{ // show only duplicates
       const seen = new Map();
       const dups = new Set();
       for (const r of allRows) {
@@ -884,6 +902,104 @@
       for (const [,arr] of seen) if (arr.length>1) arr.forEach(id=>dups.add(id));
       viewRows = allRows.filter(r => dups.has(r.id));
       renderTable(viewRows);
+    });
+
+    // ===== Views (Saved presets) =====
+    function loadViews(){
+      let views = [];
+      try { views = JSON.parse(localStorage.getItem(VIEWS_KEY) || "[]"); } catch {}
+      // Always include “— Quick —” and “Default” at top of select as placeholders
+      viewsSelect.innerHTML = "";
+      const placeholder = document.createElement("option");
+      placeholder.value = ""; placeholder.textContent = "— Choose a view —";
+      viewsSelect.appendChild(placeholder);
+
+      const defId = localStorage.getItem(DEFAULT_VIEW_KEY);
+      (views || []).forEach(v => {
+        const opt = document.createElement("option");
+        opt.value = v.id;
+        opt.textContent = v.name + (v.id===defId ? " ⭐" : "");
+        viewsSelect.appendChild(opt);
+      });
+    }
+
+    function currentUiState(){
+      return {
+        fromDate: $("fromDate").value || "",
+        toDate: $("toDate").value || "",
+        mode: $("filterMode").value || "all",
+        search: $("quickSearch").value || "",
+      };
+    }
+
+    function applyUiState(state){
+      $("fromDate").value = state.fromDate || "";
+      $("toDate").value = state.toDate || "";
+      $("filterMode").value = state.mode || "all";
+      $("quickSearch").value = state.search || "";
+      applyAllFilters();
+    }
+
+    function persistLastState(){
+      try { localStorage.setItem(LAST_STATE_KEY, JSON.stringify(currentUiState())); } catch {}
+    }
+
+    function restoreOnLoad(){
+      const views = JSON.parse(localStorage.getItem(VIEWS_KEY) || "[]");
+      const defId = localStorage.getItem(DEFAULT_VIEW_KEY);
+      const def = (views || []).find(v => v.id === defId);
+
+      const last = JSON.parse(localStorage.getItem(LAST_STATE_KEY) || "null");
+      // Priority: default view if set, else last state, else no-op
+      if (def) applyUiState(def.state);
+      else if (last) applyUiState(last);
+    }
+
+    $("saveViewBtn").addEventListener("click", ()=>{
+      const name = prompt("Name this view (e.g., Unmatched this month):");
+      if (!name) return;
+      const views = JSON.parse(localStorage.getItem(VIEWS_KEY) || "[]");
+      const id = "v_" + Date.now();
+      const state = currentUiState();
+      views.push({ id, name, state });
+      localStorage.setItem(VIEWS_KEY, JSON.stringify(views));
+      loadViews();
+      viewsMsg.textContent = `Saved view “${name}”.`;
+      setTimeout(()=>viewsMsg.textContent="", 2000);
+    });
+
+    $("setDefaultViewBtn").addEventListener("click", ()=>{
+      const id = viewsSelect.value;
+      if (!id) { alert("Pick a saved view first."); return; }
+      localStorage.setItem(DEFAULT_VIEW_KEY, id);
+      loadViews();
+      viewsMsg.textContent = "Default view set.";
+      setTimeout(()=>viewsMsg.textContent="", 1500);
+    });
+
+    $("deleteViewBtn").addEventListener("click", ()=>{
+      const id = viewsSelect.value;
+      if (!id) { alert("Pick a saved view to delete."); return; }
+      let views = JSON.parse(localStorage.getItem(VIEWS_KEY) || "[]");
+      const v = views.find(x=>x.id===id);
+      if (!confirm(`Delete view “${v?.name||id}”?`)) return;
+      views = views.filter(v => v.id !== id);
+      localStorage.setItem(VIEWS_KEY, JSON.stringify(views));
+      if (localStorage.getItem(DEFAULT_VIEW_KEY) === id) {
+        localStorage.removeItem(DEFAULT_VIEW_KEY);
+      }
+      loadViews();
+      viewsSelect.value = "";
+      viewsMsg.textContent = "Deleted.";
+      setTimeout(()=>viewsMsg.textContent="", 1200);
+    });
+
+    viewsSelect.addEventListener("change", ()=>{
+      const id = viewsSelect.value;
+      if (!id) return;
+      const views = JSON.parse(localStorage.getItem(VIEWS_KEY) || "[]");
+      const v = views.find(x => x.id === id);
+      if (v) applyUiState(v.state);
     });
 
     // ===== Upload Receipt: open + save =====
@@ -1000,11 +1116,15 @@
       }
     });
 
-    // Initial
+    // ===== Init =====
     $("filterBtn").addEventListener("click", loadTransactions);
     $("exportBtn").addEventListener("click", exportCSV);
     $("backfillBtn").addEventListener("click", backfillSources);
 
+    // Views init/load + restore state
+    loadViews();
+    restoreOnLoad();
+    // After UI restored, do initial data load
     loadTransactions();
   </script>
 </body>
