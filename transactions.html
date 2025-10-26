@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Kosmos Bookkeeping — Transactions (Safe Loader)</title>
+  <title>Kosmos Bookkeeping — Transactions</title>
   <link rel="stylesheet" href="style.css"/>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
@@ -11,11 +11,14 @@
     .pill{padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:#fff}
     .right{text-align:right}
     .muted{color:var(--muted)} .err{color:var(--err)} .ok{color:var(--ok)}
-    .status-btn{font-size:.8rem;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#fff;cursor:pointer}
+    .status-pill{font-size:.75rem;padding:4px 10px;border-radius:999px;border:1px solid var(--border);background:#fff;white-space:nowrap}
+    .status-pill.ok{background:#ecfdf5;border-color:#a7f3d0}
+    .status-pill.dim{opacity:.75}
     .upload-btn{font-size:.8rem;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#f9f9f9;cursor:pointer}
     .cat-select{min-width:150px}
     .save-mark{font-size:12px;margin-left:6px;opacity:0;transition:opacity .2s}
     .save-mark.show{opacity:1}
+    .link{color:#2563eb;text-decoration:none}
     .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.18);display:none;align-items:flex-start;justify-content:center;padding:40px 12px;z-index:50}
     .modal{background:#fff;width:min(1100px,100%);max-height:85vh;overflow:auto;border:1px solid var(--border);border-radius:16px;padding:16px}
     .hidden{display:none}
@@ -44,12 +47,14 @@
     <div class="toolbar">
       <label>Date Range:</label>
       <input id="fromDate" type="date"/><span>–</span><input id="toDate" type="date"/>
-      <select id="typeFilter">
+      <select id="typeFilter" title="Filter">
         <option value="all">All</option>
         <option value="debit">Debits only</option>
         <option value="credit">Credits only</option>
         <option value="uncategorized">Uncategorized</option>
         <option value="no_source">No Source</option>
+        <option value="matched">Matched only</option>
+        <option value="unmatched">Unmatched only</option>
       </select>
       <button id="applyBtn">Apply</button>
       <input id="quickSearch" placeholder="Search description/category/source…" style="flex:1;min-width:220px"/>
@@ -57,8 +62,11 @@
       <button id="exportBtn" class="ghost">⬇️ Export CSV</button>
     </div>
     <div class="row" style="gap:10px;margin-top:10px;">
+      <span class="pill">Matched: <b id="chipMatched">—</b></span>
+      <span class="pill">Unmatched: <b id="chipUnmatched">—</b></span>
       <span class="pill">Uncategorized: <b id="chipUncat">—</b></span>
       <span class="pill">No Source: <b id="chipNoSource">—</b></span>
+      <span class="pill">Duplicates: <b id="chipDupes">—</b></span>
     </div>
   </div>
 
@@ -81,6 +89,7 @@
           <th>Type</th>
           <th>Category</th>
           <th>Source</th>
+          <th>Status</th>
           <th>Receipt</th>
         </tr>
       </thead>
@@ -156,13 +165,11 @@
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY"
   );
 
-  // Utilities
   const $ = id => document.getElementById(id);
   const money = n => (n==null?0:n).toLocaleString(undefined,{style:"currency",currency:"CAD"});
   const esc = s => String(s??"").replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
 
   let CATEGORY_OPTIONS = [];
-
   async function loadCategoryOptions(){
     const defaults = ["Uncategorized","Income","Sales","Refunds","Meals & Entertainment","Supplies","Software","Subscriptions","Travel","Lodging","Fuel","Utilities","Phone/Internet","Office","Professional Fees","Bank Fees","Taxes","Insurance","Repairs","Other"];
     const set = new Set(defaults);
@@ -186,6 +193,7 @@
 
   function showError(msg){ $("pageError").textContent = msg||""; }
 
+  // --------- MAIN LOAD (safe, then enrich with matches) ----------
   async function loadTransactions(){
     showError("");
     await loadCategoryOptions();
@@ -200,14 +208,34 @@
     if(to)   query = query.lte("txn_date", to);
     if(type==="debit")  query = query.eq("direction","debit");
     if(type==="credit") query = query.eq("direction","credit");
+
     const { data, error } = await query.order("txn_date",{ascending:false});
-
     if(error){ showError(error.message); $("txBody").innerHTML=""; $("rowsCount").textContent="Rows: 0"; return; }
-
     let rows = data || [];
+
+    // 1) Enrich with match info using a second, safe query
+    let matchMap = new Map(); // txn_id -> {receipt_id, confidence}
+    let matchedIds = new Set();
+    try{
+      const ids = rows.map(r=>r.id);
+      if(ids.length){
+        const { data: mm } = await sb.from("matches")
+          .select("transaction_id, receipt_id, confidence")
+          .in("transaction_id", ids);
+        (mm||[]).forEach(m=>{
+          matchedIds.add(m.transaction_id);
+          if(!matchMap.has(m.transaction_id)) matchMap.set(m.transaction_id, m);
+        });
+      }
+    }catch(e){ /* keep going, status will just be unmatched */ }
+
+    // 2) Apply filter variants that depend on match status or other attributes
     if(type==="uncategorized") rows = rows.filter(r => !r.category || r.category==="Uncategorized");
     if(type==="no_source")     rows = rows.filter(r => !r.source_account_name);
+    if(type==="matched")       rows = rows.filter(r => matchedIds.has(r.id));
+    if(type==="unmatched")     rows = rows.filter(r => !matchedIds.has(r.id));
 
+    // 3) Quick search
     if(q){
       rows = rows.filter(r =>
         (r.description||"").toLowerCase().includes(q) ||
@@ -216,6 +244,7 @@
       );
     }
 
+    // Totals + chips
     const deb = rows.filter(r=>r.direction==='debit').reduce((s,r)=>s+(+r.amount||0),0);
     const cre = rows.filter(r=>r.direction==='credit').reduce((s,r)=>s+(+r.amount||0),0);
     $("totalRows").textContent   = rows.length;
@@ -223,24 +252,51 @@
     $("totalCredits").textContent= money(cre);
     $("totalNet").textContent    = money(cre-deb);
 
-    $("chipUncat").textContent     = rows.filter(r => !r.category || r.category==="Uncategorized").length;
-    $("chipNoSource").textContent  = rows.filter(r => !r.source_account_name).length;
+    const uncat = rows.filter(r => !r.category || r.category==="Uncategorized").length;
+    const noSrc = rows.filter(r => !r.source_account_name).length;
+    const mat   = rows.filter(r => matchedIds.has(r.id)).length;
+    const unmat = rows.length - mat;
+    $("chipUncat").textContent     = uncat;
+    $("chipNoSource").textContent  = noSrc;
+    $("chipMatched").textContent   = mat;
+    $("chipUnmatched").textContent = unmat;
 
-    $("txBody").innerHTML = rows.map(r=>`
-      <tr>
-        <td>${esc(r.txn_date||"")}</td>
-        <td>${esc(r.description||"")}</td>
-        <td class="right">${money(r.amount)}</td>
-        <td>${esc(r.direction||"")}</td>
-        <td>${renderCategorySelect(r.category||"Uncategorized", r.id)}</td>
-        <td>${esc(r.source_account_name||"")}</td>
-        <td><button class="upload-btn" onclick="openUpload('${r.id}')">📷 Upload</button></td>
-      </tr>
-    `).join("");
+    // lightweight duplicate signal: same date + amount + normalized description
+    const norm = s => (s||"").toLowerCase().replace(/\s+/g," ").trim().slice(0,80);
+    const keyOf = r => `${r.txn_date}|${(+r.amount||0).toFixed(2)}|${norm(r.description)}`;
+    const freq = new Map();
+    rows.forEach(r=>{ const k=keyOf(r); freq.set(k,(freq.get(k)||0)+1); });
+    const dupes = rows.filter(r=> (freq.get(keyOf(r))||0)>1).length;
+    $("chipDupes").textContent = dupes;
+
+    // Render rows
+    $("txBody").innerHTML = rows.map(r=>{
+      const m = matchMap.get(r.id);
+      const matched = !!m;
+      const statusHtml = matched
+        ? `<span class="status-pill ok" title="Confidence ${m.confidence ?? 1}">Matched</span>`
+        : `<span class="status-pill dim">Unmatched</span>`;
+      const receiptHtml = matched
+        ? `<a class="link" href="receipts.html#${esc(m.receipt_id||'')}" title="Open receipt">View</a>`
+        : `<button class="upload-btn" onclick="openUpload('${r.id}')">📷 Upload</button>`;
+
+      return `
+        <tr>
+          <td>${esc(r.txn_date||"")}</td>
+          <td>${esc(r.description||"")}</td>
+          <td class="right">${money(r.amount)}</td>
+          <td>${esc(r.direction||"")}</td>
+          <td>${renderCategorySelect(r.category||"Uncategorized", r.id)}</td>
+          <td>${esc(r.source_account_name||"")}</td>
+          <td>${statusHtml}</td>
+          <td>${receiptHtml}</td>
+        </tr>
+      `;
+    }).join("");
     $("rowsCount").textContent = `Rows: ${rows.length}`;
   }
 
-  // --- Importer (same stable parser you used) ---
+  // ---------- Importer (same as working version) ----------
   let __valid=[]; let __skipped=[];
   function detectDelimiterBlock(sample){
     const c=(sample.match(/,/g)||[]).length, s=(sample.match(/;/g)||[]).length, t=(sample.match(/\t/g)||[]).length;
@@ -346,7 +402,7 @@
     }catch(err){ $("impStatus").className="err small"; $("impStatus").textContent=String(err.message||err); }
   };
 
-  // Upload flow (prefill by fetching single txn)
+  // ------------- Upload Modal (same as before) ----------------
   let currentTxn=null;
   function applyCategoryOptions(selected){
     const opts=CATEGORY_OPTIONS.map(c=>`<option value="${esc(c)}"${c===selected?' selected':''}>${esc(c)}</option>`).join("");
@@ -417,14 +473,7 @@
   $("quickSearch").addEventListener("input", ()=>{ clearTimeout(window.__qsT); window.__qsT=setTimeout(loadTransactions,150); });
 
   // Init guarded
-  async function init(){
-    try{
-      await loadTransactions();
-    }catch(e){
-      showError("Start-up error: "+(e?.message||e));
-      console.error(e);
-    }
-  }
+  async function init(){ try{ await loadTransactions(); }catch(e){ showError("Start-up error: "+(e?.message||e)); console.error(e); } }
   init();
 })();
 </script>
