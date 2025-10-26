@@ -109,7 +109,6 @@
   </main>
 
   <script>
-    // --- Supabase client ---
     const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
     const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true } });
@@ -118,7 +117,7 @@
     const msg = $("msg");
     function note(text, cls="muted") { msg.className = cls; msg.textContent = text; }
 
-    // If already signed in, go to dashboard
+    // Redirect to dashboard if already signed in
     sb.auth.getUser().then(({ data: { user } }) => { if (user) window.location.replace("index.html"); });
 
     // ---------- Google OAuth ----------
