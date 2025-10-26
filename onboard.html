@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Kosmos — Create Company</title>
+
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
+  <style>
+    .wrap { max-width: 620px; margin: 10vh auto; }
+    .card  { padding: 22px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); box-shadow: var(--shadow-sm); }
+    .muted { color: var(--muted-foreground) }
+    .row   { display:grid; gap:12px }
+    .btns  { display:flex; gap:10px; justify-content:flex-end; margin-top:12px }
+    .err { color: var(--destructive) }
+    .ok  { color: var(--ok) }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Kosmos Bookkeeping</h1>
+    <nav>
+      <a href="index.html">Dashboard</a>
+      <a href="receipts.html">Receipts</a>
+      <a href="transactions.html">Transactions</a>
+      <a href="reports.html">Reports</a>
+      <a class="active" href="onboard.html">Create Company</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <div class="wrap">
+      <div class="card">
+        <h2>Create your company</h2>
+        <p class="muted" id="who">Loading…</p>
+
+        <div class="row" style="margin-top:10px">
+          <label>Company name
+            <input id="orgName" placeholder="e.g., Kosmos Pizza Inc." />
+          </label>
+        </div>
+
+        <p id="msg" class="muted" style="margin-top:8px"></p>
+
+        <div class="btns">
+          <a class="ghost" href="index.html">Cancel</a>
+          <button id="createBtn">Create company</button>
+        </div>
+      </div>
+      <p class="muted" style="margin-top:10px">
+        After creating the company, you’ll be set as <b>admin</b>. We’ll add “Invite teammates” next.
+      </p>
+    </div>
+  </main>
+
+  <script>
+    // Supabase client
+    const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true } });
+
+    const $ = id => document.getElementById(id);
+    const msg = $("msg");
+
+    function note(t, cls="muted"){ msg.className = cls; msg.textContent = t; }
+
+    // Show who is creating the company
+    (async ()=>{
+      const { data: { user } } = await sb.auth.getUser();
+      if(!user){ location.replace("signin.html"); return; }
+      document.getElementById("who").textContent = `Signed in as ${user.email}`;
+    })();
+
+    document.getElementById("createBtn").addEventListener("click", async ()=>{
+      const name = ($("orgName").value||"").trim();
+      if(!name){ note("Enter a company name.", "err"); return; }
+
+      note("Creating company…");
+
+      // 1) Create org row
+      const { data: orgRow, error: orgErr } = await sb
+        .from("orgs")
+        .insert({ name })
+        .select("id")
+        .single();
+
+      if(orgErr){ note(orgErr.message, "err"); return; }
+
+      // 2) Link current user as admin in org_users
+      const { data: { user } } = await sb.auth.getUser();
+      const { error: linkErr } = await sb
+        .from("org_users")
+        .insert({ org_id: orgRow.id, user_id: user.id, role: "admin" });
+
+      if(linkErr){ note(linkErr.message, "err"); return; }
+
+      note("Company created. Redirecting…", "ok");
+      setTimeout(()=>location.replace("index.html"), 700);
+    });
+  </script>
+
+  <!-- Role/session guard (optional to keep consistent nav behavior later) -->
+  <script src="roles.js"></script>
+</body>
+</html>
