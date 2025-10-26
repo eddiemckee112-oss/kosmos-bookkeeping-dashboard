@@ -12,7 +12,7 @@
     .status-btn{font-size:.8rem;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#fff;cursor:pointer}
     .status-btn.ok{background:#eef8f1;border-color:#cfe9d7;color:var(--ok)}
     .upload-btn{font-size:.8rem;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#f9f9f9;cursor:pointer}
-    .right{text-align:right} .muted{color:var(--muted)} .ok{color:var(--ok)} .err{color:var(--err)} .small{font-size:.85rem}
+    .right{text-align:right} .muted{color:var(--muted)} .err{color:var(--err)} .small{font-size:.85rem}
     .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.18);display:none;align-items:flex-start;justify-content:center;padding:40px 12px;z-index:50}
     .modal{background:#fff;width:min(1100px,100%);max-height:85vh;overflow:auto;border:1px solid var(--border);border-radius:16px;padding:16px}
     .hidden{display:none}
@@ -23,7 +23,6 @@
     .grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
     .field{display:flex;flex-direction:column;gap:6px}
     .field label{font-weight:600}
-    .error{color:var(--err)}
   </style>
 </head>
 <body>
@@ -41,12 +40,10 @@
     <h2>💳 Transactions</h2>
     <p class="muted">Filter, import, categorize, attach receipts, and track sources.</p>
 
-    <!-- Controls -->
     <div class="card" style="margin-bottom:14px;">
       <div class="toolbar">
         <label>Date Range:</label>
         <input id="fromDate" type="date"/><span>–</span><input id="toDate" type="date"/>
-
         <select id="typeFilter">
           <option value="all">All</option>
           <option value="debit">Debits only</option>
@@ -57,13 +54,11 @@
           <option value="no_source">No Source</option>
           <option value="duplicates">Possible Duplicates</option>
         </select>
-
         <button id="applyBtn">Apply</button>
         <input id="quickSearch" placeholder="Search description/category/source…" style="flex:1;min-width:220px"/>
         <button id="importBtn" class="ghost">📥 Import CSV</button>
         <button id="exportBtn" class="ghost">⬇️ Export CSV</button>
       </div>
-
       <div class="row" style="gap:10px;margin-top:10px;">
         <span class="pill">Unmatched: <b id="chipUnmatched">—</b></span>
         <span class="pill">Uncategorized: <b id="chipUncat">—</b></span>
@@ -72,7 +67,6 @@
       </div>
     </div>
 
-    <!-- Totals -->
     <div class="card" style="margin-bottom:14px;">
       <div>Total Transactions: <b id="totalRows">—</b></div>
       <div>Debits: <b id="totalDebits">$0.00</b></div>
@@ -81,7 +75,6 @@
       <small class="muted">Numbers reflect the current filter.</small>
     </div>
 
-    <!-- Table -->
     <div class="card">
       <table id="txTable">
         <thead>
@@ -102,20 +95,18 @@
     </div>
   </main>
 
-  <!-- Import Modal -->
+  <!-- Import Modal (unchanged logic from your working version) -->
   <div id="impBackdrop" class="modal-backdrop">
     <div class="modal">
       <h3>Import Transactions (CSV)</h3>
       <p class="note muted small">
-        Mapping is <b>A=Date</b>, <b>B=Description</b>, <b>C=Debit</b>, <b>D=Credit</b>. Handles $ signs, commas, and (parentheses) negatives.
+        Mapping is <b>A=Date</b>, <b>B=Description</b>, <b>C=Debit</b>, <b>D=Credit</b>.
       </p>
-
       <div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <input id="csvFile" type="file" accept=".csv,text/csv"/>
         <button id="closeImport" class="ghost">Close</button>
       </div>
 
-      <!-- Choose source for this file -->
       <div class="row" style="gap:10px;align-items:center;margin-top:10px">
         <label for="fileSourceSelect"><b>Source for this file:</b></label>
         <select id="fileSourceSelect"></select>
@@ -181,7 +172,7 @@
         <input id="uploadFile" type="file" accept="image/*" capture="environment"/>
       </div>
 
-      <p id="uploadError" class="error small" style="margin-top:6px"></p>
+      <p id="uploadError" class="err small" style="margin-top:6px"></p>
       <p id="uploadStatus" class="small muted" style="margin-top:4px;"></p>
 
       <div class="row" style="justify-content:flex-end;margin-top:12px">
@@ -193,12 +184,15 @@
 
   <script>
   document.addEventListener('DOMContentLoaded', () => {
+    // Supabase client
     const sb = supabase.createClient(
       "https://advihqhjjlxumgdlbwui.supabase.co",
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY"
     );
+
+    // Helpers
     const $ = id => document.getElementById(id);
-    const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     const money = n => (n==null?0:n).toLocaleString(undefined,{style:"currency",currency:"CAD"});
 
     // Category options
@@ -245,7 +239,7 @@
       query = query.order("txn_date",{ascending:false});
 
       const { data, error } = await query;
-      if (error){ alert(error.message); return; }
+      if (error){ console.error(error); return; }
 
       let rows = data || [];
       if (type === "matched")   rows = rows.filter(r => r.matches && r.matches.length);
@@ -282,9 +276,7 @@
           <td>${renderCategorySelect(r.category || "Uncategorized", r.id)}</td>
           <td>${esc(r.source_account_name||"")}</td>
           <td><button class="status-btn ${matched?'ok':'ghost'}">${matched?'Matched':'Unmatched'}</button></td>
-          <td><button class="upload-btn"
-                onclick="openUpload('${r.id}','${esc(r.description||'')}', '${esc(r.txn_date||'')}', '${r.amount}','${esc(r.source_account_name||'')}', '${esc(r.category||'Uncategorized')}')">
-                📷 Upload</button></td>
+          <td><button class="upload-btn" onclick="openUpload('${r.id}')">📷 Upload</button></td>
         </tr>`;
       }).join("");
       $("rowsCount").textContent = `Rows: ${rows.length}`;
@@ -300,6 +292,7 @@
     $("applyBtn").addEventListener("click", loadTransactions);
     $("quickSearch").addEventListener("input", ()=>{ clearTimeout(window.__qsT); window.__qsT=setTimeout(loadTransactions,150); });
 
+    // Export
     $("exportBtn").addEventListener("click", async ()=>{
       const { data, error } = await sb.from("transactions")
         .select("txn_date,description,amount,direction,category,source_account_name")
@@ -323,6 +316,7 @@
       const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="transactions_export.csv"; a.click(); URL.revokeObjectURL(a.href);
     });
 
+    // Importer (same parsing that worked for you)
     $("importBtn").addEventListener("click", ()=>openImporter());
     $("closeImport").addEventListener("click", ()=>{ $("impBackdrop").style.display="none"; });
 
@@ -513,28 +507,44 @@
       }
     });
 
-    // Upload Receipt (prefill category from transaction)
+    // ===== Upload Receipt: prefill Category by querying the transaction =====
     let currentTxn = null;
-    function populateReceiptCategories(selected){
+
+    function applyCategoryOptions(selected){
       const opts = CATEGORY_OPTIONS.map(c => `<option value="${esc(c)}"${c===selected?' selected':''}>${esc(c)}</option>`).join("");
       $("upCategory").innerHTML = opts;
       if(selected && CATEGORY_OPTIONS.includes(selected)) $("upCategory").value = selected;
-      else if(CATEGORY_OPTIONS.includes("Uncategorized")) $("upCategory").value="Uncategorized";
+      else if(CATEGORY_OPTIONS.includes("Uncategorized")) $("upCategory").value = "Uncategorized";
     }
-    function openUpload(id, desc, date, amt, source, category){
-      currentTxn = { id, desc, date, amt: Number(amt)||0, source: source||"", category: category||"Uncategorized" };
-      $("upDesc").textContent = `${desc} — ${money(currentTxn.amt)} on ${date}`;
+
+    async function openUpload(id){
+      // Get the transaction row to prefill fields (safe, no inline args)
+      const { data: row, error } = await sb.from("transactions")
+        .select("id, txn_date, description, amount, source_account_name, category")
+        .eq("id", id).single();
+      if(error || !row){ alert("Transaction not found."); return; }
+
+      currentTxn = {
+        id: row.id,
+        desc: row.description || "",
+        date: (row.txn_date||"").slice(0,10),
+        amt: Number(row.amount)||0,
+        source: row.source_account_name || "",
+        category: row.category || "Uncategorized"
+      };
+
+      $("upDesc").textContent = `${currentTxn.desc} — ${money(currentTxn.amt)} on ${currentTxn.date}`;
       $("uploadFile").value = "";
       $("uploadError").textContent = "";
       $("uploadStatus").textContent = "";
 
-      $("upVendor").value = desc || "";
-      $("upDate").value = (date||"").slice(0,10);
+      $("upVendor").value = currentTxn.desc;
+      $("upDate").value = currentTxn.date;
       $("upTotal").value = currentTxn.amt ? currentTxn.amt.toFixed(2) : "";
       $("upTax").value = "0.00";
-      $("upSource").value = source || "";
-      populateReceiptCategories(currentTxn.category);
+      $("upSource").value = currentTxn.source;
 
+      applyCategoryOptions(currentTxn.category);
       $("uploadBackdrop").style.display = "flex";
     }
     window.openUpload = openUpload;
@@ -619,9 +629,6 @@
     };
 
     // Boot
-    $("applyBtn").addEventListener("click", loadTransactions);
-    $("quickSearch").addEventListener("input", ()=>{ clearTimeout(window.__qsT); window.__qsT=setTimeout(loadTransactions,150); });
-
     loadTransactions();
   });
   </script>
