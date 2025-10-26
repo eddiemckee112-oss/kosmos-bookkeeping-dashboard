@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Kosmos — Invite Teammates</title>
+
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
+  <style>
+    .wrap { max-width: 900px; margin: 8vh auto; }
+    .row { display:grid; gap:12px; }
+    .grid-2 { display:grid; grid-template-columns: 1fr 1fr; gap:12px }
+    @media (max-width:900px){ .grid-2{ grid-template-columns: 1fr } }
+    .muted { color: var(--muted-foreground) }
+    .err { color: var(--destructive) }
+    .ok { color: var(--ok) }
+    .card { padding: 18px; border:1px solid var(--border); border-radius:14px; background:var(--card); box-shadow:var(--shadow-sm) }
+    textarea { min-height: 120px; width:100%; padding:.7rem .8rem; border:1px solid #cfcfcf; border-radius:10px }
+    .btns { display:flex; gap:10px; justify-content:flex-end; margin-top:10px }
+    table { width:100% }
+    td, th { padding:.55rem .6rem; border-bottom:1px solid var(--border) }
+    th { text-align:left; font-weight:600; color:var(--muted-foreground) }
+    .pill { display:inline-block; padding:4px 8px; border:1px solid var(--border); border-radius:999px; font-size:.82rem }
+    .pill.ok { background:#eef9f1; color:var(--ok); border-color:#cfe7d6 }
+    .pill.muted { background:#f6f7f8; color:var(--muted) }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Kosmos Bookkeeping</h1>
+  <nav>
+    <a href="index.html">Dashboard</a>
+    <a href="receipts.html">Receipts</a>
+    <a href="transactions.html">Transactions</a>
+    <a href="reports.html">Reports</a>
+    <a class="active" href="invite.html">Invites</a>
+  </nav>
+</header>
+
+<main class="container">
+  <div class="wrap">
+    <div class="card">
+      <h2>Invite teammates</h2>
+      <p id="orgLine" class="muted">Loading organization…</p>
+      <p id="guard" class="err" style="display:none"></p>
+
+      <div id="inviteBox" style="display:none">
+        <label>Emails to invite (one per line, or comma-separated)</label>
+        <textarea id="emails" placeholder="alice@company.com
+bob@company.com"></textarea>
+        <div class="btns">
+          <button id="sendBtn">Send Invites</button>
+        </div>
+        <p id="msg" class="muted" style="margin-top:6px"></p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="grid-2">
+        <div>
+          <h3 style="margin-top:0">Pending</h3>
+          <table id="tblPending">
+            <thead>
+              <tr><th>Email</th><th>Invited by</th><th>When</th><th>Actions</th></tr>
+            </thead>
+            <tbody><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div>
+          <h3 style="margin-top:0">Accepted</h3>
+          <table id="tblAccepted">
+            <thead>
+              <tr><th>Email</th><th>Accepted</th></tr>
+            </thead>
+            <tbody><tr><td colspan="2" class="muted">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  // --- Supabase client ---
+  const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
+  const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession:true } });
+
+  const $ = id => document.getElementById(id);
+  const orgLine = $("orgLine");
+  const guard = $("guard");
+  const msg = $("msg");
+
+  let currentUser = null;
+  let org = null;         // { id, name }
+  let role = "staff";     // admin / manager / staff
+
+  function note(t, cls="muted"){ msg.className = cls; msg.textContent = t; }
+  const fmtDate = s => (s ? new Date(s).toLocaleString() : "");
+
+  async function ensureAuth(){
+    const { data: { user } } = await sb.auth.getUser();
+    if(!user){ location.replace("signin.html"); return null; }
+    return user;
+  }
+
+  async function loadOrgAndRole(){
+    // get org via org_users join
+    const { data, error } = await sb
+      .from("org_users")
+      .select("role, orgs!inner(id,name)")
+      .eq("user_id", currentUser.id);
+
+    if(error){ orgLine.textContent = error.message; return; }
+    if(!data || data.length===0){
+      // not onboarded -> send to create company
+      location.replace("onboard.html"); return;
+    }
+    // choose highest-privilege org row
+    const ranks = { admin:3, manager:2, staff:1 };
+    const best = data.sort((a,b)=>ranks[b.role]-ranks[a.role])[0];
+    role = best.role;
+    org = best.orgs;
+
+    orgLine.textContent = `Organization: ${org.name}`;
+    // Only admins can invite for now
+    if(role !== "admin"){
+      guard.style.display="block";
+      guard.textContent = "Only admins can manage invites.";
+      $("inviteBox").style.display = "none";
+    }else{
+      guard.style.display="none";
+      $("inviteBox").style.display = "";
+    }
+  }
+
+  function parseEmails(raw){
+    return (raw||"")
+      .split(/[\n,]+/)
+      .map(e=>e.trim().toLowerCase())
+      .filter(e=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e));
+  }
+
+  async function sendInvites(){
+    const emails = parseEmails($("emails").value);
+    if(!emails.length){ note("Enter at least one valid email.", "err"); return; }
+
+    note("Sending invites…");
+
+    const rows = emails.map(email => ({
+      org_id: org.id,
+      email,
+      invited_by: currentUser.id,
+      status: "pending"
+    }));
+
+    const { error } = await sb.from("org_invites").insert(rows);
+    if(error){ note(error.message, "err"); return; }
+
+    note(`Invited ${emails.length} ${emails.length>1?"people":"person"}.`, "ok");
+    $("emails").value = "";
+    await loadLists();
+  }
+
+  async function revokeInvite(id){
+    if(!confirm("Revoke this invite?")) return;
+    await sb.from("org_invites").delete().eq("id", id);
+    await loadLists();
+  }
+
+  async function loadLists(){
+    // pending
+    {
+      const { data, error } = await sb
+        .from("org_invites")
+        .select("id,email,invited_by,created_at, status")
+        .eq("org_id", org.id)
+        .eq("status","pending")
+        .order("created_at",{ascending:false});
+      const tb = $("tblPending").querySelector("tbody");
+      if(error || !data){ tb.innerHTML = `<tr><td colspan="4" class="muted">No data.</td></tr>`; }
+      else if(data.length===0){ tb.innerHTML = `<tr><td colspan="4" class="muted">No pending invites.</td></tr>`; }
+      else{
+        const rows = await Promise.all(data.map(async r=>{
+          // look up inviter email (best-effort)
+          let who = "—";
+          try{
+            const { data: u } = await sb.auth.admin.getUserById(r.invited_by).catch(()=>({}));
+            who = u?.user?.email || "—";
+          }catch{}
+          const actions = (role==="admin")
+            ? `<button class="ghost" data-revoke="${r.id}">Revoke</button>`
+            : `<span class="muted">—</span>`;
+          return `<tr>
+            <td>${r.email}</td>
+            <td>${who}</td>
+            <td>${fmtDate(r.created_at)}</td>
+            <td>${actions}</td>
+          </tr>`;
+        }));
+        tb.innerHTML = rows.join("");
+        // wire revoke
+        tb.querySelectorAll("[data-revoke]").forEach(btn=>{
+          btn.addEventListener("click", ()=>revokeInvite(btn.getAttribute("data-revoke")));
+        });
+      }
+    }
+    // accepted
+    {
+      const { data, error } = await sb
+        .from("org_invites")
+        .select("email, created_at")
+        .eq("org_id", org.id)
+        .eq("status","accepted")
+        .order("created_at",{ascending:false});
+      const tb = $("tblAccepted").querySelector("tbody");
+      if(error || !data || data.length===0){
+        tb.innerHTML = `<tr><td colspan="2" class="muted">No accepted invites yet.</td></tr>`;
+      }else{
+        tb.innerHTML = data.map(r=>`<tr>
+          <td>${r.email}</td>
+          <td><span class="pill ok">Accepted</span> ${fmtDate(r.created_at)}</td>
+        </tr>`).join("");
+      }
+    }
+  }
+
+  // Init
+  (async ()=>{
+    currentUser = await ensureAuth();
+    if(!currentUser) return;
+    await loadOrgAndRole();
+    await loadLists();
+
+    $("sendBtn").addEventListener("click", sendInvites);
+  })();
+</script>
+
+<!-- keep our guard behavior consistent with the rest of the app -->
+<script src="roles.js"></script>
+</body>
+</html>
