@@ -5,9 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Kosmos — Sign in</title>
 
-  <!-- Shared theme -->
   <link rel="stylesheet" href="style.css" />
-  <!-- Supabase JS -->
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 
   <style>
@@ -68,8 +66,7 @@
 
         <div class="divider tiny">or</div>
 
-        <!-- (Optional) Sign up – temporary for owner use only.
-             We will replace this with admin invites in the next step. -->
+        <!-- Temporary owner sign-up (will be replaced by invites) -->
         <details>
           <summary class="tiny">Create account (owner only – temporary)</summary>
           <div class="row" style="margin-top:10px">
@@ -83,7 +80,7 @@
           <div class="btn-bar">
             <button id="signupBtn" class="ghost" type="button">Create account</button>
           </div>
-          <p class="tiny muted">After creating the first account, we’ll switch to role-based invites.</p>
+          <p class="tiny muted">You’ll get a confirmation email. After confirming, sign in above.</p>
         </details>
 
         <div class="divider tiny">session</div>
@@ -97,13 +94,12 @@
         </div>
       </div>
       <p class="tiny muted" style="text-align:center; margin-top:10px">
-        Tip: bookmark this page. All other pages will redirect here if you’re signed out.
+        Tip: bookmark this page. All other pages redirect here if you’re signed out.
       </p>
     </div>
   </main>
 
   <script>
-    // --- Supabase client (uses your existing project) ---
     const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
     const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true } });
@@ -121,7 +117,7 @@
       msg.textContent = text;
     }
 
-    $("signinBtn").addEventListener("click", async () => {
+    document.getElementById("signinBtn").addEventListener("click", async () => {
       const email = $("email").value.trim();
       const password = $("password").value;
       if (!email || !password) return note("Enter email and password.", "err");
@@ -134,34 +130,43 @@
       window.location.replace("index.html");
     });
 
-    $("signupBtn").addEventListener("click", async () => {
+    // IMPORTANT: send Supabase an explicit redirect target for the confirm link
+    document.getElementById("signupBtn").addEventListener("click", async () => {
       const email = $("su_email").value.trim();
       const password = $("su_password").value;
       if (!email || !password) return note("Enter email and password to create account.", "err");
 
+      // CHANGE THIS to your real domain if not running at the site root:
+      const redirectTo = window.location.origin + "/signin.html";
+
       note("Creating account…");
-      const { error } = await sb.auth.signUp({ email, password });
+      const { error } = await sb.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: redirectTo }
+      });
       if (error) return note(error.message, "err");
 
-      note("Account created. Check your email to verify (if required), then sign in.", "ok");
+      note("Account created. Check your email to confirm, then sign in.", "ok");
     });
 
-    $("forgotBtn").addEventListener("click", async () => {
+    document.getElementById("forgotBtn").addEventListener("click", async () => {
       const email = $("email").value.trim();
       if (!email) return note("Enter your email first, then click Forgot password.", "err");
+      const redirectTo = window.location.origin + "/signin.html";
       note("Sending reset email…");
-      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + "/signin.html" });
+      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
       if (error) return note(error.message, "err");
       note("If that email exists, a reset link has been sent.", "ok");
     });
 
-    $("checkBtn").addEventListener("click", async () => {
+    document.getElementById("checkBtn").addEventListener("click", async () => {
       const { data: { user }, error } = await sb.auth.getUser();
       if (error) return note(error.message, "err");
       note(user ? `Signed in as ${user.email}` : "No active session.");
     });
 
-    $("signoutBtn").addEventListener("click", async () => {
+    document.getElementById("signoutBtn").addEventListener("click", async () => {
       await sb.auth.signOut();
       note("Signed out.", "ok");
     });
