@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Kosmos — Sign in</title>
+
+  <!-- Shared theme -->
+  <link rel="stylesheet" href="style.css" />
+  <!-- Supabase JS -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
+  <style>
+    .auth-wrap { max-width: 520px; margin: 8vh auto; }
+    .auth-card { padding: 22px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); box-shadow: var(--shadow-sm); }
+    .auth-head { display:flex; align-items:center; gap:.6rem; margin-bottom:.6rem }
+    .auth-head h2 { margin:0 }
+    .muted { color: var(--muted-foreground); }
+    .row { display:grid; gap:10px; margin-top:10px }
+    .row-2 { display:grid; gap:10px; grid-template-columns: 1fr 1fr }
+    @media (max-width:640px){ .row-2{ grid-template-columns: 1fr } }
+    .btn-bar { display:flex; gap:10px; align-items:center; justify-content:flex-end; margin-top:10px }
+    .err { color: var(--destructive); }
+    .ok { color: var(--ok); }
+    .divider { display:flex; align-items:center; gap:.6rem; margin:16px 0; color:var(--muted-foreground) }
+    .divider:before, .divider:after { content:""; height:1px; background:var(--border); flex:1 }
+    .tiny { font-size: .85rem }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Kosmos Bookkeeping</h1>
+    <nav>
+      <a class="active" href="signin.html">Sign in</a>
+      <a href="index.html">Dashboard</a>
+      <a href="transactions.html">Transactions</a>
+      <a href="receipts.html">Receipts</a>
+      <a href="reports.html">Reports</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <div class="auth-wrap">
+      <div class="auth-card">
+        <div class="auth-head">
+          <h2>Sign in to your company</h2>
+        </div>
+        <p class="muted tiny">
+          Use your email and password. After sign-in you’ll be sent to the dashboard (RLS-protected).
+        </p>
+
+        <!-- Sign-in form -->
+        <div class="row">
+          <label>Email
+            <input id="email" type="email" autocomplete="email" placeholder="you@company.com" required />
+          </label>
+          <label>Password
+            <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" required />
+          </label>
+        </div>
+
+        <div class="btn-bar">
+          <button id="forgotBtn" class="ghost" type="button">Forgot password</button>
+          <button id="signinBtn" type="button">Sign in</button>
+        </div>
+
+        <p id="msg" class="muted" style="margin-top:8px"></p>
+
+        <div class="divider tiny">or</div>
+
+        <!-- (Optional) Sign up – temporary for owner use only.
+             We will replace this with admin invites in the next step. -->
+        <details>
+          <summary class="tiny">Create account (owner only – temporary)</summary>
+          <div class="row" style="margin-top:10px">
+            <label>Email
+              <input id="su_email" type="email" autocomplete="email" placeholder="owner@company.com" />
+            </label>
+            <label>Password
+              <input id="su_password" type="password" autocomplete="new-password" placeholder="Min 6 chars" />
+            </label>
+          </div>
+          <div class="btn-bar">
+            <button id="signupBtn" class="ghost" type="button">Create account</button>
+          </div>
+          <p class="tiny muted">After creating the first account, we’ll switch to role-based invites.</p>
+        </details>
+
+        <div class="divider tiny">session</div>
+        <div class="row-2 tiny">
+          <div>
+            <button id="checkBtn" class="ghost" type="button">Check session</button>
+          </div>
+          <div style="text-align:right">
+            <button id="signoutBtn" class="ghost" type="button">Sign out</button>
+          </div>
+        </div>
+      </div>
+      <p class="tiny muted" style="text-align:center; margin-top:10px">
+        Tip: bookmark this page. All other pages will redirect here if you’re signed out.
+      </p>
+    </div>
+  </main>
+
+  <script>
+    // --- Supabase client (uses your existing project) ---
+    const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true } });
+
+    const $ = (id) => document.getElementById(id);
+    const msg = $("msg");
+
+    // If already signed in, go to dashboard
+    sb.auth.getUser().then(({ data: { user } }) => {
+      if (user) window.location.replace("index.html");
+    });
+
+    function note(text, cls="muted") {
+      msg.className = cls;
+      msg.textContent = text;
+    }
+
+    $("signinBtn").addEventListener("click", async () => {
+      const email = $("email").value.trim();
+      const password = $("password").value;
+      if (!email || !password) return note("Enter email and password.", "err");
+
+      note("Signing in…");
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) return note(error.message, "err");
+
+      note("Signed in. Redirecting…", "ok");
+      window.location.replace("index.html");
+    });
+
+    $("signupBtn").addEventListener("click", async () => {
+      const email = $("su_email").value.trim();
+      const password = $("su_password").value;
+      if (!email || !password) return note("Enter email and password to create account.", "err");
+
+      note("Creating account…");
+      const { error } = await sb.auth.signUp({ email, password });
+      if (error) return note(error.message, "err");
+
+      note("Account created. Check your email to verify (if required), then sign in.", "ok");
+    });
+
+    $("forgotBtn").addEventListener("click", async () => {
+      const email = $("email").value.trim();
+      if (!email) return note("Enter your email first, then click Forgot password.", "err");
+      note("Sending reset email…");
+      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + "/signin.html" });
+      if (error) return note(error.message, "err");
+      note("If that email exists, a reset link has been sent.", "ok");
+    });
+
+    $("checkBtn").addEventListener("click", async () => {
+      const { data: { user }, error } = await sb.auth.getUser();
+      if (error) return note(error.message, "err");
+      note(user ? `Signed in as ${user.email}` : "No active session.");
+    });
+
+    $("signoutBtn").addEventListener("click", async () => {
+      await sb.auth.signOut();
+      note("Signed out.", "ok");
+    });
+  </script>
+</body>
+</html>
