@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Kosmos — Accept Invite</title>
+
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
+  <style>
+    .wrap { max-width: 680px; margin: 8vh auto; }
+    .card { padding: 22px; border:1px solid var(--border); border-radius:14px; background:var(--card); box-shadow:var(--shadow-sm) }
+    .muted { color: var(--muted-foreground) }
+    .ok { color: var(--ok) }
+    .err { color: var(--destructive) }
+    .row { display:grid; gap:10px }
+    .btns { display:flex; gap:10px; justify-content:flex-end; margin-top:10px }
+    .btn-google { display:flex; align-items:center; justify-content:center; gap:.6rem; width:100%;
+      padding:.7rem 1rem; border-radius:10px; border:1px solid var(--border); background:#fff; cursor:pointer; }
+    .btn-google img { width:18px; height:18px }
+    .hr { height:1px; background:var(--border); margin:16px 0 }
+    .pill { display:inline-block; padding:4px 8px; border-radius:999px; border:1px solid var(--border); font-size:.82rem }
+    .pill.ok { background:#eef9f1; color:var(--ok); border-color:#cfe7d6 }
+    .pill.muted { background:#f6f7f8; color:var(--muted) }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Kosmos Bookkeeping</h1>
+  <nav>
+    <a href="index.html">Dashboard</a>
+    <a href="receipts.html">Receipts</a>
+    <a href="transactions.html">Transactions</a>
+    <a href="reports.html">Reports</a>
+    <a class="active" href="accept.html">Accept Invite</a>
+  </nav>
+</header>
+
+<main class="container">
+  <div class="wrap">
+    <div class="card">
+      <h2>Accept your invite</h2>
+      <p id="intro" class="muted">Loading…</p>
+
+      <!-- Sign-in area (only shown if not signed in) -->
+      <div id="signinBox" style="display:none">
+        <p class="muted">Please sign in as <b id="invEmail">—</b> to accept this invite.</p>
+
+        <button id="googleBtn" class="btn-google" type="button" aria-label="Continue with Google">
+          <img alt="" src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" />
+          Continue with Google
+        </button>
+
+        <div class="hr"></div>
+
+        <div class="row">
+          <label>Email
+            <input id="email" type="email" placeholder="you@company.com" autocomplete="email" />
+          </label>
+          <label>Password
+            <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
+          </label>
+        </div>
+        <div class="btns">
+          <button id="signupBtn" class="ghost" type="button">Create account</button>
+          <button id="signinBtn" type="button">Sign in</button>
+        </div>
+      </div>
+
+      <!-- Acceptance area (only shown if signed in with correct email) -->
+      <div id="acceptBox" style="display:none">
+        <p>
+          Signed in as <b id="who">—</b>.
+          <span id="inviteInfo" class="muted"></span>
+        </p>
+        <div class="btns">
+          <button id="acceptBtn">Accept invite</button>
+          <button id="signoutBtn" class="ghost">Sign out</button>
+        </div>
+      </div>
+
+      <!-- Wrong email area -->
+      <div id="wrongEmailBox" style="display:none">
+        <p class="err">You’re signed in as <b id="whoWrong">—</b>, but this invite is for <b id="needEmail">—</b>.</p>
+        <div class="btns">
+          <button id="switchBtn" class="ghost">Sign out and switch account</button>
+        </div>
+      </div>
+
+      <p id="msg" class="muted" style="margin-top:10px"></p>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <h3 style="margin-top:0">What happens next?</h3>
+      <ul class="muted">
+        <li>We’ll add you to the company with role <b>staff</b> (admins can promote later).</li>
+        <li>The invite will be marked <span class="pill ok">Accepted</span>.</li>
+        <li>You’ll be redirected to the dashboard.</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<script>
+  // Supabase client
+  const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
+  const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true } });
+
+  // Helpers
+  const $ = id => document.getElementById(id);
+  const note = (t, cls="muted") => { const m=$("msg"); m.className=cls; m.textContent=t; };
+
+  const params = new URLSearchParams(location.search);
+  const invitedEmail = (params.get("email") || "").trim().toLowerCase();
+
+  // Elements
+  const intro = $("intro");
+  const signinBox = $("signinBox");
+  const acceptBox = $("acceptBox");
+  const wrongEmailBox = $("wrongEmailBox");
+
+  $("invEmail").textContent = invitedEmail || "your work email";
+
+  function show(el){ el.style.display=""; }
+  function hide(el){ el.style.display="none"; }
+
+  async function findPendingInvite(email){
+    // get latest pending invite for this email
+    const { data, error } = await sb
+      .from("org_invites")
+      .select("id, org_id, email, status, created_at")
+      .eq("email", email)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    return (data && data[0]) || null;
+  }
+
+  async function getOrgName(org_id){
+    const { data, error } = await sb.from("orgs").select("name").eq("id", org_id).single();
+    return error ? "your company" : (data?.name || "your company");
+  }
+
+  async function alreadyMember(org_id, user_id){
+    const { data, error } = await sb.from("org_users").select("id").eq("org_id", org_id).eq("user_id", user_id).maybeSingle?.() ?? {};
+    // If maybeSingle isn't available in CDN build, do manual:
+    if (error) return false;
+    return (data && data.id) ? true : false;
+  }
+
+  // --------- UI flows ----------
+  async function refresh(){
+    // 1) if no email param, ask for it
+    if(!invitedEmail){
+      intro.innerHTML = "This link is missing the <code>?email=</code> parameter. Ask your admin to resend.";
+      return;
+    }
+    intro.textContent = `Invite for ${invitedEmail}`;
+
+    // 2) check session
+    const { data: { user } } = await sb.auth.getUser();
+
+    if(!user){
+      // not signed in -> show sign-in box
+      hide(acceptBox); hide(wrongEmailBox); show(signinBox);
+      note("");
+      return;
+    }
+
+    // 3) signed in: does email match?
+    const signedEmail = (user.email || "").toLowerCase();
+    $("who").textContent = signedEmail;
+    $("whoWrong").textContent = signedEmail;
+    $("needEmail").textContent = invitedEmail;
+
+    if(signedEmail !== invitedEmail){
+      hide(signinBox); hide(acceptBox); show(wrongEmailBox);
+      note("Sign out and sign in with the invited email.", "err");
+      return;
+    }
+
+    // 4) look up pending invite
+    try{
+      const inv = await findPendingInvite(invitedEmail);
+      if(!inv){
+        // Maybe already accepted or revoked
+        // Check if they are already a member of some org via this email.
+        const { data: rows } = await sb.from("org_users").select("org_id").eq("user_id", user.id);
+        if (rows && rows.length) {
+          intro.innerHTML = `You are already a member of this account. <span class="pill ok">Active</span>`;
+          hide(signinBox); hide(wrongEmailBox); hide(acceptBox);
+          note("Redirecting…","ok");
+          setTimeout(()=>location.replace("index.html"), 900);
+          return;
+        }
+        intro.innerHTML = `No pending invite found for <b>${invitedEmail}</b>. Ask your admin to resend.`;
+        hide(signinBox); hide(wrongEmailBox); hide(acceptBox);
+        note("");
+        return;
+      }
+
+      const orgName = await getOrgName(inv.org_id);
+      $("inviteInfo").textContent = `You’re joining “${orgName}”.`;
+      hide(signinBox); hide(wrongEmailBox); show(acceptBox);
+
+      // Accept click
+      $("acceptBtn").onclick = async ()=>{
+        note("Accepting invite…");
+        // Add membership if not exists
+        const { data: { user: u } } = await sb.auth.getUser();
+        // check again to avoid duplicate
+        const { data: existing } = await sb
+          .from("org_users").select("id").eq("org_id", inv.org_id).eq("user_id", u.id);
+        if (!existing || existing.length === 0) {
+          const { error: insErr } = await sb
+            .from("org_users").insert({ org_id: inv.org_id, user_id: u.id, role: "staff" });
+          if (insErr) { note(insErr.message, "err"); return; }
+        }
+
+        // Mark invite accepted
+        const { error: upErr } = await sb
+          .from("org_invites").update({ status: "accepted" }).eq("id", inv.id);
+        if (upErr) { note(upErr.message, "err"); return; }
+
+        note("Invite accepted. Redirecting…", "ok");
+        setTimeout(()=>location.replace("index.html"), 800);
+      };
+
+    }catch(e){
+      note(e.message||String(e), "err");
+      hide(acceptBox); hide(signinBox); hide(wrongEmailBox);
+    }
+  }
+
+  // ---------- Sign-in / Sign-up handlers ----------
+  document.addEventListener("click", (e)=>{
+    if(e.target.id==="signoutBtn" || e.target.id==="switchBtn"){
+      sb.auth.signOut().then(()=>{ note("Signed out.","ok"); setTimeout(refresh, 300); });
+    }
+  });
+
+  document.getElementById("googleBtn").addEventListener("click", async () => {
+    const redirectTo = "https://eddiemckee112-oss.github.io/kosmos-bookkeeping-dashboard/accept.html?email="+encodeURIComponent(invitedEmail);
+    const { error } = await sb.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo, queryParams: { access_type: "offline", prompt: "consent" } }
+    });
+    if (error) note(error.message, "err");
+  });
+
+  document.getElementById("signinBtn").addEventListener("click", async () => {
+    const email = $("email").value.trim();
+    const password = $("password").value;
+    if (!email || !password) return note("Enter email and password.", "err");
+    note("Signing in…");
+    const { error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) return note(error.message, "err");
+    await refresh();
+  });
+
+  document.getElementById("signupBtn").addEventListener("click", async () => {
+    const email = $("email").value.trim();
+    const password = $("password").value;
+    if (!email || !password) return note("Enter email and password to create account.", "err");
+    const redirectTo = "https://eddiemckee112-oss.github.io/kosmos-bookkeeping-dashboard/accept.html?email="+encodeURIComponent(invitedEmail);
+    note("Creating account…");
+    const { error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo } });
+    if (error) return note(error.message, "err");
+    note("Account created. Check your email to confirm, then return to this page.", "ok");
+  });
+
+  // Init
+  (async function(){
+    await sb.auth.getSession().catch(()=>{});
+    if (location.hash && location.hash.includes("access_token")) {
+      history.replaceState({}, "", location.pathname + location.search);
+    }
+    refresh();
+  })();
+</script>
+</body>
+</html>
