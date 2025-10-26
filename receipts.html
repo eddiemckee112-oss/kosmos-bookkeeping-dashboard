@@ -33,6 +33,7 @@
     td.editable{cursor:text} td.editing{background:#fffbe6}
     .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     .spacer{flex:1 1 auto}
+    .hl{outline:3px solid var(--brand);box-shadow:0 0 0 4px color-mix(in oklab, var(--brand) 18%, transparent)}
   </style>
 </head>
 <body>
@@ -49,14 +50,14 @@
 <main class="container">
 
   <h2>🧾 Receipts</h2>
-  <p class="muted">Mobile-friendly upload (tap **Choose File** to open the camera on your phone), quick edit, and match status.</p>
+  <p class="muted">Mobile-friendly upload (tap <b>Choose File</b> to open your camera), reliable manual fields, and match status.</p>
 
   <!-- Upload Box -->
   <div class="card">
     <div class="uploader">
       <div class="imgbox">
-        <input id="file" type="file" accept="image/*" capture="environment" />
-        <div class="mutetip" style="margin-top:6px">Tip: On mobile this opens your camera. You can also pick from photos.</div>
+        <input id="file" type="file" accept="image/*,.pdf" capture="environment" />
+        <div class="mutetip" style="margin-top:6px">Tip: On mobile this opens your camera. PDFs are allowed too.</div>
         <img id="preview" alt="" />
       </div>
 
@@ -64,24 +65,28 @@
         <div class="grid grid-2">
           <div>
             <label>Vendor</label>
-            <input id="vendor" placeholder="e.g., NO FRILLS" />
+            <input id="vendor" placeholder="e.g., NO FRILLS" required />
           </div>
           <div>
             <label>Date</label>
-            <input id="rdate" type="date" />
+            <input id="rdate" type="date" required />
           </div>
           <div>
             <label>Total</label>
-            <input id="total" type="number" step="0.01" placeholder="0.00" />
+            <input id="total" type="number" step="0.01" placeholder="0.00" required />
           </div>
           <div>
             <label>Tax</label>
-            <input id="tax" type="number" step="0.01" value="0.00" />
+            <input id="tax" type="number" step="0.01" value="0.00" required />
           </div>
-        </div>
-        <div style="margin-top:8px">
-          <label>Source <span class="muted">(optional)</span></label>
-          <input id="source" placeholder="e.g., Visa ****1234" />
+          <div>
+            <label>Category</label>
+            <input id="category" placeholder="e.g., Restaurant Supplies" required />
+          </div>
+          <div>
+            <label>Source</label>
+            <input id="source" placeholder="e.g., CIBC Chequing" required />
+          </div>
         </div>
         <div style="margin-top:8px">
           <label>Notes <span class="muted">(optional)</span></label>
@@ -90,8 +95,8 @@
 
         <p id="upMsg" class="muted" style="margin-top:8px"></p>
         <div class="row" style="justify-content:flex-end;margin-top:8px">
-          <button id="clearBtn" class="ghost">Clear</button>
-          <button id="uploadBtn">Upload Receipt</button>
+          <button id="clearBtn" class="ghost" type="button">Clear</button>
+          <button id="uploadBtn" type="button">Upload Receipt</button>
         </div>
       </div>
     </div>
@@ -108,10 +113,10 @@
       </select>
 
       <input id="search" placeholder="Search vendor/notes/source…" style="padding:.5rem .7rem;border:1px solid #cfcfcf;border-radius:10px;min-width:220px" />
-      <button id="applyFilter">Apply</button>
+      <button id="applyFilter" type="button">Apply</button>
 
       <span class="spacer"></span>
-      <button id="deleteSelected" class="ghost">🗑️ Delete Selected</button>
+      <button id="deleteSelected" class="ghost" type="button">🗑️ Delete Selected</button>
     </div>
     <div class="chips" style="margin-top:8px">
       <span class="chip">Total: <b id="countAll">0</b></span>
@@ -135,6 +140,7 @@
             <th style="min-width:180px;">Vendor</th>
             <th class="right" style="min-width:110px;">Total</th>
             <th class="right" style="min-width:90px;">Tax</th>
+            <th style="min-width:140px;">Category</th>
             <th style="min-width:140px;">Source</th>
             <th style="min-width:120px;">Status</th>
             <th style="min-width:220px;">Notes</th>
@@ -143,7 +149,7 @@
         </thead>
         <tbody></tbody>
         <tfoot>
-          <tr><td colspan="9">
+          <tr><td colspan="10">
             <div class="sticky-footer">
               <span class="kpill">Rows: <b id="ftRows">0</b></span>
               <span class="kpill">Subtotal: <b id="ftSubtotal">$0.00</b></span>
@@ -159,9 +165,12 @@
 
 <script>
 /* ===== Supabase setup ===== */
+/* Keep your actual URL/anon key here (anon is safe client-side with proper RLS). */
 const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const sb = (window.sb && typeof window.sb.from === "function")
+  ? window.sb
+  : supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const $ = id => document.getElementById(id);
 const tbody = document.querySelector("#recTable tbody");
@@ -173,6 +182,21 @@ const selected = new Set();
 
 function money(n){ const v=Number(n)||0; return `$${v.toFixed(2)}`; }
 function esc(s){ return String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function storagePathFromPublicUrl(url){
+  // expects .../object/public/receipts-warm/<path>
+  const m = url?.match(/\/object\/public\/receipts-warm\/(.+)$/);
+  return m ? m[1] : null;
+}
+
+/* ===== Auth / RLS gate ===== */
+async function ensureUser(){
+  const { data:{ user } } = await sb.auth.getUser();
+  if(!user){
+    $("status").textContent = "Please sign in first (RLS enabled).";
+    throw new Error("not signed in");
+  }
+  return user;
+}
 
 /* ===== Upload form ===== */
 $("file").addEventListener("change", e=>{
@@ -182,46 +206,69 @@ $("file").addEventListener("change", e=>{
 });
 $("clearBtn").addEventListener("click", ()=>{
   $("file").value=""; $("preview").src="";
-  $("vendor").value=""; $("rdate").value=""; $("total").value=""; $("tax").value="0.00";
-  $("source").value=""; $("notes").value=""; $("upMsg").textContent="";
+  $("vendor").value=""; $("rdate").value=""; $("total").value="";
+  $("tax").value="0.00"; $("category").value=""; $("source").value="";
+  $("notes").value=""; $("upMsg").textContent="";
 });
 
-/* No auto-scanner for now — we keep it simple: upload + fields */
+/* No auto-scanner for now — manual & explicit */
 $("uploadBtn").addEventListener("click", async ()=>{
+  try{ await ensureUser(); }catch{ return; }
+
   const f=$("file").files?.[0];
-  if(!f){ $("upMsg").className="err"; $("upMsg").textContent="Choose a file (camera or photo)."; return; }
+  if(!f){ $("upMsg").className="err"; $("upMsg").textContent="Choose a file (camera, photo, or PDF)."; return; }
 
   const vendor = $("vendor").value.trim() || null;
   const receipt_date = $("rdate").value || null;
   const total = $("total").value ? Number($("total").value) : null;
   const tax = $("tax").value ? Number($("tax").value) : 0;
+  const category = $("category").value.trim() || null;
   const source = $("source").value.trim() || null;
   const notes = $("notes").value.trim() || null;
 
-  if(!receipt_date || total===null){ $("upMsg").className="err"; $("upMsg").textContent="Date and Total are required."; return; }
+  if(!receipt_date || total===null || !category || !source){
+    $("upMsg").className="err";
+    $("upMsg").textContent="Date, Total, Category, and Source are required.";
+    return;
+  }
 
   $("upMsg").className="muted"; $("upMsg").textContent="Uploading…";
-  const fname = `r_${Date.now()}_${(f.name||"image").replace(/[^\w.\-]+/g,"_")}`;
-  const { data:upRes, error:upErr } = await sb.storage.from("receipts").upload(fname, f, { contentType: f.type||"image/jpeg" });
+  const fname = `r_${Date.now()}_${(f.name||"file").replace(/[^\w.\-]+/g,"_")}`;
+  const { data:upRes, error:upErr } = await sb.storage.from("receipts-warm").upload(
+    fname, f, { contentType: f.type || "application/octet-stream" }
+  );
   if(upErr){ $("upMsg").className="err"; $("upMsg").textContent=upErr.message; return; }
-  const { data:pub } = sb.storage.from("receipts").getPublicUrl(upRes.path);
+  const { data:pub } = sb.storage.from("receipts-warm").getPublicUrl(upRes.path);
   const image_url = pub?.publicUrl || null;
 
   const ins = {
-    image_url, size_bytes: f.size||0, receipt_date, total, tax,
-    vendor, source, notes
+    receipt_date, total, tax, category, vendor, source, notes,
+    image_url, size_bytes: f.size||0
   };
-  const { error:insErr } = await sb.from("receipts").insert(ins);
+  const { data:row, error:insErr } = await sb.from("receipts").insert(ins).select().single();
   if(insErr){ $("upMsg").className="err"; $("upMsg").textContent=insErr.message; return; }
 
   $("upMsg").className="ok"; $("upMsg").textContent="Uploaded.";
-  $("clearBtn").click(); await loadReceipts();
+  $("clearBtn").click();
+  // Prepend for snappy UX & highlight
+  all.unshift(row);
+  applyFilters(true);
+  const newEl = document.querySelector(`[data-id="${CSS.escape(row.id)}"]`);
+  if(newEl){ newEl.classList.add("hl"); newEl.scrollIntoView({behavior:"smooth",block:"center"});
+    setTimeout(()=>newEl.classList.remove("hl"),2500);
+  }
 });
 
 /* ===== Load & render ===== */
 async function loadReceipts(){
-  const { data: recs, error: rErr } = await sb.from("receipts").select("*").order("created_at",{ascending:false});
-  if(rErr){ tbody.innerHTML = `<tr><td colspan="9" class="err">${rErr.message}</td></tr>`; return; }
+  const { data: recs, error: rErr } = await sb.from("receipts")
+    .select("*")
+    .order("receipt_date",{ascending:false})
+    .order("created_at",{ascending:false});
+  if(rErr){
+    tbody.innerHTML = `<tr><td colspan="10" class="err">${esc(rErr.message)}</td></tr>`;
+    return;
+  }
   all = recs || [];
 
   const { data: mx } = await sb.from("matches").select("receipt_id, transaction_id");
@@ -231,10 +278,10 @@ async function loadReceipts(){
     arr.push(m.transaction_id); matches.set(m.receipt_id, arr);
   });
 
-  applyFilters();
+  applyFilters(true);
 }
 
-function applyFilters(){
+function applyFilters(resetHighlight=false){
   const mode = $("filterMode").value;
   const q = ($("search").value||"").toLowerCase().trim();
 
@@ -249,16 +296,17 @@ function applyFilters(){
     }
   });
   if(q){
-    rows = rows.filter(r => 
+    rows = rows.filter(r =>
       String(r.vendor||"").toLowerCase().includes(q) ||
       String(r.notes||"").toLowerCase().includes(q) ||
-      String(r.source||"").toLowerCase().includes(q)
+      String(r.source||"").toLowerCase().includes(q) ||
+      String(r.category||"").toLowerCase().includes(q)
     );
   }
-  render(rows);
+  render(rows, resetHighlight);
 }
 
-function render(rows){
+function render(rows, resetHighlight){
   // counters
   $("countAll").textContent = all.length;
   let m=0; for(const r of all) if(matches.has(r.id)) m++;
@@ -266,7 +314,7 @@ function render(rows){
 
   // table
   if(!rows.length){
-    tbody.innerHTML = `<tr><td colspan="9" class="muted">No receipts found.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" class="muted">No receipts found.</td></tr>`;
     $("ftRows").textContent="0"; $("ftSubtotal").textContent=money(0); $("ftTax").textContent=money(0); $("ftTotal").textContent=money(0);
   }else{
     let subtotal=0, taxSum=0, totalSum=0;
@@ -286,6 +334,7 @@ function render(rows){
         <td class="editable" data-field="vendor">${esc(r.vendor||"")}</td>
         <td class="right editable" data-field="total">${esc(Number(r.total||0).toFixed(2))}</td>
         <td class="right editable" data-field="tax">${esc(Number(r.tax||0).toFixed(2))}</td>
+        <td class="editable" data-field="category">${esc(r.category||"")}</td>
         <td class="editable" data-field="source">${esc(r.source||"")}</td>
         <td>${status}</td>
         <td class="editable" data-field="notes">${esc(r.notes||"")}</td>
@@ -313,7 +362,10 @@ function render(rows){
       btn.addEventListener("click", async ()=>{
         const id=btn.getAttribute("data-id");
         if(!confirm("Delete this receipt?")) return;
+        const row = all.find(r=>r.id===id);
+        const spath = storagePathFromPublicUrl(row?.image_url);
         await sb.from("receipts").delete().eq("id",id);
+        if(spath) await sb.storage.from("receipts-warm").remove([spath]);
         selected.delete(id); await loadReceipts();
       });
     });
@@ -325,31 +377,46 @@ function render(rows){
   }
 
   // mobile cards
-  if(!rows.length){ cards.innerHTML=""; return; }
-  cards.innerHTML = rows.map(r=>{
-    const status = matches.has(r.id)
-      ? `<span class="badge ok">Matched</span>`
-      : `<span class="badge muted">Unmatched</span>`;
+  if(!rows.length){ cards.innerHTML=""; }
+  else {
+    cards.innerHTML = rows.map(r=>{
+      const status = matches.has(r.id)
+        ? `<span class="badge ok">Matched</span>`
+        : `<span class="badge muted">Unmatched</span>`;
     return `<div class="card card-receipt" data-id="${r.id}">
       <img src="${esc(r.image_url||'')}" alt="">
       <div class="meta">
         <b>${esc(r.vendor||'Unknown Vendor')}</b>
         <div class="muted">${esc((r.receipt_date||'').slice(0,10))} • ${money(r.total||0)}</div>
+        <div class="muted" style="margin-top:4px">${esc(r.category||'Uncategorized')} • ${esc(r.source||'No Source')}</div>
         <div style="margin-top:6px">${status}</div>
       </div>
       <div>
         <button class="ghost btnDel" data-id="${r.id}">Delete</button>
       </div>
     </div>`;
-  }).join("");
-  cards.querySelectorAll(".btnDel").forEach(btn=>{
-    btn.addEventListener("click", async ()=>{
-      const id=btn.getAttribute("data-id");
-      if(!confirm("Delete this receipt?")) return;
-      await sb.from("receipts").delete().eq("id",id);
-      selected.delete(id); await loadReceipts();
+    }).join("");
+    cards.querySelectorAll(".btnDel").forEach(btn=>{
+      btn.addEventListener("click", async ()=>{
+        const id=btn.getAttribute("data-id");
+        if(!confirm("Delete this receipt?")) return;
+        const row = all.find(r=>r.id===id);
+        const spath = storagePathFromPublicUrl(row?.image_url);
+        await sb.from("receipts").delete().eq("id",id);
+        if(spath) await sb.storage.from("receipts-warm").remove([spath]);
+        selected.delete(id); await loadReceipts();
+      });
     });
-  });
+  }
+
+  // Hash highlight after render
+  const hid = (location.hash||"").replace("#","");
+  if(hid){
+    const row = document.querySelector(`[data-id="${CSS.escape(hid)}"]`);
+    if(row){ row.classList.add("hl"); row.scrollIntoView({behavior:"smooth", block:"center"});
+      setTimeout(()=>row.classList.remove("hl"), 2500);
+    }
+  }
 }
 
 function makeEditable(td, id, field){
@@ -363,18 +430,19 @@ function makeEditable(td, id, field){
   input.addEventListener("keydown",e=>{ if(e.key==="Enter") input.blur(); if(e.key==="Escape"){ input.value=original; input.blur(); }});
   input.addEventListener("blur", async ()=>{
     let value = input.value.trim();
-    if(field==="total"||field==="tax"){ value = value?Number(value):0; }
+    if(field==="total"||field==="tax"){ value = value ? Number(value) : 0; }
     if(field==="receipt_date" && value.length>10) value = value.slice(0,10);
-    td.classList.remove("editing"); td.textContent = (field==="total"||field==="tax")?Number(value||0).toFixed(2):value;
-    const upd = {}; upd[field]= value||null;
+    const upd = {}; upd[field]= (field==="total"||field==="tax") ? Number(value||0) : (value||null);
     await sb.from("receipts").update(upd).eq("id",id);
+    td.classList.remove("editing");
+    td.textContent = (field==="total"||field==="tax") ? Number(value||0).toFixed(2) : (value||"");
   });
   td.innerHTML=""; td.appendChild(input); input.focus(); input.select();
 }
 
 /* ===== Actions ===== */
-$("applyFilter").addEventListener("click", applyFilters);
-$("search").addEventListener("input", ()=>{ clearTimeout(window._s); window._s=setTimeout(applyFilters,180); });
+$("applyFilter").addEventListener("click", () => applyFilters());
+$("search").addEventListener("input", ()=>{ clearTimeout(window._s); window._s=setTimeout(()=>applyFilters(),180); });
 
 $("selectAll").addEventListener("change", (e)=>{
   if(e.target.checked) all.forEach(r=>selected.add(r.id)); else selected.clear();
@@ -386,13 +454,25 @@ $("deleteSelected").addEventListener("click", async ()=>{
   if(!confirm(`Delete ${selected.size} receipt(s)?`)) return;
   const ids=[...selected]; const chunk=300;
   for(let i=0;i<ids.length;i+=chunk){
-    await sb.from("receipts").delete().in("id", ids.slice(i,i+chunk));
+    const slice = ids.slice(i,i+chunk);
+    const toRemove = all.filter(r=>slice.includes(r.id))
+                        .map(r=>storagePathFromPublicUrl(r.image_url))
+                        .filter(Boolean);
+    await sb.from("receipts").delete().in("id", slice);
+    if(toRemove.length) await sb.storage.from("receipts-warm").remove(toRemove);
   }
   selected.clear(); await loadReceipts();
 });
 
 /* ===== Init ===== */
-loadReceipts();
+(async ()=>{
+  try {
+    await ensureUser();
+    await loadReceipts();
+  } catch (e) {
+    console.warn(e);
+  }
+})();
 </script>
 </body>
 </html>
