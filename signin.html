@@ -76,7 +76,6 @@
         <p id="msg" class="muted" style="margin-top:8px"></p>
 
         <div class="divider tiny">owner setup (temporary)</div>
-        <!-- Optional owner signup (email/password). We'll migrate to admin invites later. -->
         <details>
           <summary class="tiny">Create account (owner only – temporary)</summary>
           <div class="row" style="margin-top:10px">
@@ -124,13 +123,12 @@
 
     // ---------- Google OAuth ----------
     document.getElementById("googleBtn").addEventListener("click", async () => {
-      const redirectTo = window.location.origin + "/index.html"; // post-login landing
+      const redirectTo = "https://eddiemckeell12-oss.github.io/kosmos-bookkeeping-dashboard/index.html";
       const { error } = await sb.auth.signInWithOAuth({
         provider: "google",
         options: { redirectTo, queryParams: { access_type: "offline", prompt: "consent" } }
       });
       if (error) note(error.message, "err");
-      // On success, browser redirects via Google → back to index.html
     });
 
     // ---------- Email/password sign-in ----------
@@ -153,7 +151,7 @@
       const password = $("su_password").value;
       if (!email || !password) return note("Enter email and password to create account.", "err");
 
-      const redirectTo = window.location.origin + "/signin.html"; // email confirmation lands here
+      const redirectTo = "https://eddiemckeell12-oss.github.io/kosmos-bookkeeping-dashboard/signin.html";
       note("Creating account…");
       const { error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo } });
       if (error) return note(error.message, "err");
@@ -164,7 +162,7 @@
     document.getElementById("forgotBtn").addEventListener("click", async () => {
       const email = $("email").value.trim();
       if (!email) return note("Enter your email first, then click Forgot password.", "err");
-      const redirectTo = window.location.origin + "/signin.html";
+      const redirectTo = "https://eddiemckeell12-oss.github.io/kosmos-bookkeeping-dashboard/signin.html";
       note("Sending reset email…");
       const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
       if (error) return note(error.message, "err");
