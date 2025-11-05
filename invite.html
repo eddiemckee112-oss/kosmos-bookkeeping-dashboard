@@ -25,6 +25,7 @@
     .pill { display:inline-block; padding:4px 8px; border:1px solid var(--border); border-radius:999px; font-size:.82rem }
     .pill.ok { background:#eef9f1; color:var(--ok); border-color:#cfe7d6 }
     .pill.muted { background:#f6f7f8; color:var(--muted) }
+    .small { font-size:.85rem }
   </style>
 </head>
 <body>
@@ -53,7 +54,8 @@ bob@company.com"></textarea>
         <div class="btns">
           <button id="sendBtn">Send Invites</button>
         </div>
-        <p id="msg" class="muted" style="margin-top:6px"></p>
+        <p id="msg" class="muted small" style="margin-top:6px"></p>
+        <p class="muted small">Tip: use the <b>Copy link</b> button below to share the invite URL by text or email.</p>
       </div>
     </div>
 
@@ -99,6 +101,7 @@ bob@company.com"></textarea>
 
   function note(t, cls="muted"){ msg.className = cls; msg.textContent = t; }
   const fmtDate = s => (s ? new Date(s).toLocaleString() : "");
+  const acceptBase = "https://eddiemckee112-oss.github.io/kosmos-bookkeeping-dashboard/accept.html";
 
   async function ensureAuth(){
     const { data: { user } } = await sb.auth.getUser();
@@ -107,7 +110,6 @@ bob@company.com"></textarea>
   }
 
   async function loadOrgAndRole(){
-    // get org via org_users join
     const { data, error } = await sb
       .from("org_users")
       .select("role, orgs!inner(id,name)")
@@ -115,17 +117,14 @@ bob@company.com"></textarea>
 
     if(error){ orgLine.textContent = error.message; return; }
     if(!data || data.length===0){
-      // not onboarded -> send to create company
       location.replace("onboard.html"); return;
     }
-    // choose highest-privilege org row
     const ranks = { admin:3, manager:2, staff:1 };
     const best = data.sort((a,b)=>ranks[b.role]-ranks[a.role])[0];
     role = best.role;
     org = best.orgs;
 
     orgLine.textContent = `Organization: ${org.name}`;
-    // Only admins can invite for now
     if(role !== "admin"){
       guard.style.display="block";
       guard.textContent = "Only admins can manage invites.";
@@ -147,7 +146,7 @@ bob@company.com"></textarea>
     const emails = parseEmails($("emails").value);
     if(!emails.length){ note("Enter at least one valid email.", "err"); return; }
 
-    note("Sending invites…");
+    note("Creating invites…");
 
     const rows = emails.map(email => ({
       org_id: org.id,
@@ -170,6 +169,19 @@ bob@company.com"></textarea>
     await loadLists();
   }
 
+  function inviteLink(email){
+    return `${acceptBase}?email=${encodeURIComponent(email)}`;
+  }
+
+  async function copy(text){
+    try {
+      await navigator.clipboard.writeText(text);
+      note("Link copied to clipboard.", "ok");
+    } catch {
+      note("Copy failed. Long-press to copy the link.", "err");
+    }
+  }
+
   async function loadLists(){
     // pending
     {
@@ -190,20 +202,35 @@ bob@company.com"></textarea>
             const { data: u } = await sb.auth.admin.getUserById(r.invited_by).catch(()=>({}));
             who = u?.user?.email || "—";
           }catch{}
+          const link = inviteLink(r.email);
           const actions = (role==="admin")
-            ? `<button class="ghost" data-revoke="${r.id}">Revoke</button>`
+            ? `<button class="ghost" data-copy="${encodeURIComponent(link)}">Copy link</button>
+               <button class="ghost" data-mail="${encodeURIComponent(link)}" data-email="${r.email}">Email…</button>
+               <button class="ghost" data-revoke="${r.id}">Revoke</button>`
             : `<span class="muted">—</span>`;
           return `<tr>
-            <td>${r.email}</td>
+            <td>${r.email}<div class="small muted">${link}</div></td>
             <td>${who}</td>
             <td>${fmtDate(r.created_at)}</td>
             <td>${actions}</td>
           </tr>`;
         }));
         tb.innerHTML = rows.join("");
-        // wire revoke
+        // wire actions
         tb.querySelectorAll("[data-revoke]").forEach(btn=>{
           btn.addEventListener("click", ()=>revokeInvite(btn.getAttribute("data-revoke")));
+        });
+        tb.querySelectorAll("[data-copy]").forEach(btn=>{
+          btn.addEventListener("click", ()=>copy(decodeURIComponent(btn.getAttribute("data-copy"))));
+        });
+        tb.querySelectorAll("[data-mail]").forEach(btn=>{
+          btn.addEventListener("click", ()=>{
+            const link = decodeURIComponent(btn.getAttribute("data-mail"));
+            const email = btn.getAttribute("data-email");
+            const subject = encodeURIComponent("You're invited to Kosmos Bookkeeping");
+            const body = encodeURIComponent(`Hi,\n\nYou've been invited to join our Kosmos Bookkeeping account.\nOpen this link to accept:\n\n${link}\n\nThanks!`);
+            location.href = `mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`;
+          });
         });
       }
     }
