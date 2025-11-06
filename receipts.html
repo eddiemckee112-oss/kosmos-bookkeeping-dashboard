@@ -51,6 +51,15 @@
   <h2>🧾 Receipts</h2>
   <p class="muted">Manual upload (scanner off). Fill all required fields and upload an image. Role rules: staff upload only, managers edit, admins delete.</p>
 
+  <!-- Match Now toolbar -->
+  <div class="card" style="margin-bottom:12px;">
+    <div class="toolbar">
+      <button id="matchNowBtn">🔄 Match Now</button>
+      <span id="matchNowMsg" class="muted"></span>
+      <span class="spacer"></span>
+    </div>
+  </div>
+
   <!-- Upload Box -->
   <div class="card">
     <div class="uploader">
@@ -159,6 +168,13 @@ const selected = new Set();
 function money(n){ const v=Number(n)||0; return `$${v.toFixed(2)}`; }
 function esc(s){ return String(s??"").replace(/[&<>]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m])); }
 
+/* Match Now RPC */
+async function matchNow(days=5, tol=0.005){
+  const { data, error } = await sb.rpc('match_now', { p_days: days, p_tol: tol });
+  if (error) { console.error('match_now error:', error); throw error; }
+  return data ?? 0;
+}
+
 /* Upload form */
 $("file").addEventListener("change", e=>{
   const f=e.target.files?.[0];
@@ -173,7 +189,7 @@ $("clearBtn").onclick = ()=>{
 
 $("uploadBtn").onclick = async ()=>{
   const f=$("file").files?.[0];
-  if(!f) return $("upMsg").textContent="Choose a file first.";
+  if(!f) { $("upMsg").textContent="Choose a file first."; return; }
 
   const data = {
     vendor:$("vendor").value.trim(),
@@ -184,20 +200,56 @@ $("uploadBtn").onclick = async ()=>{
     source:$("source").value.trim(),
     notes:$("notes").value.trim()||null
   };
-  if(!data.vendor||!data.receipt_date||!data.total||!data.category||!data.source)
-    return $("upMsg").textContent="All fields required.";
+  if(!data.vendor||!data.receipt_date||!data.total||!data.category||!data.source){
+    $("upMsg").textContent="All fields required."; return;
+  }
 
-  $("upMsg").textContent="Uploading…";
-  const fname=`r_${Date.now()}_${(f.name||'img').replace(/[^\w.\-]+/g,'_')}`;
-  const { data:upRes, error:upErr }=await sb.storage.from("receipts-warm").upload(fname,f,{contentType:f.type||"image/jpeg"});
-  if(upErr) return $("upMsg").textContent=upErr.message;
-  const { data:pub }=sb.storage.from("receipts-warm").getPublicUrl(upRes.path);
-  data.image_url=pub?.publicUrl||null; data.size_bytes=f.size||0;
+  try {
+    $("upMsg").textContent="Uploading…";
+    const fname=`r_${Date.now()}_${(f.name||'img').replace(/[^\w.\-]+/g,'_')}`;
+    const { data:upRes, error:upErr }=await sb.storage.from("receipts-warm").upload(fname,f,{contentType:f.type||"image/jpeg"});
+    if(upErr) throw upErr;
 
-  const { error:insErr }=await sb.from("receipts").insert(data);
-  if(insErr) return $("upMsg").textContent=insErr.message;
-  $("upMsg").textContent="Uploaded."; $("clearBtn").click(); loadReceipts();
+    const { data:pub }=sb.storage.from("receipts-warm").getPublicUrl(upRes.path);
+    data.image_url=pub?.publicUrl||null; data.size_bytes=f.size||0;
+
+    const { error:insErr }=await sb.from("receipts").insert(data);
+    if(insErr) throw insErr;
+
+    // Auto-match after a successful insert
+    $("upMsg").textContent="Matching…";
+    try {
+      const matched = await matchNow(5, 0.005);
+      $("upMsg").textContent = `Saved ✔ — matched ${matched} receipt(s)`;
+    } catch (e) {
+      $("upMsg").textContent = "Saved ✔ — (match skipped)";
+    }
+
+    $("clearBtn").click();
+    await loadReceipts();
+  } catch (err) {
+    console.error(err);
+    $("upMsg").textContent = err?.message || String(err);
+  }
 };
+
+/* Match Now button */
+const matchBtn = $("matchNowBtn");
+const matchMsg = $("matchNowMsg");
+matchBtn?.addEventListener("click", async ()=>{
+  try {
+    matchBtn.disabled = true;
+    matchMsg.textContent = "Matching…";
+    const n = await matchNow(5, 0.005);
+    matchMsg.textContent = `Matched ${n} receipt(s).`;
+    await loadReceipts();
+  } catch (e) {
+    console.error(e);
+    matchMsg.textContent = "Match error — see console";
+  } finally {
+    matchBtn.disabled = false;
+  }
+});
 
 /* Load receipts */
 async function loadReceipts(){
