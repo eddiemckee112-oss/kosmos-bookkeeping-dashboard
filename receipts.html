@@ -24,6 +24,8 @@
     .editgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
     .editgrid .full{grid-column:1/-1}
     .danger{color:#b91c1c}
+    .linkbtn{padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:#fff;cursor:pointer}
+    .dim{opacity:.65}
   </style>
 </head>
 <body>
@@ -109,11 +111,11 @@
           <th style="min-width:180px;">Vendor</th>
           <th class="right" style="min-width:110px;">Total</th>
           <th class="right" style="min-width:90px;">Tax</th>
-          <th style="min-width:160px;">Category</th>
+          <th style="min-width:180px;">Category</th>
           <th style="min-width:160px;">Source</th>
           <th style="min-width:120px;">Status</th>
           <th style="min-width:220px;">Notes</th>
-          <th style="min-width:260px;">Actions</th>
+          <th style="min-width:280px;">Actions</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -153,13 +155,13 @@ const tbody = document.querySelector("#recTable tbody");
 let ALL = [];
 let MATCHES = new Map();
 
-function money(n){ const v=Number(n)||0; return v.toLocaleString(undefined,{style:'currency',currency:'CAD'}); }
-function esc(s){ return String(s??"").replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;","&gt;":"&gt;","<": "&lt;"}[m]||m)); }
+const money = n => (Number(n)||0).toLocaleString(undefined,{style:'currency',currency:'CAD'});
+function esc(s){ return String(s??"").replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
 
 /* ---------- Populate dropdowns & defaults ---------- */
 function initUploadForm(){
-  $("category").innerHTML = CATEGORIES.map(c=>`<option value="${c}">${c}</option>`).join("");
-  $("source").innerHTML   = SOURCES.map(s=>`<option value="${s}">${s}</option>`).join("");
+  $("category").innerHTML = CATEGORIES.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  $("source").innerHTML   = SOURCES.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("");
 
   $("category").value = "Uncategorized";
   $("source").value   = SOURCES[0];
@@ -183,32 +185,31 @@ $("uploadBtn").onclick = async ()=>{
   const f=$("file").files?.[0];
   if(!f) return $("upMsg").textContent="Choose a file first.";
 
-  const data = {
+  const payload = {
     vendor:$("vendor").value.trim(),
     receipt_date:$("rdate").value,
     total:Number($("total").value||0),
     tax:Number($("tax").value||0),
     category:$("category").value,
     source:$("source").value,
-    notes:$("notes").value.trim()||null
+    notes:($("notes").value||"").trim()||null
   };
-  if(!data.vendor||!data.receipt_date||!data.total||!data.category||!data.source){
+  if(!payload.vendor || !payload.receipt_date || !payload.total || !payload.category || !payload.source){
     $("upMsg").textContent="All fields required."; return;
   }
 
-  $("upMsg").textContent="Uploading…";
+  $("upMsg").textContent="Uploading image…";
   const fname=`r_${Date.now()}_${(f.name||'img').replace(/[^\w.\-]+/g,'_')}`;
   const { data:upRes, error:upErr }=await sb.storage.from("receipts-warm").upload(fname,f,{contentType:f.type||"image/jpeg"});
   if(upErr) return $("upMsg").textContent=upErr.message;
   const imageUrl=`https://advihqhjjlxumgdlbwui.supabase.co/storage/v1/object/public/receipts-warm/${fname}`;
 
-  const row = {
+  const { error:insErr }=await sb.from("receipts").insert({
     image_url:imageUrl, size_bytes:f.size||0,
-    receipt_date:data.receipt_date, total:data.total, tax:data.tax,
-    category:data.category, vendor:data.vendor, source:data.source,
-    notes:data.notes, entered_by:"You"
-  };
-  const { error:insErr }=await sb.from("receipts").insert(row);
+    receipt_date:payload.receipt_date, total:payload.total, tax:payload.tax,
+    category:payload.category, vendor:payload.vendor, source:payload.source,
+    notes:payload.notes, entered_by:"You"
+  });
   if(insErr) return $("upMsg").textContent=insErr.message;
 
   $("upMsg").textContent="Uploaded.";
@@ -216,15 +217,16 @@ $("uploadBtn").onclick = async ()=>{
   await loadReceipts();
 };
 
-/* ---------- Render ---------- */
+/* ---------- Row actions ---------- */
 function badge(rec){ return MATCHES.has(rec.id) ? `<span class="badge ok">Matched</span>` : `<span class="badge muted">Unmatched</span>`; }
 function actions(rec){
-  const open = rec.image_url ? `<a class="badge" href="${esc(rec.image_url)}" target="_blank" rel="noopener">Open</a>` : "";
-  const matchBtn = `<button class="ghost" data-act="match" data-id="${rec.id}">Match Now</button>`;
-  const editBtn  = `<button class="ghost" data-act="edit" data-id="${rec.id}">Edit</button>`;
-  const delBtn   = `<button class="ghost danger" data-act="del" data-id="${rec.id}">Delete</button>`;
+  const open = rec.image_url ? `<a class="linkbtn" href="${esc(rec.image_url)}" target="_blank" rel="noopener">Open</a>` : "";
+  const matchBtn = `<button class="linkbtn" data-act="match" data-id="${rec.id}">Match Now</button>`;
+  const editBtn  = `<button class="linkbtn" data-act="edit" data-id="${rec.id}">Edit</button>`;
+  const delBtn   = `<button class="linkbtn danger" data-act="del" data-id="${rec.id}">Delete</button>`;
   return `${open} ${matchBtn} ${editBtn} ${delBtn}`;
 }
+
 function render(rows){
   $("countAll").textContent=ALL.length;
   let m=0; ALL.forEach(r=>{ if(MATCHES.has(r.id)) m++;});
@@ -255,7 +257,7 @@ function render(rows){
   $("ftTax").textContent=money(taxSum);
   $("ftTotal").textContent=money(totalSum);
 
-  // actions
+  // hook up action buttons
   tbody.querySelectorAll("button[data-act]").forEach(btn=>{
     const id=btn.getAttribute("data-id");
     const act=btn.getAttribute("data-act");
@@ -301,20 +303,21 @@ function applyFilters(){
   render(rows);
 }
 
-/* ---------- Edit (prompt-based) ---------- */
+/* ---------- Edit (prompt-based, locked lists) ---------- */
 async function openEdit(id){
   const rec = ALL.find(r=>r.id===id); if(!rec) return;
+
   const vendor = prompt("Vendor", rec.vendor||""); if(vendor===null) return;
   const date   = prompt("Date (YYYY-MM-DD)", (rec.receipt_date||"").slice(0,10)); if(date===null) return;
-  const total  = prompt("Total", String(rec.total||0)); if(total===null) return;
-  const tax    = prompt("Tax", String(rec.tax||0)); if(tax===null) return;
 
-  // choose from fixed lists
-  const cat = prompt(`Category (choose one):\n${CATEGORIES.join(", ")}`, rec.category||"");
+  const totalStr  = prompt("Total", String(rec.total||0)); if(totalStr===null) return;
+  const taxStr    = prompt("Tax", String(rec.tax||0)); if(taxStr===null) return;
+
+  const cat = prompt(`Category (choose one exactly):\n${CATEGORIES.join(", ")}`, rec.category||"");
   if(cat===null) return;
   if(!CATEGORIES.includes(cat)) return alert("Category must be one of the fixed options.");
 
-  const src = prompt(`Source (choose one):\n${SOURCES.join(", ")}`, rec.source||"");
+  const src = prompt(`Source (choose one exactly):\n${SOURCES.join(", ")}`, rec.source||"");
   if(src===null) return;
   if(!SOURCES.includes(src)) return alert("Source must be one of the fixed options.");
 
@@ -323,8 +326,8 @@ async function openEdit(id){
   const upd = {
     vendor: vendor.trim(),
     receipt_date: date,
-    total: Number(total)||0,
-    tax: Number(tax)||0,
+    total: Number(totalStr)||0,
+    tax: Number(taxStr)||0,
     category: cat,
     source: src,
     notes: notes.trim()
