@@ -5,10 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Kosmos — Reports</title>
 
-  <!-- Shared theme -->
   <link rel="stylesheet" href="style.css" />
-
-  <!-- Supabase -->
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -23,18 +20,36 @@
   </header>
 
   <main class="container">
-    <h2>📁 Accountant Export</h2>
-    <p class="muted">Download an accountant-ready CSV for any period. Includes date, vendor, category, source, subtotal, tax, total, notes, and image URL.</p>
+    <h2>📁 Accountant Exports</h2>
 
-    <div class="card">
+    <!-- Receipts export -->
+    <div class="card" style="margin-bottom:16px">
+      <h3>Receipts Export</h3>
+      <p class="muted">
+        Uses <code>v_receipts_for_export</code> — Vendor automatically uses bank name if linked.
+        Image URLs are clickable for quick review.
+      </p>
       <div class="row" style="margin-bottom:8px;">
-        <label>From</label>
-        <input type="date" id="fromDate" />
-        <label>To</label>
-        <input type="date" id="toDate" />
-        <button id="exportBtn">Export Accountant CSV</button>
+        <label>From</label><input type="date" id="rFrom" />
+        <label>To</label><input type="date" id="rTo" />
+        <button id="exportReceipts">⬇️ Export Receipts CSV</button>
       </div>
-      <p id="msg" class="muted"></p>
+      <p id="rMsg" class="muted"></p>
+    </div>
+
+    <!-- Transactions export -->
+    <div class="card">
+      <h3>Transactions Export (+Linked Receipts)</h3>
+      <p class="muted">
+        Uses <code>v_transactions_with_receipts</code> — includes match status, linked receipt info, and clickable image links.
+        Amounts are signed: <b>credit = positive</b>, <b>debit = negative</b>.
+      </p>
+      <div class="row" style="margin-bottom:8px;">
+        <label>From</label><input type="date" id="tFrom" />
+        <label>To</label><input type="date" id="tTo" />
+        <button id="exportTxns">⬇️ Export Transactions CSV</button>
+      </div>
+      <p id="tMsg" class="muted"></p>
     </div>
   </main>
 
@@ -43,48 +58,112 @@
     const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
     const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
-    const qs=id=>document.getElementById(id);
-    const msg=qs("msg");
+    const $=id=>document.getElementById(id);
+    const escCSV=v=>{
+      if(v==null)return"";
+      const s=String(v);
+      return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;
+    };
+    const to2=n=> (isNaN(+n)?"":(+n).toFixed(2));
 
-    function escCSV(v){ if(v==null)return""; const s=String(v); return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; }
-    function to2(n){ const v=Number(n); return Number.isNaN(v)?"":v.toFixed(2); }
+    // Excel/Sheets clickable link
+    const makeLink = url => url ? `=HYPERLINK("${url}", "View")` : "";
 
-    async function exportCSV(){
-      msg.className="muted"; msg.textContent="Building export…";
-      const from=qs("fromDate").value||"1900-01-01";
-      const to=qs("toDate").value||"2100-12-31";
-      const {data,error}=await sb.from("v_accountant_export_receipts")
-        .select("*").gte("receipt_date",from).lte("receipt_date",to)
+    // ---------- Receipts Export ----------
+    $("exportReceipts").onclick = async ()=>{
+      const msg=$("rMsg");
+      msg.className="muted"; msg.textContent="Building receipts export…";
+      const from=$("rFrom").value||"1900-01-01";
+      const to=$("rTo").value||"2100-12-31";
+
+      const {data,error}=await sb
+        .from("v_receipts_for_export")
+        .select("receipt_date, export_vendor, category, source, total, tax, notes, image_url")
+        .gte("receipt_date",from).lte("receipt_date",to)
         .order("receipt_date",{ascending:true});
+
       if(error){ msg.className="err"; msg.textContent=error.message; return; }
-      if(!data.length){ msg.textContent="No receipts found for that range."; return; }
+      if(!data?.length){ msg.textContent="No receipts found for that range."; return; }
 
-      const cols=[
-        ["Date","receipt_date"],["Vendor","vendor"],["Category","category"],
-        ["Source","source"],["Subtotal","subtotal"],["Tax","tax"],
-        ["Total","total"],["Notes","notes"],["Image URL","image_url"]
-      ];
-      const header=cols.map(c=>c[0]).join(",");
-      const rows=data.map(r=>cols.map(c=>{
-        const key=c[1];
-        if(["subtotal","tax","total"].includes(key))return escCSV(to2(r[key]));
-        if(key==="receipt_date")return escCSV(String(r[key]).slice(0,10));
-        return escCSV(r[key]);
-      }).join(","));
-      const csv=[header,...rows].join("\n");
+      const rows=[];
+      let subtotal=0, taxTotal=0, grand=0;
 
+      for(const r of data){
+        const t=+r.total||0, tx=+r.tax||0, st=t-tx;
+        subtotal+=st; taxTotal+=tx; grand+=t;
+        rows.push([
+          r.receipt_date ? r.receipt_date.slice(0,10) : "",
+          r.export_vendor||"",
+          r.category||"",
+          r.source||"",
+          to2(st),
+          to2(tx),
+          to2(t),
+          (r.notes||"").replace(/[\r\n]+/g," "),
+          makeLink(r.image_url)
+        ]);
+      }
+      rows.push([]);
+      rows.push(["","","","Totals →",to2(subtotal),to2(taxTotal),to2(grand),"",""]);
+
+      const header=["Date","Vendor","Category","Source","Subtotal","Tax","Total","Notes","Image"];
+      const csv=[header,...rows].map(r=>r.map(escCSV).join(",")).join("\n");
       const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
       const url=URL.createObjectURL(blob);
       const a=document.createElement("a");
       const today=new Date().toISOString().slice(0,10);
-      a.href=url; a.download=`kosmos_accountant_export_${today}.csv`;
+      a.href=url; a.download=`kosmos_receipts_${today}.csv`;
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
-      msg.className="ok"; msg.textContent=`Exported ${data.length} receipts to CSV.`;
-    }
+      msg.className="ok"; msg.textContent=`Exported ${data.length} receipts with clickable links.`;
+    };
 
-    qs("exportBtn").addEventListener("click",exportCSV);
+    // ---------- Transactions Export (signed amounts) ----------
+    $("exportTxns").onclick = async ()=>{
+      const msg=$("tMsg");
+      msg.className="muted"; msg.textContent="Building transactions export…";
+      const from=$("tFrom").value||"1900-01-01";
+      const to=$("tTo").value||"2100-12-31";
+
+      const {data,error}=await sb
+        .from("v_transactions_with_receipts")
+        .select("txn_date, bank_description, amount, direction, category, source, receipt_id, receipt_vendor, receipt_image_url")
+        .gte("txn_date",from).lte("txn_date",to)
+        .order("txn_date",{ascending:true});
+
+      if(error){ msg.className="err"; msg.textContent=error.message; return; }
+      if(!data?.length){ msg.textContent="No transactions found for that range."; return; }
+
+      const header=["Date","Description","Amount","Type","Category","Source","Matched","Receipt ID","Receipt Vendor","Receipt Image"];
+      const rows=data.map(r=>{
+        // Force sign rule: credit = +, debit = -
+        const base = Math.abs(+r.amount || 0);
+        const signed = (r.direction === "credit") ? base : -base;
+        return [
+          r.txn_date||"",
+          (r.bank_description||"").replace(/[\r\n]+/g," "),
+          to2(signed),
+          r.direction || "",
+          r.category || "",
+          r.source || "",
+          r.receipt_id ? "Yes" : "No",
+          r.receipt_id || "",
+          r.receipt_vendor || "",
+          makeLink(r.receipt_image_url)
+        ];
+      });
+
+      const csv=[header,...rows].map(r=>r.map(escCSV).join(",")).join("\n");
+      const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      const today=new Date().toISOString().slice(0,10);
+      a.href=url; a.download=`kosmos_transactions_${today}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      msg.className="ok"; msg.textContent=`Exported ${data.length} transactions (credits positive, debits negative).`;
+    };
   </script>
-<script src="roles.js"></script>
+  <script src="roles.js"></script>
 </body>
 </html>
