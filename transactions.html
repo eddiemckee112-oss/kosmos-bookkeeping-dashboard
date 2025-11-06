@@ -336,7 +336,6 @@ async function linkNow(transaction_id){
       return;
     }
 
-    /* success */
     if(LINK_RECEIPT_ID){ $("clearLink").click(); }
     CHOSEN_RECEIPT_ID = null;
     $("chooseReceipt").textContent = "Choose receipt…";
@@ -346,7 +345,7 @@ async function linkNow(transaction_id){
   }
 }
 
-/* ---------- Upload redirect (optional simple flow) ---------- */
+/* ---------- Upload redirect ---------- */
 async function openUpload(id){
   sessionStorage.setItem("linkToTxnAfterUpload", id);
   location.href = "receipts.html";
@@ -405,7 +404,6 @@ $("exportBtn").onclick = async ()=>{
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="transactions_export.csv"; a.click(); URL.revokeObjectURL(a.href);
 };
 
-/* ---------- Filters/search wiring ---------- */
 $("applyBtn").onclick = loadTransactions;
 $("quickSearch").addEventListener("input", ()=>{ clearTimeout(window.__qsT); window.__qsT=setTimeout(loadTransactions,150); });
 
