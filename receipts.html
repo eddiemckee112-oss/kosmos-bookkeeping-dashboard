@@ -27,6 +27,7 @@
     .grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
     .grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
     .row-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .hl{outline:3px solid var(--brand);box-shadow:0 0 0 4px color-mix(in oklab, var(--brand) 18%, transparent)}
   </style>
 </head>
 <body>
@@ -42,7 +43,7 @@
 
 <main class="container">
   <h2>🧾 Receipts</h2>
-  <p class="muted">Manual upload (scanner off). Staff upload; managers/admins edit; admins delete.</p>
+  <p class="muted">Staff upload; managers/admins edit; admins delete. Auto-match runs on upload/edit. Use “Match Now” to retry and jump to candidates.</p>
 
   <!-- Upload -->
   <div class="card">
@@ -93,8 +94,6 @@
       <span class="kpill">Total: <b id="countAll">0</b></span>
       <span class="kpill">Matched: <b id="countMatched">0</b></span>
       <span class="kpill">Unmatched: <b id="countUnmatched">0</b></span>
-      <span class="spacer" style="flex:1 1 auto"></span>
-      <button id="matchNowBtn" class="ghost">🔎 Match Now (preview)</button>
     </div>
   </div>
 
@@ -112,7 +111,7 @@
           <th>Status</th>
           <th>Notes</th>
           <th>Image</th>
-          <th style="min-width:180px">Actions</th>
+          <th style="min-width:220px">Actions</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -185,7 +184,6 @@ function fillSelect(el, arr, val){
 }
 function money(n){ const v=Number(n)||0; return `$${v.toFixed(2)}`; }
 function esc(s){ return String(s??"").replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[m])); }
-
 function todayISO(){ const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); }
 
 // Upload form
@@ -221,8 +219,7 @@ $("uploadBtn").onclick = async ()=>{
     notes:($("notes").value||"").trim()||null
   };
   if(!data.vendor||!data.receipt_date||!data.category||!data.source || !(data.total>=0) || !(data.tax>=0)){
-    $("upMsg").textContent="Please complete all required fields.";
-    return;
+    $("upMsg").textContent="Please complete all required fields."; return;
   }
   if(data.tax>data.total){ $("upMsg").textContent="Tax cannot exceed Total."; return; }
 
@@ -279,7 +276,11 @@ function render(rows){
   let m=0; all.forEach(r=>{if(matches.has(r.id))m++;});
   $("countMatched").textContent=m; $("countUnmatched").textContent=all.length-m;
 
-  if(!rows.length){tbody.innerHTML=`<tr><td colspan="10">No receipts.</td></tr>`; $("ftRows").textContent=0; $("ftSubtotal").textContent="$0.00"; $("ftTax").textContent="$0.00"; $("ftTotal").textContent="$0.00"; return;}
+  if(!rows.length){
+    tbody.innerHTML=`<tr><td colspan="10">No receipts.</td></tr>`;
+    $("ftRows").textContent=0; $("ftSubtotal").textContent="$0.00"; $("ftTax").textContent="$0.00"; $("ftTotal").textContent="$0.00";
+    return;
+  }
 
   let subtotal=0,taxSum=0,totalSum=0;
   tbody.innerHTML=rows.map(r=>{
@@ -290,6 +291,7 @@ function render(rows){
     const img=r.image_url?`<a class="badge" href="${esc(r.image_url)}" target="_blank" rel="noopener">Open</a>`:"—";
     const editBtn = `<button class="ghost" onclick="openEdit('${r.id}')">Edit</button>`;
     const delBtn  = `<button class="ghost admin-only" onclick="deleteReceipt('${r.id}')">Delete</button>`;
+    const matchBtn= `<button class="ghost" onclick="matchNow('${r.id}')">Match Now</button>`;
     return `<tr data-id="${r.id}">
       <td>${esc((r.receipt_date||"").slice(0,10))}</td>
       <td>${esc(r.vendor||"")}</td>
@@ -300,7 +302,7 @@ function render(rows){
       <td>${status}</td>
       <td>${esc(r.notes||"")}</td>
       <td>${img}</td>
-      <td><div class="row-actions">${editBtn}${delBtn}</div></td>
+      <td><div class="row-actions">${matchBtn}${editBtn}${delBtn}</div></td>
     </tr>`;
   }).join("");
 
@@ -368,15 +370,25 @@ async function deleteReceipt(id){
   loadReceipts();
 }
 
-// “Match now” shortcut: just navigates to the saved SQL in Studio (preview)
-// (Keep using your saved “Match Now (1-tap)” in Studio for bulk auto-match.)
-$("matchNowBtn").onclick = ()=>{ alert("Use the saved SQL 'Match Now (1-tap)' in Supabase Studio for bulk matching. This page focuses on upload/edit/delete."); };
+// Match Now (per receipt) — calls RPC, then deep-links to Transactions
+async function matchNow(receiptId){
+  try{
+    const { data, error } = await sb.rpc('match_now_receipt', { rid: receiptId });
+    if(error){ alert('Match failed: '+error.message); return; }
+    const row = Array.isArray(data) ? data[0] : data;
+    if(row && row.matched && row.transaction_id){
+      window.location.href = `transactions.html#focus_txn=${row.transaction_id}`;
+    }else{
+      window.location.href = `transactions.html#focus_receipt=${receiptId}`;
+    }
+  }catch(e){ alert('Match error: '+(e?.message||e)); }
+}
 
 // Init
 loadReceipts();
 </script>
 
-<!-- Role/Session Guard (hides admin-only buttons if not admin) -->
+<!-- Role/Session Guard -->
 <script src="roles.js"></script>
 </body>
 </html>
