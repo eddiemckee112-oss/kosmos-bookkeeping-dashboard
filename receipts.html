@@ -21,9 +21,8 @@
     .badge.muted{background:#f6f7f8;color:var(--muted)}
     .kpill{padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:#fff}
     .sticky-footer{display:flex;gap:10px;flex-wrap:wrap}
-    .editbox{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-    .editbox .full{grid-column:1/-1}
-    .link{color:#2563eb;text-decoration:none}
+    .editgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    .editgrid .full{grid-column:1/-1}
     .danger{color:#b91c1c}
   </style>
 </head>
@@ -40,9 +39,9 @@
 
 <main class="container">
   <h2>🧾 Receipts</h2>
-  <p class="muted">Manual upload. Fixed dropdowns for category & source. “Match Now” jumps to Transactions linking mode.</p>
+  <p class="muted">Upload, edit, delete, and link receipts. Category/Source are fixed dropdowns. “Match Now” opens Transactions in linking mode.</p>
 
-  <!-- Upload Box -->
+  <!-- Upload -->
   <div class="card">
     <div class="uploader">
       <div class="imgbox">
@@ -52,12 +51,11 @@
       </div>
 
       <div>
-        <div class="editbox">
+        <div class="editgrid">
           <div><label>Vendor</label><input id="vendor" placeholder="e.g., NO FRILLS" required /></div>
           <div><label>Date</label><input id="rdate" type="date" required /></div>
           <div><label>Total</label><input id="total" type="number" step="0.01" placeholder="0.00" required /></div>
           <div><label>Tax</label><input id="tax" type="number" step="0.01" value="0.00" required /></div>
-
           <div>
             <label>Category</label>
             <select id="category" required></select>
@@ -66,10 +64,9 @@
             <label>Source</label>
             <select id="source" required></select>
           </div>
-
           <div class="full">
             <label>Notes <span class="muted">(optional)</span></label>
-            <input id="notes" placeholder="Any notes…" />
+            <input id="notes" placeholder="Any notes…"/>
           </div>
         </div>
 
@@ -82,7 +79,7 @@
     </div>
   </div>
 
-  <!-- Filters/Actions -->
+  <!-- Filters -->
   <div class="card">
     <div class="toolbar">
       <select id="filterMode">
@@ -116,7 +113,7 @@
           <th style="min-width:160px;">Source</th>
           <th style="min-width:120px;">Status</th>
           <th style="min-width:220px;">Notes</th>
-          <th style="min-width:220px;">Actions</th>
+          <th style="min-width:260px;">Actions</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -141,12 +138,7 @@ const sb = supabase.createClient(
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY"
 );
 
-/* ---------- Helpers ---------- */
-const $ = id => document.getElementById(id);
-const tbody = document.querySelector("#recTable tbody");
-let ALL = [];
-let MATCHES = new Map();
-
+/* ---------- Fixed options ---------- */
 const CATEGORIES = [
   "Uncategorized","Income","Bank Fees","Fuel","Utilities","Phone/Internet","Insurance",
   "Professional Fees","Software","Subscriptions","Repairs & Maintenance","Office",
@@ -155,21 +147,27 @@ const CATEGORIES = [
 ];
 const SOURCES = ["CIBC Bank Account","Rogers MasterCard","PC MasterCard","Cash"];
 
+/* ---------- Helpers ---------- */
+const $ = id => document.getElementById(id);
+const tbody = document.querySelector("#recTable tbody");
+let ALL = [];
+let MATCHES = new Map();
+
 function money(n){ const v=Number(n)||0; return v.toLocaleString(undefined,{style:'currency',currency:'CAD'}); }
-function esc(s){ return String(s??"").replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[m])); }
+function esc(s){ return String(s??"").replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;","&gt;":"&gt;","<": "&lt;"}[m]||m)); }
 
-/* ---------- Populate fixed dropdowns ---------- */
-function populateFixedOptions(){
-  $("category").innerHTML = CATEGORIES.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");
-  $("source").innerHTML    = SOURCES.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("");
+/* ---------- Populate dropdowns & defaults ---------- */
+function initUploadForm(){
+  $("category").innerHTML = CATEGORIES.map(c=>`<option value="${c}">${c}</option>`).join("");
+  $("source").innerHTML   = SOURCES.map(s=>`<option value="${s}">${s}</option>`).join("");
 
-  // default date = today
-  const today = new Date().toISOString().slice(0,10);
-  $("rdate").value = today;
+  $("category").value = "Uncategorized";
+  $("source").value   = SOURCES[0];
+  $("rdate").value    = new Date().toISOString().slice(0,10);
 }
-populateFixedOptions();
+initUploadForm();
 
-/* ---------- Upload UI ---------- */
+/* ---------- Upload ---------- */
 $("file").addEventListener("change", e=>{
   const f=e.target.files?.[0];
   $("preview").src = f ? URL.createObjectURL(f) : "";
@@ -178,13 +176,9 @@ $("file").addEventListener("change", e=>{
 $("clearBtn").onclick = ()=>{
   $("file").value=""; $("preview").src="";
   ["vendor","total","tax","notes"].forEach(id=>$(id).value="");
-  $("tax").value="0.00";
-  $("category").value="Uncategorized";
-  $("source").value=SOURCES[0];
-  $("upMsg").textContent="";
-  $("rdate").value = new Date().toISOString().slice(0,10);
+  $("tax").value="0.00"; $("upMsg").textContent="";
+  initUploadForm();
 };
-
 $("uploadBtn").onclick = async ()=>{
   const f=$("file").files?.[0];
   if(!f) return $("upMsg").textContent="Choose a file first.";
@@ -208,13 +202,13 @@ $("uploadBtn").onclick = async ()=>{
   if(upErr) return $("upMsg").textContent=upErr.message;
   const imageUrl=`https://advihqhjjlxumgdlbwui.supabase.co/storage/v1/object/public/receipts-warm/${fname}`;
 
-  const insertRow = {
+  const row = {
     image_url:imageUrl, size_bytes:f.size||0,
     receipt_date:data.receipt_date, total:data.total, tax:data.tax,
     category:data.category, vendor:data.vendor, source:data.source,
     notes:data.notes, entered_by:"You"
   };
-  const { error:insErr }=await sb.from("receipts").insert(insertRow);
+  const { error:insErr }=await sb.from("receipts").insert(row);
   if(insErr) return $("upMsg").textContent=insErr.message;
 
   $("upMsg").textContent="Uploaded.";
@@ -222,32 +216,24 @@ $("uploadBtn").onclick = async ()=>{
   await loadReceipts();
 };
 
-/* ---------- Table rendering ---------- */
-$("applyFilter").onclick = applyFilters;
-$("search").oninput = ()=>{ clearTimeout(window.__t); window.__t=setTimeout(applyFilters,200); };
-
-function statusBadge(rec){
-  return MATCHES.has(rec.id) ? `<span class="badge ok">Matched</span>` : `<span class="badge muted">Unmatched</span>`;
-}
-function actionButtons(rec){
+/* ---------- Render ---------- */
+function badge(rec){ return MATCHES.has(rec.id) ? `<span class="badge ok">Matched</span>` : `<span class="badge muted">Unmatched</span>`; }
+function actions(rec){
   const open = rec.image_url ? `<a class="badge" href="${esc(rec.image_url)}" target="_blank" rel="noopener">Open</a>` : "";
-  const matchNow =
-    `<button class="ghost" data-act="match" data-id="${rec.id}">Match Now</button>`;
-  const editBtn = `<button class="ghost" data-act="edit" data-id="${rec.id}">Edit</button>`;
-  const delBtn  = `<button class="ghost danger" data-act="del" data-id="${rec.id}">Delete</button>`;
-  return `${open} ${matchNow} ${editBtn} ${delBtn}`;
+  const matchBtn = `<button class="ghost" data-act="match" data-id="${rec.id}">Match Now</button>`;
+  const editBtn  = `<button class="ghost" data-act="edit" data-id="${rec.id}">Edit</button>`;
+  const delBtn   = `<button class="ghost danger" data-act="del" data-id="${rec.id}">Delete</button>`;
+  return `${open} ${matchBtn} ${editBtn} ${delBtn}`;
 }
-
 function render(rows){
   $("countAll").textContent=ALL.length;
   let m=0; ALL.forEach(r=>{ if(MATCHES.has(r.id)) m++;});
-  $("countMatched").textContent=m;
-  $("countUnmatched").textContent=ALL.length - m;
+  $("countMatched").textContent=m; $("countUnmatched").textContent=ALL.length-m;
 
   if(!rows.length){ tbody.innerHTML=`<tr><td colspan="9">No receipts.</td></tr>`; return; }
 
   let subtotal=0,taxSum=0,totalSum=0;
-  tbody.innerHTML=rows.map(r=>{
+  tbody.innerHTML = rows.map(r=>{
     subtotal += (+r.total||0) - (+r.tax||0);
     taxSum   += (+r.tax||0);
     totalSum += (+r.total||0);
@@ -258,9 +244,9 @@ function render(rows){
       <td class="right">${money(r.tax||0)}</td>
       <td>${esc(r.category||"")}</td>
       <td>${esc(r.source||"")}</td>
-      <td>${statusBadge(r)}</td>
+      <td>${badge(r)}</td>
       <td>${esc(r.notes||"")}</td>
-      <td>${actionButtons(r)}</td>
+      <td>${actions(r)}</td>
     </tr>`;
   }).join("");
 
@@ -269,21 +255,22 @@ function render(rows){
   $("ftTax").textContent=money(taxSum);
   $("ftTotal").textContent=money(totalSum);
 
-  // wire actions
+  // actions
   tbody.querySelectorAll("button[data-act]").forEach(btn=>{
     const id=btn.getAttribute("data-id");
     const act=btn.getAttribute("data-act");
+
     if(act==="del"){
       btn.onclick = async ()=>{
         if(!confirm("Delete this receipt?")) return;
-        await sb.from("receipts").delete().eq("id", id);
         await sb.from("matches").delete().eq("receipt_id", id);
+        await sb.from("receipts").delete().eq("id", id);
         loadReceipts();
       };
     } else if(act==="edit"){
       btn.onclick = ()=> openEdit(id);
     } else if(act==="match"){
-      btn.onclick = ()=> {
+      btn.onclick = ()=>{
         sessionStorage.setItem('linkReceipt', id);
         location.href = 'transactions.html?linkReceipt=' + encodeURIComponent(id);
       };
@@ -291,6 +278,9 @@ function render(rows){
   });
 }
 
+/* ---------- Filters ---------- */
+$("applyFilter").onclick = applyFilters;
+$("search").oninput = ()=>{ clearTimeout(window.__t); window.__t=setTimeout(applyFilters,200); };
 function applyFilters(){
   const mode=$("filterMode").value;
   const q = ($("search").value||"").toLowerCase().trim();
@@ -311,20 +301,24 @@ function applyFilters(){
   render(rows);
 }
 
-/* ---------- Edit modal (lightweight prompt) ---------- */
+/* ---------- Edit (prompt-based) ---------- */
 async function openEdit(id){
   const rec = ALL.find(r=>r.id===id); if(!rec) return;
   const vendor = prompt("Vendor", rec.vendor||""); if(vendor===null) return;
   const date   = prompt("Date (YYYY-MM-DD)", (rec.receipt_date||"").slice(0,10)); if(date===null) return;
   const total  = prompt("Total", String(rec.total||0)); if(total===null) return;
   const tax    = prompt("Tax", String(rec.tax||0)); if(tax===null) return;
-  const cat    = prompt("Category (choose fixed)", rec.category||""); if(cat===null) return;
-  const src    = prompt("Source (choose fixed)", rec.source||""); if(src===null) return;
-  const notes  = prompt("Notes", rec.notes||""); if(notes===null) return;
 
-  // guard against non-fixed
+  // choose from fixed lists
+  const cat = prompt(`Category (choose one):\n${CATEGORIES.join(", ")}`, rec.category||"");
+  if(cat===null) return;
   if(!CATEGORIES.includes(cat)) return alert("Category must be one of the fixed options.");
+
+  const src = prompt(`Source (choose one):\n${SOURCES.join(", ")}`, rec.source||"");
+  if(src===null) return;
   if(!SOURCES.includes(src)) return alert("Source must be one of the fixed options.");
+
+  const notes  = prompt("Notes", rec.notes||""); if(notes===null) return;
 
   const upd = {
     vendor: vendor.trim(),
@@ -336,11 +330,11 @@ async function openEdit(id){
     notes: notes.trim()
   };
   const { error } = await sb.from("receipts").update(upd).eq("id", id);
-  if(error) alert(error.message);
+  if(error){ alert(error.message); return; }
   await loadReceipts();
 }
 
-/* ---------- Load receipts + matches ---------- */
+/* ---------- Data load ---------- */
 async function loadReceipts(){
   const { data: recs, error: rErr } = await sb.from("receipts")
     .select("id, receipt_date, total, tax, category, vendor, source, notes, image_url, created_at")
