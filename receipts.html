@@ -17,12 +17,17 @@
     .mutetip{font-size:.85rem;color:var(--muted)}
     .grid-rec{display:grid;gap:12px}
     @media (min-width:900px){.grid-rec{display:block}}
+
+    .r-cards{display:grid;gap:12px;grid-template-columns:repeat(1,minmax(0,1fr))}
+    @media (min-width:520px){.r-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media (min-width:900px){.r-cards{display:none}}
+
     .badge{display:inline-block;padding:4px 8px;border-radius:999px;border:1px solid var(--border);font-weight:600;font-size:.82rem}
     .badge.ok{background:#eef9f1;color:var(--ok);border-color:#cfe7d6}
     .badge.muted{background:#f6f7f8;color:var(--muted)}
+
     .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     .spacer{flex:1 1 auto}
-    .right{text-align:right}
   </style>
 </head>
 <body>
@@ -38,16 +43,7 @@
 
 <main class="container">
   <h2>🧾 Receipts</h2>
-  <p class="muted">Manual upload (scanner off). Fill fields and upload an image. Roles: staff upload, managers edit, admins delete.</p>
-
-  <!-- Match Now -->
-  <div class="card" style="margin-bottom:12px;">
-    <div class="toolbar">
-      <button id="matchNowBtn">🔄 Match Now</button>
-      <span id="matchNowMsg" class="muted"></span>
-      <span class="spacer"></span>
-    </div>
-  </div>
+  <p class="muted">Manual upload (scanner off). Fill all required fields and upload an image. Role rules: staff upload only, managers edit, admins delete.</p>
 
   <!-- Upload Box -->
   <div class="card">
@@ -69,17 +65,13 @@
           <!-- LOCKED Category -->
           <div>
             <label>Category</label>
-            <select id="category" required>
-              <option value="" disabled selected>Choose category…</option>
-            </select>
+            <select id="categorySel" required></select>
           </div>
 
           <!-- LOCKED Source -->
           <div>
             <label>Source</label>
-            <select id="source" required>
-              <option value="" disabled selected>Choose source…</option>
-            </select>
+            <select id="sourceSel" required></select>
           </div>
         </div>
 
@@ -97,7 +89,7 @@
     </div>
   </div>
 
-  <!-- Filters/Actions -->
+  <!-- Filters/Counts -->
   <div class="card">
     <div class="toolbar">
       <select id="filterMode">
@@ -118,9 +110,13 @@
       <span class="chip">Matched: <b id="countMatched">0</b></span>
       <span class="chip">Unmatched: <b id="countUnmatched">0</b></span>
     </div>
+    <p id="status" class="muted" style="margin-top:6px"></p>
   </div>
 
+  <!-- Table -->
   <div class="grid-rec">
+    <div class="r-cards" id="cards"></div>
+
     <div class="card" style="overflow:auto">
       <table id="recTable">
         <thead>
@@ -130,8 +126,8 @@
             <th style="min-width:180px;">Vendor</th>
             <th class="right" style="min-width:110px;">Total</th>
             <th class="right" style="min-width:90px;">Tax</th>
-            <th style="min-width:180px;">Category</th>
-            <th style="min-width:160px;">Source</th>
+            <th style="min-width:140px;">Category</th>
+            <th style="min-width:140px;">Source</th>
             <th style="min-width:120px;">Status</th>
             <th style="min-width:220px;">Notes</th>
             <th style="min-width:200px;">Actions</th>
@@ -160,131 +156,86 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const $ = id => document.getElementById(id);
 const tbody = document.querySelector("#recTable tbody");
+const cards = $("cards");
 let all = [];
 let matches = new Map();
+const selected = new Set();
 
-/* ---------- LOCKED lists ---------- */
-const CATEGORY_LIST = [
-  "Income",
-  "Bank Fees",
-  "Restaurant Food & Supplies",
-  "Utilities",
-  "Phone/Internet",
-  "Insurance",
-  "Rent",
-  "Fuel",
-  "Payroll",
-  "Professional Fees",
-  "Subscriptions",
-  "Software",
-  "Taxes",
-  "Meals & Entertainment",
-  "Lodging",
-  "Travel",
-  "Building Maintenance & Repairs",
-  "Miscellaneous",
-  "Other",
-  "Uncategorized"
-];
-
-const SOURCE_LIST = [
-  "CIBC Bank Account",
-  "Rogers MasterCard",
-  "PC MasterCard",
-  "Cash"
-];
-
-/* ---------- Helpers ---------- */
 function money(n){ const v=Number(n)||0; return `$${v.toFixed(2)}`; }
 function esc(s){ return String(s??"").replace(/[&<>]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m])); }
-function fillSelect(id, list){
-  const sel = $(id);
-  if (!sel) return;
-  sel.querySelectorAll('option:not([disabled])').forEach(o=>o.remove());
-  list.forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
+
+/* ---- LOCKED OPTIONS ---- */
+const FIXED_SOURCES = ["CIBC Bank Account","PC MasterCard","Rogers MasterCard","Cash"];
+
+const FIXED_CATEGORIES = [
+  "Uncategorized","Income",
+  "Food & Supplies",
+  "Utilities","Phone/Internet",
+  "Software","Subscriptions",
+  "Professional Fees","Bank Fees","Taxes","Insurance",
+  "Repairs & Maintenance","Office","Meals & Entertainment",
+  "Lodging","Travel",
+  "Building Maintenance","Miscellaneous","Other"
+];
+
+/* Populate selects + default date */
+function initFormDefaults(){
+  // default date = today
+  $("rdate").value = new Date().toISOString().slice(0,10);
+
+  // sources
+  const src = $("sourceSel");
+  src.innerHTML = FIXED_SOURCES.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("");
+
+  // categories
+  const cat = $("categorySel");
+  cat.innerHTML = FIXED_CATEGORIES.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");
 }
 
-/* ---------- Match Now RPC ---------- */
-async function matchNow(days=5, tol=0.005){
-  const { data, error } = await sb.rpc('match_now', { p_days: days, p_tol: tol });
-  if (error) { console.error('match_now error:', error); throw error; }
-  return data ?? 0;
-}
-
-/* ---------- Upload form ---------- */
+/* Upload form */
 $("file").addEventListener("change", e=>{
   const f=e.target.files?.[0];
   $("preview").src = f ? URL.createObjectURL(f) : "";
   $("upMsg").textContent = f ? `Selected: ${f.name}` : "";
 });
-
 $("clearBtn").onclick = ()=>{
   $("file").value=""; $("preview").src="";
-  ["vendor","rdate","total","tax","notes"].forEach(id=>$(id).value="");
-  $("tax").value="0.00"; $("category").selectedIndex=0; $("source").selectedIndex=0;
-  $("upMsg").textContent="";
+  ["vendor","total","tax","notes"].forEach(id=>$(id).value="");
+  $("tax").value="0.00"; $("upMsg").textContent="";
+  $("rdate").value = new Date().toISOString().slice(0,10);
+  $("categorySel").value = "Uncategorized";
+  $("sourceSel").value = FIXED_SOURCES[0];
 };
 
 $("uploadBtn").onclick = async ()=>{
   const f=$("file").files?.[0];
-  if(!f) { $("upMsg").textContent="Choose a file first."; return; }
+  if(!f) return $("upMsg").textContent="Choose a file first.";
 
   const data = {
     vendor:$("vendor").value.trim(),
     receipt_date:$("rdate").value,
     total:Number($("total").value||0),
     tax:Number($("tax").value||0),
-    category:$("category").value,
-    source:$("source").value,
+    category:$("categorySel").value,
+    source:$("sourceSel").value,
     notes:$("notes").value.trim()||null
   };
-  if(!data.vendor||!data.receipt_date||!data.total||!data.category||!data.source){
-    $("upMsg").textContent="All fields required."; return;
-  }
+  if(!data.vendor||!data.receipt_date||!data.total||!data.category||!data.source)
+    return $("upMsg").textContent="All fields required.";
 
-  try {
-    $("upMsg").textContent="Uploading…";
-    const fname=`r_${Date.now()}_${(f.name||'img').replace(/[^\w.\-]+/g,'_')}`;
-    const { data:upRes, error:upErr }=await sb.storage.from("receipts-warm").upload(fname,f,{contentType:f.type||"image/jpeg"});
-    if(upErr) throw upErr;
+  $("upMsg").textContent="Uploading…";
+  const fname=`r_${Date.now()}_${(f.name||'img').replace(/[^\w.\-]+/g,'_')}`;
+  const { data:upRes, error:upErr }=await sb.storage.from("receipts-warm").upload(fname,f,{contentType:f.type||"image/jpeg"});
+  if(upErr) return $("upMsg").textContent=upErr.message;
+  const { data:pub }=sb.storage.from("receipts-warm").getPublicUrl(upRes.path);
+  data.image_url=pub?.publicUrl||null; data.size_bytes=f.size||0;
 
-    const { data:pub }=sb.storage.from("receipts-warm").getPublicUrl(upRes.path);
-    data.image_url=pub?.publicUrl||null; data.size_bytes=f.size||0;
-
-    const { error:insErr }=await sb.from("receipts").insert(data);
-    if(insErr) throw insErr;
-
-    $("upMsg").textContent="Matching…";
-    try {
-      const matched = await matchNow(5, 0.005);
-      $("upMsg").textContent = `Saved ✔ — matched ${matched} receipt(s)`;
-    } catch { $("upMsg").textContent = "Saved ✔ — (match skipped)"; }
-
-    $("clearBtn").click();
-    await loadReceipts();
-  } catch (err) {
-    console.error(err);
-    $("upMsg").textContent = err?.message || String(err);
-  }
+  const { error:insErr }=await sb.from("receipts").insert(data);
+  if(insErr) return $("upMsg").textContent=insErr.message;
+  $("upMsg").textContent="Uploaded."; $("clearBtn").click(); loadReceipts();
 };
 
-/* ---------- Match Now button ---------- */
-const matchBtn = $("matchNowBtn");
-const matchMsg = $("matchNowMsg");
-matchBtn?.addEventListener("click", async ()=>{
-  try {
-    matchBtn.disabled = true;
-    matchMsg.textContent = "Matching…";
-    const n = await matchNow(5, 0.005);
-    matchMsg.textContent = `Matched ${n} receipt(s).`;
-    await loadReceipts();
-  } catch (e) {
-    console.error(e);
-    matchMsg.textContent = "Match error — see console";
-  } finally { matchBtn.disabled = false; }
-});
-
-/* ---------- Table ---------- */
+/* Load + render */
 async function loadReceipts(){
   const { data: recs, error: rErr } = await sb.from("receipts").select("*").order("created_at",{ascending:false});
   if(rErr){ tbody.innerHTML=`<tr><td colspan="10">${rErr.message}</td></tr>`; return; }
@@ -300,12 +251,13 @@ async function loadReceipts(){
   applyFilters();
 }
 
-document.getElementById("applyFilter").onclick = applyFilters;
-document.getElementById("search").oninput = ()=>{ clearTimeout(window.__t); window.__t=setTimeout(applyFilters,200); };
+/* Filters */
+$("applyFilter").onclick = applyFilters;
+$("search").oninput = ()=>{ clearTimeout(window.__t); window.__t=setTimeout(applyFilters,200); };
 
 function applyFilters(){
-  const mode=document.getElementById("filterMode").value;
-  const q=(document.getElementById("search").value||"").toLowerCase().trim();
+  const mode=$("filterMode").value;
+  const q=($("search").value||"").toLowerCase().trim();
   let rows=all.slice();
   rows=rows.filter(r=>{
     const hasMatch=matches.has(r.id);
@@ -318,13 +270,9 @@ function applyFilters(){
 }
 
 function render(rows){
-  const countAll = document.getElementById("countAll");
-  const countMatched = document.getElementById("countMatched");
-  const countUnmatched = document.getElementById("countUnmatched");
-  countAll.textContent = all.length;
+  $("countAll").textContent=all.length;
   let m=0; all.forEach(r=>{if(matches.has(r.id))m++;});
-  countMatched.textContent = m;
-  countUnmatched.textContent = all.length-m;
+  $("countMatched").textContent=m; $("countUnmatched").textContent=all.length-m;
 
   if(!rows.length){tbody.innerHTML=`<tr><td colspan="10">No receipts.</td></tr>`;return;}
   let subtotal=0,taxSum=0,totalSum=0;
@@ -336,7 +284,7 @@ function render(rows){
     const img=r.image_url?`<img src="${esc(r.image_url)}" width="44" height="44" style="object-fit:cover;border-radius:8px;border:1px solid var(--border)" />`:"";
     const delBtn = `<button class="ghost btnDel admin-only" data-id="${r.id}">Delete</button>`;
     return `<tr data-id="${r.id}">
-      <td><input type="checkbox" class="sel" data-id="${r.id}"></td>
+      <td><input type="checkbox" class="sel" data-id="${r.id}" ${selected.has(r.id)?"checked":""}></td>
       <td>${esc((r.receipt_date||"").slice(0,10))}</td>
       <td>${esc(r.vendor||"")}</td>
       <td class="right">${money(r.total||0)}</td>
@@ -348,11 +296,7 @@ function render(rows){
       <td>${img}<a class="badge" href="${esc(r.image_url||'#')}" target="_blank" rel="noopener">Open</a> ${delBtn}</td>
     </tr>`;
   }).join("");
-
-  document.getElementById("ftRows").textContent=rows.length;
-  document.getElementById("ftSubtotal").textContent=money(subtotal);
-  document.getElementById("ftTax").textContent=money(taxSum);
-  document.getElementById("ftTotal").textContent=money(totalSum);
+  $("ftRows").textContent=rows.length; $("ftSubtotal").textContent=money(subtotal); $("ftTax").textContent=money(taxSum); $("ftTotal").textContent=money(totalSum);
 
   document.querySelectorAll(".btnDel").forEach(btn=>{
     btn.onclick=async()=>{
@@ -365,17 +309,21 @@ function render(rows){
   });
 }
 
-/* ---------- Init ---------- */
-(function init(){
-  // Fill selects with locked lists
-  fillSelect('category', CATEGORY_LIST);
-  fillSelect('source', SOURCE_LIST);
-  // Default date to today
-  const rdate = $("rdate");
-  if (rdate && !rdate.value) rdate.value = new Date().toISOString().slice(0,10);
-  // Load table
-  loadReceipts();
-})();
+/* Bulk delete */
+$("deleteSelected").onclick = async()=>{
+  if(!window.can||!window.can("delete:any")) return alert("Admins only.");
+  if(!selected.size) return;
+  if(!confirm(`Delete ${selected.size} receipts?`)) return;
+  await sb.from("receipts").delete().in("id",[...selected]);
+  selected.clear(); loadReceipts();
+};
+$("selectAll").onchange = e=>{
+  if(e.target.checked) all.forEach(r=>selected.add(r.id)); else selected.clear();
+  applyFilters();
+};
+
+initFormDefaults();
+loadReceipts();
 </script>
 
 <!-- Role/Session Guard -->
