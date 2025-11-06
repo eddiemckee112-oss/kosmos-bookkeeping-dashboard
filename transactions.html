@@ -15,20 +15,28 @@
     .status-pill.ok{background:#ecfdf5;border-color:#a7f3d0}
     .status-pill.dim{opacity:.75}
     .upload-btn{font-size:.8rem;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#f9f9f9;cursor:pointer}
-    .cat-select{min-width:150px}
+    .cat-select{min-width:160px}
     .save-mark{font-size:12px;margin-left:6px;opacity:0;transition:opacity .2s}
     .save-mark.show{opacity:1}
     .link{color:#2563eb;text-decoration:none}
+    .btn{padding:6px 12px;border:1px solid var(--border);border-radius:10px;background:#fff;cursor:pointer}
+    .btn.ghost{background:#f9f9f9}
+    .btn.small{padding:4px 8px;font-size:.85rem}
+
+    .banner{display:none;align-items:center;gap:10px;border:1px dashed var(--border);border-radius:12px;background:#fff;padding:8px 10px}
+    .banner b{font-weight:600}
+    .hint{font-size:.85rem;color:var(--muted)}
+
+    /* Simple modal for choosing an existing receipt */
     .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.18);display:none;align-items:flex-start;justify-content:center;padding:40px 12px;z-index:50}
     .modal{background:#fff;width:min(1100px,100%);max-height:85vh;overflow:auto;border:1px solid var(--border);border-radius:16px;padding:16px}
-    .hidden{display:none}
-    .grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    .grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
     .field{display:flex;flex-direction:column;gap:6px}
-    .field label{font-weight:600}
-    .hl{outline:3px solid var(--brand);box-shadow:0 0 0 4px color-mix(in oklab, var(--brand) 18%, transparent)}
-    .banner{display:flex;gap:10px;align-items:center;padding:8px 12px;border:1px dashed var(--border);border-radius:12px;background:#fafafa}
-    .row-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .row{display:flex;gap:10px;align-items:center}
+    .list{border:1px solid var(--border);border-radius:10px;overflow:hidden}
+    .list table{width:100%;border-collapse:collapse}
+    .list th,.list td{padding:8px 10px;border-bottom:1px solid #eee}
+    .list tr:last-child td{border-bottom:none}
   </style>
 </head>
 <body>
@@ -44,18 +52,19 @@
 
 <main class="container">
   <h2>💳 Transactions</h2>
-  <p class="muted">Filter, import, categorize, attach receipts, link existing receipts, and track sources.</p>
+  <p class="muted">Filter, import, categorize, attach receipts, and link existing receipts.</p>
 
-  <!-- Pending link banner (appears when focus_receipt=...) -->
-  <div id="linkBanner" class="banner hidden">
-    <div>🔗 Linking receipt <code id="bannerRid"></code> — <span id="bannerMeta" class="muted"></span></div>
-    <span class="pill">Tip: rows with same amount & ±5 days show a “Link to this” button.</span>
-    <span style="flex:1 1 auto"></span>
-    <button id="pickReceiptBtn" class="ghost">Choose receipt…</button>
-    <button id="clearLinkBtn" class="ghost">Clear</button>
+  <!-- Linking banner (only filters when a real receipt is selected) -->
+  <div id="linkBanner" class="banner" style="margin-bottom:10px">
+    <span>🔗 <b>Linking receipt</b></span>
+    <button id="chooseReceiptBtn" class="btn small">Choose receipt…</button>
+    <span class="hint">Tip: rows with same amount & ±5 days show a “Link to this” button.</span>
+    <span class="spacer" style="flex:1 1 auto"></span>
+    <button id="clearLinkBtn" class="btn small">Clear</button>
   </div>
 
-  <div class="card" style="margin-top:10px;margin-bottom:14px;">
+  <!-- Filters -->
+  <div class="card" style="margin-bottom:14px;">
     <div class="toolbar">
       <label>Date Range:</label>
       <input id="fromDate" type="date"/><span>–</span><input id="toDate" type="date"/>
@@ -68,10 +77,10 @@
         <option value="matched">Matched only</option>
         <option value="unmatched">Unmatched only</option>
       </select>
-      <button id="applyBtn">Apply</button>
+      <button id="applyBtn" class="btn small">Apply</button>
       <input id="quickSearch" placeholder="Search description/category/source…" style="flex:1;min-width:220px"/>
-      <button id="importBtn" class="ghost">📥 Import CSV</button>
-      <button id="exportBtn" class="ghost">⬇️ Export CSV</button>
+      <button id="exportBtn" class="btn ghost small">⬇️ Export CSV</button>
+      <button id="importBtn" class="btn ghost small">📥 Import CSV</button>
     </div>
     <div class="row" style="gap:10px;margin-top:10px;">
       <span class="pill">Matched: <b id="chipMatched">—</b></span>
@@ -82,6 +91,7 @@
     </div>
   </div>
 
+  <!-- Totals -->
   <div class="card" style="margin-bottom:14px;">
     <div>Total Transactions: <b id="totalRows">—</b></div>
     <div>Debits: <b id="totalDebits">$0.00</b></div>
@@ -91,6 +101,7 @@
     <div id="pageError" class="err small" style="margin-top:6px"></div>
   </div>
 
+  <!-- Table -->
   <div class="card">
     <table id="txTable">
       <thead>
@@ -111,14 +122,31 @@
   </div>
 </main>
 
-<!-- Import Modal (unchanged) -->
+<!-- Modal: choose existing receipt to link -->
+<div id="pickBackdrop" class="modal-backdrop">
+  <div class="modal">
+    <h3>Choose a Receipt to Link</h3>
+    <p class="muted" id="pickHelp">Showing 30 most recent receipts (unmatched first). Select one to enter “linking mode.”</p>
+    <div id="pickList" class="list" style="margin-top:8px">
+      <table>
+        <thead><tr><th>Date</th><th>Vendor</th><th class="right">Total</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px">
+      <button id="closePick" class="btn ghost">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import Modal -->
 <div id="impBackdrop" class="modal-backdrop">
   <div class="modal">
     <h3>Import Transactions (CSV)</h3>
     <p class="note muted small">Mapping is <b>A=Date</b>, <b>B=Description</b>, <b>C=Debit</b>, <b>D=Credit</b>.</p>
     <div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <input id="csvFile" type="file" accept=".csv,text/csv"/>
-      <button id="closeImport" class="ghost">Close</button>
+      <button id="closeImport" class="btn ghost">Close</button>
     </div>
     <div class="row" style="gap:10px;align-items:center;margin-top:10px">
       <label for="fileSourceSelect"><b>Source for this file:</b></label>
@@ -126,7 +154,7 @@
       <input id="fileSourceCustom" class="hidden" placeholder="Type custom source…"/>
     </div>
     <p id="impStatus" class="muted small" style="margin-top:10px;">Select a CSV to begin.</p>
-    <div class="kpill small" id="countPill" style="display:inline-block;margin-top:6px;">Parsed — · Valid — · Skipped — · Debits — · Credits —</div>
+    <div class="pill small" id="countPill" style="display:inline-block;margin-top:6px;">Parsed — · Valid — · Skipped — · Debits — · Credits —</div>
     <div id="impPreview" class="card" style="margin-top:12px;display:none;">
       <h4 style="margin:0 0 8px 0">Preview (first 20 rows)</h4>
       <table style="width:100%;border-collapse:collapse;">
@@ -135,91 +163,86 @@
       </table>
     </div>
     <div class="row" style="justify-content:flex-end;margin-top:12px">
-      <button id="importGo" class="ghost">Import</button>
-    </div>
-  </div>
-</div>
-
-<!-- Upload Modal (new or same as before) -->
-<div id="uploadBackdrop" class="modal-backdrop">
-  <div class="modal">
-    <h3>Attach Receipt — Review & Save</h3>
-    <p id="upDesc" class="muted small" style="margin-top:-6px"></p>
-
-    <div class="grid-2" style="margin-top:12px">
-      <div class="field"><label>Vendor *</label><input id="upVendor"/></div>
-      <div class="field"><label>Receipt Date *</label><input id="upDate" type="date"/></div>
-    </div>
-    <div class="grid-3" style="margin-top:8px">
-      <div class="field"><label>Total *</label><input id="upTotal" type="number" step="0.01" min="0"/></div>
-      <div class="field"><label>Tax *</label><input id="upTax" type="number" step="0.01" min="0" placeholder="0.00"/></div>
-      <div class="field"><label>Category *</label><select id="upCategory"></select></div>
-    </div>
-    <div class="field" style="margin-top:8px"><label>Source *</label><input id="upSource"/></div>
-    <div class="field" style="margin-top:8px"><label>Image *</label><input id="uploadFile" type="file" accept="image/*" capture="environment"/></div>
-
-    <p id="uploadError" class="err small" style="margin-top:6px"></p>
-    <p id="uploadStatus" class="small muted" style="margin-top:4px;"></p>
-
-    <div class="row" style="justify-content:flex-end;margin-top:12px">
-      <button id="cancelUpload" class="ghost">Cancel</button>
-      <button id="confirmUpload">Save receipt</button>
-    </div>
-  </div>
-</div>
-
-<!-- Link Existing Receipt Modal -->
-<div id="linkBackdrop" class="modal-backdrop">
-  <div class="modal">
-    <h3>Link Existing Receipt</h3>
-    <p class="muted small" id="linkHelp">Showing unmatched receipts. Use search or adjust filters.</p>
-
-    <div class="grid-3" style="margin-top:8px">
-      <div class="field"><label>Search</label><input id="linkSearch" placeholder="Vendor, notes, source…"/></div>
-      <div class="field"><label>Date ± days</label><input id="linkDays" type="number" min="0" value="5"/></div>
-      <div class="field"><label>Amount tolerance</label><input id="linkTol" type="number" step="0.01" min="0" value="0.01"/></div>
-    </div>
-
-    <div class="card" style="margin-top:10px;max-height:50vh;overflow:auto">
-      <table style="width:100%;border-collapse:collapse;">
-        <thead>
-          <tr><th>Date</th><th>Vendor</th><th class="right">Total</th><th>Tax</th><th>Category</th><th>Source</th><th>Actions</th></tr>
-        </thead>
-        <tbody id="linkBody"><tr><td colspan="7" class="muted">Loading…</td></tr></tbody>
-      </table>
-    </div>
-
-    <div class="row" style="justify-content:flex-end;margin-top:12px">
-      <button id="linkClose" class="ghost">Close</button>
+      <button id="importGo" class="btn">Import</button>
     </div>
   </div>
 </div>
 
 <script>
 (function(){
+  // --- Supabase client ---
   const sb = supabase.createClient(
     "https://advihqhjjlxumgdlbwui.supabase.co",
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY"
   );
 
+  // --- helpers ---
   const $ = id => document.getElementById(id);
   const money = n => (n==null?0:n).toLocaleString(undefined,{style:"currency",currency:"CAD"});
   const esc = s => String(s??"").replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
 
-  // Locked categories (keep in sync with receipts)
-  const CATEGORY_OPTIONS = [
-    "Uncategorized","Income","Sales","Refunds",
-    "Restaurant (Food & Supplies)","Alcohol","Software","Subscriptions",
-    "Travel","Lodging","Fuel","Utilities","Phone/Internet","Office",
-    "Professional Fees","Bank Fees","Taxes","Insurance",
-    "Repairs & Maintenance","Building Maintenance","Miscellaneous","Other"
+  // Fixed sources & curated categories (locked list)
+  const FIXED_SOURCES = ["CIBC Bank Account","PC MasterCard","Rogers MasterCard","Cash"];
+  const CATEGORIES = [
+    "Uncategorized",
+    "Income","Sales","Refunds",
+    "Food & Beverage","Restaurant Supplies","Cleaning Supplies",
+    "Building Maintenance","Tools & Equipment","General Supplies",
+    "Software","Subscriptions",
+    "Travel","Lodging",
+    "Fuel","Utilities","Phone/Internet","Office","Professional Fees","Bank Fees","Taxes","Insurance","Repairs",
+    "Other"
   ];
 
   // state
-  let pendingReceipt = null;     // { id, date, total }
-  let rows = [];                 // transactions
-  let matchMap = new Map();      // txn_id -> {receipt_id, confidence}
+  let CATEGORY_OPTIONS = CATEGORIES.slice(); // already curated
+  let rows = [];
+  let matchMap = new Map(); // txn_id -> {receipt_id, confidence}
+  let linkReceipt = null;   // {id, date, total}
 
+  // ---------- Linking banner ----------
+  async function readLinkContextFromURL(){
+    const params = new URLSearchParams(location.search);
+    const id = params.get("linkReceipt") || sessionStorage.getItem("linkReceipt") || null;
+    if(!id){ linkReceipt = null; return; }
+    // Try to load the receipt; if not found, treat as no-link
+    const { data: r } = await sb.from("receipts").select("id, receipt_date, total, vendor").eq("id", id).single();
+    if(r && Number.isFinite(+r.total) && r.receipt_date){
+      linkReceipt = { id: r.id, date: String(r.receipt_date).slice(0,10), total: Math.abs(+r.total), vendor: r.vendor||"" };
+      $("linkBanner").style.display = "flex";
+    }else{
+      linkReceipt = null;
+      $("linkBanner").style.display = "none";
+      sessionStorage.removeItem("linkReceipt");
+    }
+  }
+
+  function setLinkContext(id){
+    if(id){
+      const u = new URL(location.href);
+      u.searchParams.set("linkReceipt", id);
+      history.replaceState(null, "", u.toString());
+      sessionStorage.setItem("linkReceipt", id);
+    }else{
+      const u = new URL(location.href);
+      u.searchParams.delete("linkReceipt");
+      history.replaceState(null, "", u.toString());
+      sessionStorage.removeItem("linkReceipt");
+    }
+  }
+
+  $("clearLinkBtn").onclick = async ()=>{
+    setLinkContext(null);
+    $("linkBanner").style.display = "none";
+    linkReceipt = null;
+    await loadTransactions(); // repaint without narrowing
+  };
+
+  $("chooseReceiptBtn").onclick = async ()=>{
+    await openPickModal();
+  };
+
+  // ---------- Category select ----------
   function renderCategorySelect(value, id){
     const opts = CATEGORY_OPTIONS.map(c=>`<option value="${esc(c)}"${c===value?' selected':''}>${esc(c)}</option>`).join("");
     return `<select class="cat-select" data-txn="${id}" onchange="updateCategory(this)">${opts}</select><span class="save-mark" id="sv_${id}">✓ saved</span>`;
@@ -232,61 +255,69 @@
     sel.classList.remove("err"); if(mark){ mark.textContent="✓ saved"; mark.classList.add("show"); setTimeout(()=>mark.classList.remove("show"),1200); }
   };
 
+  // ---------- Main load ----------
   function showError(msg){ $("pageError").textContent = msg||""; }
 
-  // load transactions + matches
   async function loadTransactions(){
     showError("");
-
+    // Base query
     const from = $("fromDate").value || null;
     const to   = $("toDate").value || null;
     const type = $("typeFilter").value;
     const q    = $("quickSearch").value.trim().toLowerCase();
 
-    let query = sb.from("transactions").select("id, txn_date, description, amount, direction, category, source_account_name");
-    if(from) query = query.gte("txn_date", from);
-    if(to)   query = query.lte("txn_date", to);
-    if(type==="debit")  query = query.eq("direction","debit");
-    if(type==="credit") query = query.eq("direction","credit");
-
-    const { data, error } = await query.order("txn_date",{ascending:false});
+    let q1 = sb.from("transactions").select("id, txn_date, description, amount, direction, category, source_account_name");
+    if(from) q1 = q1.gte("txn_date", from);
+    if(to)   q1 = q1.lte("txn_date", to);
+    if(type==="debit")  q1 = q1.eq("direction","debit");
+    if(type==="credit") q1 = q1.eq("direction","credit");
+    const { data, error } = await q1.order("txn_date",{ascending:false});
     if(error){ showError(error.message); $("txBody").innerHTML=""; $("rowsCount").textContent="Rows: 0"; return; }
     rows = data || [];
 
-    // matches
+    // Load matches for visible txns
     matchMap = new Map();
-    try{
-      const ids = rows.map(r=>r.id);
-      if(ids.length){
-        const { data: mm } = await sb.from("matches")
-          .select("transaction_id, receipt_id, confidence")
-          .in("transaction_id", ids);
-        (mm||[]).forEach(m=>{
-          if(!matchMap.has(m.transaction_id)) matchMap.set(m.transaction_id, m);
-        });
-      }
-    }catch(e){ /* ignore */ }
+    const ids = rows.map(r=>r.id);
+    if(ids.length){
+      const { data: mm } = await sb.from("matches")
+        .select("transaction_id, receipt_id, confidence")
+        .in("transaction_id", ids);
+      (mm||[]).forEach(m=>{
+        if(!matchMap.has(m.transaction_id)) matchMap.set(m.transaction_id, m);
+      });
+    }
 
-    renderRows();
-  }
+    // Filter type variants
+    if(type==="uncategorized") rows = rows.filter(r => !r.category || r.category==="Uncategorized");
+    if(type==="no_source")     rows = rows.filter(r => !r.source_account_name);
+    if(type==="matched")       rows = rows.filter(r => matchMap.has(r.id));
+    if(type==="unmatched")     rows = rows.filter(r => !matchMap.has(r.id));
 
-  function withinDays(txnDateISO, recDateISO, days){
-    if(!txnDateISO || !recDateISO) return false;
-    const t = new Date(txnDateISO+"T00:00:00Z").getTime();
-    const r = new Date(recDateISO+"T00:00:00Z").getTime();
-    const diff = Math.abs(t - r) / 86400000;
-    return diff <= (days||5);
-  }
+    // QUICK SEARCH
+    if(q){
+      rows = rows.filter(r =>
+        (r.description||"").toLowerCase().includes(q) ||
+        (r.category||"").toLowerCase().includes(q) ||
+        (r.source_account_name||"").toLowerCase().includes(q)
+      );
+    }
 
-  function isCandidate(r, row){
-    if(!pendingReceipt) return false;
-    const amtOk = Math.abs((+row.amount||0) - (+pendingReceipt.total||0)) <= 0.01;
-    const dateOk = withinDays(row.txn_date, pendingReceipt.date, 5);
-    return amtOk && dateOk;
-  }
+    // Linking MODE: only narrow if we *truly* have a receipt context
+    if(linkReceipt){
+      $("linkBanner").style.display = "flex";
+      // show vendor/total hint in banner text
+      $("pickHelp").textContent = "Showing 30 most recent receipts (unmatched first). Select one to enter “linking mode.”";
+      rows = rows.filter(r=>{
+        const amtOk = Math.abs(Math.abs(+r.amount) - linkReceipt.total) < 0.005;
+        const d = (r.txn_date||"").slice(0,10);
+        const days = Math.abs((new Date(d) - new Date(linkReceipt.date)) / 86400000);
+        return amtOk && days <= 5;
+      });
+    } else {
+      $("linkBanner").style.display = "none";
+    }
 
-  async function renderRows(){
-    // totals and chips
+    // Totals & chips
     const deb = rows.filter(r=>r.direction==='debit').reduce((s,r)=>s+(+r.amount||0),0);
     const cre = rows.filter(r=>r.direction==='credit').reduce((s,r)=>s+(+r.amount||0),0);
     $("totalRows").textContent   = rows.length;
@@ -303,7 +334,15 @@
     $("chipMatched").textContent   = mat;
     $("chipUnmatched").textContent = unmat;
 
-    // render table
+    // Duplicate signal
+    const norm = s => (s||"").toLowerCase().replace(/\s+/g," ").trim().slice(0,80);
+    const keyOf = r => `${r.txn_date}|${(+r.amount||0).toFixed(2)}|${norm(r.description)}`;
+    const freq = new Map();
+    rows.forEach(r=>{ const k=keyOf(r); freq.set(k,(freq.get(k)||0)+1); });
+    const dupes = rows.filter(r=> (freq.get(keyOf(r))||0)>1).length;
+    $("chipDupes").textContent = dupes;
+
+    // Render
     $("txBody").innerHTML = rows.map(r=>{
       const m = matchMap.get(r.id);
       const matched = !!m;
@@ -311,30 +350,18 @@
         ? `<span class="status-pill ok" title="Confidence ${m.confidence ?? 1}">Matched</span>`
         : `<span class="status-pill dim">Unmatched</span>`;
 
-      // Actions cell:
-      // - if already matched: link
-      // - if pendingReceipt set and row is candidate: show "Link to this"
-      // - otherwise: offer Upload or "Link existing…"
-      let actionsHtml = "";
+      // If in linking mode & this row is a candidate, show “Link to this”
+      let receiptCell = "";
       if(matched){
-        actionsHtml = `<a class="link" href="receipts.html#${esc(m.receipt_id||'')}" title="Open receipt">View</a>`;
-      }else if(pendingReceipt && isCandidate(pendingReceipt, r)){
-        actionsHtml = `
-          <div class="row-actions">
-            <button class="upload-btn" onclick="linkNow('${r.id}')">Link to this</button>
-            <button class="upload-btn" onclick="openLinkPicker('${r.id}')">Link existing…</button>
-            <button class="upload-btn" onclick="openUpload('${r.id}')">📷 Upload</button>
-          </div>`;
+        receiptCell = `<a class="link" href="receipts.html#${esc(m.receipt_id||'')}" title="Open receipt">View</a>`;
+      }else if(linkReceipt){
+        receiptCell = `<button class="btn small" onclick="linkToThis('${r.id}')">Link to this</button>`;
       }else{
-        actionsHtml = `
-          <div class="row-actions">
-            <button class="upload-btn" onclick="openUpload('${r.id}')">📷 Upload</button>
-            <button class="upload-btn" onclick="openLinkPicker('${r.id}')">Link existing…</button>
-          </div>`;
+        receiptCell = `<button class="upload-btn" onclick="openUpload('${r.id}')">📷 Upload</button>`;
       }
 
       return `
-        <tr data-id="${r.id}">
+        <tr>
           <td>${esc(r.txn_date||"")}</td>
           <td>${esc(r.description||"")}</td>
           <td class="right">${money(r.amount)}</td>
@@ -342,229 +369,84 @@
           <td>${renderCategorySelect(r.category||"Uncategorized", r.id)}</td>
           <td>${esc(r.source_account_name||"")}</td>
           <td>${statusHtml}</td>
-          <td>${actionsHtml}</td>
+          <td>${receiptCell}</td>
         </tr>
       `;
     }).join("");
     $("rowsCount").textContent = `Rows: ${rows.length}`;
-
-    // highlight candidates
-    if(pendingReceipt){
-      const candIds = rows.filter(r=>isCandidate(pendingReceipt, r)).map(r=>r.id);
-      candIds.forEach(id=>{
-        const row = document.querySelector(`#txTable tbody tr[data-id="${id}"]`);
-        if(row){ row.classList.add('hl'); setTimeout(()=>row.classList.remove('hl'), 2000); }
-      });
-      if(candIds.length===1){
-        const row = document.querySelector(`#txTable tbody tr[data-id="${candIds[0]}"]`);
-        if(row) row.scrollIntoView({behavior:'smooth', block:'center'});
-      }
-    }
   }
 
-  // ---------- Manual link flow ----------
-  async function fetchReceiptMeta(id){
-    const { data, error } = await sb.from('receipts')
-      .select('id, receipt_date, total, vendor, source, category')
-      .eq('id', id).single();
-    if(error) throw error;
-    return data;
-  }
-
-  async function doLink(transaction_id, receipt_id){
-    // fetch receipt for amount to store as matched_amount
-    const { data: rec } = await sb.from('receipts').select('total').eq('id', receipt_id).single();
-    const matched_amount = rec?.total ?? null;
-    const { error } = await sb.from('matches').insert([{
-      org_id: null, transaction_id, receipt_id,
-      matched_amount, confidence: 1, method: 'manual', match_type: 'exact'
+  // ---------- Link current linking-receipt to a transaction ----------
+  window.linkToThis = async function(transaction_id){
+    if(!linkReceipt) return alert("No receipt selected for linking.");
+    const { data: orgRow } = await sb.from("orgs").select("id").limit(1).single();
+    const org_id = orgRow?.id || null;
+    const { error } = await sb.from("matches").insert([{
+      org_id,
+      transaction_id,
+      receipt_id: linkReceipt.id,
+      matched_amount: linkReceipt.total,
+      confidence: 0.98,
+      method: "manual",
+      match_type: "exact"
     }]);
-    if(error) throw error;
-  }
-
-  // quick button when a row matches the candidate rules
-  window.linkNow = async (txnId)=>{
-    if(!pendingReceipt){ alert("No receipt selected."); return; }
-    try{
-      await doLink(txnId, pendingReceipt.id);
-      // clear banner/hash and refresh
-      clearPending();
-      await loadTransactions();
-      alert("Linked!");
-    }catch(e){ alert("Link failed: "+(e?.message||e)); }
+    if(error){ alert(error.message); return; }
+    // Exit linking mode and refresh
+    setLinkContext(null);
+    linkReceipt = null;
+    await loadTransactions();
   };
 
-  // ---------- Link picker modal (unmatched receipts) ----------
-  let currentLinkTxn = null;
-  $("pickReceiptBtn").onclick = ()=>{ if(!rows.length){return;} openLinkPicker(); };
-  $("clearLinkBtn").onclick = ()=>{ clearPending(); renderRows(); };
-
-  function clearPending(){
-    pendingReceipt = null;
-    $("linkBanner").classList.add('hidden');
-    history.replaceState(null, "", "transactions.html");
+  // ---------- Upload modal (quick attach new receipt) ----------
+  async function openUpload(id){
+    // You already have a working upload modal in earlier version.
+    // Simple redirect to receipts page in “add from transaction” flow:
+    location.href = "receipts.html#upload-for=" + encodeURIComponent(id);
   }
+  window.openUpload = openUpload;
 
-  async function openLinkPicker(txnId){
-    currentLinkTxn = txnId || null;
-    $("linkBackdrop").style.display = "flex";
-    $("linkBody").innerHTML = `<tr><td colspan="7" class="muted">Loading…</td></tr>`;
-    await populateLinkList();
-  }
-  $("linkClose").onclick = ()=>{ $("linkBackdrop").style.display="none"; };
+  // ---------- “Pick receipt” modal ----------
+  async function openPickModal(){
+    // load recent receipts (unmatched first)
+    const { data: mx } = await sb.from("matches").select("receipt_id");
+    const matched = new Set((mx||[]).map(m=>m.receipt_id));
+    const { data: recs } = await sb.from("receipts")
+      .select("id, receipt_date, total, vendor")
+      .order("receipt_date",{ascending:false})
+      .limit(30);
 
-  $("linkSearch").addEventListener("input", ()=>{
-    clearTimeout(window.__lkT); window.__lkT=setTimeout(populateLinkList, 200);
-  });
-  $("linkDays").addEventListener("change", populateLinkList);
-  $("linkTol").addEventListener("change", populateLinkList);
-
-  async function populateLinkList(){
-    const q = ($("linkSearch").value||"").toLowerCase().trim();
-    const days = Math.max(0, Number($("linkDays").value||5));
-    const tol  = Math.max(0, Number($("linkTol").value||0.01));
-    let tx = null;
-    if(currentLinkTxn){
-      tx = rows.find(r=>r.id===currentLinkTxn) || null;
-    }
-
-    // load unmatched receipts
-    const { data: recsRaw } = await sb
-      .from('receipts')
-      .select('id, receipt_date, total, tax, category, vendor, source, notes')
-      .order('receipt_date', { ascending:false });
-
-    // remove those already matched
-    const { data: matched } = await sb.from('matches').select('receipt_id');
-    const matchedSet = new Set((matched||[]).map(m=>m.receipt_id));
-    let recs = (recsRaw||[]).filter(r=> !matchedSet.has(r.id) );
-
-    // filter by picker context
-    if(tx){
-      recs = recs.filter(r=>{
-        const amtOk = Math.abs((+r.total||0) - (+tx.amount||0)) <= tol;
-        const dateOk = withinDays(tx.txn_date, r.receipt_date, days);
-        return amtOk && dateOk;
-      });
-    }
-
-    // search term
-    if(q){
-      recs = recs.filter(r =>
-        (r.vendor||"").toLowerCase().includes(q) ||
-        (r.source||"").toLowerCase().includes(q) ||
-        (r.category||"").toLowerCase().includes(q) ||
-        (r.notes||"").toLowerCase().includes(q)
-      );
-    }
-
-    if(!recs.length){
-      $("linkBody").innerHTML = `<tr><td colspan="7" class="muted">No unmatched receipts found for current filters.</td></tr>`;
-      return;
-    }
-
-    $("linkBody").innerHTML = recs.map(r=>`
-      <tr>
+    const tb = $("#pickList tbody");
+    tb.innerHTML = (recs||[]).map(r=>{
+      const isMatched = matched.has(r.id);
+      return `<tr>
         <td>${esc((r.receipt_date||"").slice(0,10))}</td>
         <td>${esc(r.vendor||"")}</td>
         <td class="right">${money(r.total||0)}</td>
-        <td>${esc(r.tax==null?"":r.tax)}</td>
-        <td>${esc(r.category||"")}</td>
-        <td>${esc(r.source||"")}</td>
-        <td>
-          <button class="upload-btn" onclick="pickLink('${r.id}')">Link</button>
-          ${r.notes?`<span class="muted small" style="margin-left:6px" title="${esc(r.notes)}">🛈</span>`:""}
-        </td>
-      </tr>
-    `).join("");
+        <td>${isMatched?'<span class="status-pill ok">Matched</span>':'<span class="status-pill dim">Unmatched</span>'}</td>
+        <td><button class="btn small" onclick="pickThis('${r.id}')">Use</button></td>
+      </tr>`;
+    }).join("");
+
+    $("pickBackdrop").style.display = "flex";
   }
+  $("closePick").onclick = ()=>{ $("pickBackdrop").style.display="none"; };
 
-  window.pickLink = async (receiptId)=>{
-    // If opened for a specific transaction, link to it; else require a click on a row first
-    const txnId = currentLinkTxn || (function(){
-      const row = document.querySelector('#txTable tbody tr.hl');
-      return row?.getAttribute('data-id') || null;
-    })();
-
-    if(!txnId){ alert("Choose a transaction row first."); return; }
-    try{
-      await doLink(txnId, receiptId);
-      $("linkBackdrop").style.display="none";
-      clearPending();
-      await loadTransactions();
-      alert("Linked!");
-    }catch(e){ alert("Link failed: "+(e?.message||e)); }
+  window.pickThis = async function(id){
+    $("pickBackdrop").style.display = "none";
+    setLinkContext(id);
+    await readLinkContextFromURL();
+    await loadTransactions();
   };
 
-  // ---------- Upload modal (unchanged logic) ----------
-  let currentTxn=null;
-  function applyCategoryOptions(selected){
-    const opts=CATEGORY_OPTIONS.map(c=>`<option value="${esc(c)}"${c===selected?' selected':''}>${esc(c)}</option>`).join("");
-    $("upCategory").innerHTML=opts;
-    if(selected && CATEGORY_OPTIONS.includes(selected)) $("upCategory").value=selected;
-    else if(CATEGORY_OPTIONS.includes("Uncategorized")) $("upCategory").value="Uncategorized";
-  }
-  async function openUpload(id){
-    const { data: row, error } = await sb.from("transactions").select("id, txn_date, description, amount, source_account_name, category").eq("id", id).single();
-    if(error || !row){ alert("Transaction not found."); return; }
-    currentTxn={ id:row.id, desc:row.description||"", date:(row.txn_date||"").slice(0,10), amt:Number(row.amount)||0, source:row.source_account_name||"", category:row.category||"Uncategorized" };
-    $("upDesc").textContent = `${currentTxn.desc} — ${money(currentTxn.amt)} on ${currentTxn.date}`;
-    $("uploadFile").value=""; $("uploadError").textContent=""; $("uploadStatus").textContent="";
-    $("upVendor").value=currentTxn.desc; $("upDate").value=currentTxn.date; $("upTotal").value=currentTxn.amt?currentTxn.amt.toFixed(2):""; $("upTax").value="0.00"; $("upSource").value=currentTxn.source;
-    applyCategoryOptions(currentTxn.category); $("uploadBackdrop").style.display="flex";
-  }
-  window.openUpload=openUpload;
-  $("cancelUpload").onclick = ()=>{ $("uploadBackdrop").style.display="none"; };
-  function valNumber(el){ const n=Number(el.value); return Number.isFinite(n)?n:NaN; }
-
-  $("confirmUpload").onclick = async ()=>{
-    $("uploadError").textContent=""; $("uploadStatus").textContent="";
-    const vendor=$("upVendor").value.trim(), date=$("upDate").value, total=valNumber($("upTotal")), tax=valNumber($("upTax")), cat=$("upCategory").value, src=$("upSource").value.trim(), file=$("uploadFile").files[0];
-    if(!vendor || !date || !src || !file || !Number.isFinite(total) || !Number.isFinite(tax)){ $("uploadError").textContent="Please complete all fields."; return; }
-    if(total<0 || tax<0){ $("uploadError").textContent="Amounts must be zero or positive."; return; }
-    if(tax>total){ $("uploadError").textContent="Tax cannot exceed Total."; return; }
-
-    $("uploadStatus").textContent="Uploading image…";
-    const filename=`${Date.now()}_${file.name}`;
-    const { error: upErr } = await sb.storage.from("receipts-warm").upload(filename, file);
-    if(upErr){ $("uploadStatus").textContent=""; $("uploadError").textContent="Upload failed: "+upErr.message; return; }
-    const imageUrl=`https://advihqhjjlxumgdlbwui.supabase.co/storage/v1/object/public/receipts-warm/${filename}`;
-
-    $("uploadStatus").textContent="Saving receipt…";
-    const { data: orgRow } = await sb.from("orgs").select("id").limit(1).single();
-    const org_id = orgRow?.id || null;
-
-    const { data: rIns, error: rErr } = await sb.from("receipts").insert([{
-      org_id, account_id:null, image_url:imageUrl, size_bytes:file.size||0,
-      receipt_date:date, total:total, tax:tax, category:cat||null, vendor:vendor,
-      source:src, notes:`Uploaded from transaction view for txn ${currentTxn?.id}`, entered_by:"You"
-    }]).select("id").single();
-    if(rErr){ $("uploadStatus").textContent=""; $("uploadError").textContent="Insert failed: "+rErr.message; return; }
-
-    const receipt_id=rIns?.id; if(receipt_id && currentTxn?.id){
-      await sb.from("matches").insert([{ org_id, transaction_id: currentTxn.id, receipt_id, matched_amount: total, confidence: 1, method:"manual", match_type:"exact" }]);
-    }
-    $("uploadStatus").textContent="✅ Saved & linked!";
-    setTimeout(async ()=>{ $("uploadBackdrop").style.display="none"; await loadTransactions(); }, 700);
-  };
-
-  // ---------- Importer (unchanged) ----------
-  let __valid=[]; let __skipped=[];
-  function detectDelimiterBlock(sample){ const c=(sample.match(/,/g)||[]).length, s=(sample.match(/;/g)||[]).length, t=(sample.match(/\t/g)||[]).length; if(Math.max(c,s,t)===s) return ";"; if(Math.max(c,s,t)===t) return "\t"; return ","; }
-  function parseLine(line, delim){ const out=[]; let cur='',q=false; for(let i=0;i<line.length;i++){ const ch=line[i]; if(ch==='"'){ if(q&&line[i+1]==='"'){cur+='"';i++;} else q=!q; } else if(ch===delim && !q){ out.push(cur); cur=''; } else cur+=ch; } out.push(cur); return out.map(x=>x.trim()); }
-  function parseCSV(text){ const sample=text.split(/\r?\n/).slice(0,8).join("\n"); const delim=detectDelimiterBlock(sample); const lines=text.replace(/\r\n/g,"\n").replace(/\r/g,"\n").split("\n"); const rows=lines.map(l=> l.trim()==="" ? null : parseLine(l,delim)); return { rows, delim }; }
-  function isDateLike(s){ if(!s) return false; const t=String(s).trim(); if(/^\d{4}[-/]\d{2}[-/]\d{2}$/.test(t)) return true; const d=new Date(t); return !isNaN(d.valueOf()); }
-  function toISO(s){ if(!s) return null; const t=String(s).trim(); if(/^\d{4}[-/]\d{2}[-/]\d{2}$/.test(t)) return t.replace(/\//g,"-"); const d=new Date(t); if(isNaN(d.valueOf())) return null; return d.toISOString().slice(0,10); }
-  function parseNum(s){ if(s==null) return null; let v=String(s).trim(); if(!v) return null; const paren=/^\(.*\)$/.test(v); if(paren) v=v.replace(/[()]/g,""); v=v.replace(/\$/g,"").replace(/,/g,""); const n=Number(v); if(Number.isNaN(n)) return null; return paren?-Math.abs(n):n; }
-
+  // ---------- CSV Import / Export ----------
   async function populateSourceOptions(){
     const sel=$("fileSourceSelect"), custom=$("fileSourceCustom"); sel.innerHTML="";
-    const fixed=["CIBC Bank Account","PC MasterCard","Rogers MasterCard","Cash"];
+    const fixed=FIXED_SOURCES.slice();
     fixed.forEach(name=> sel.insertAdjacentHTML("beforeend", `<option value="${esc(name)}">${esc(name)}</option>`));
     const { data: accs } = await sb.from("accounts").select("name").order("name");
-    const have=new Set(fixed); (accs||[]).forEach(a=>{ if(a?.name && !have.has(a.name)){ sel.insertAdjacentHTML("beforeend", `<option value="${esc(a.name)}">${esc(a.name)} (seen)</option>`); have.add(a.name);} });
+    const have=new Set(fixed);
+    (accs||[]).forEach(a=>{ if(a?.name && !have.has(a.name)){ sel.insertAdjacentHTML("beforeend", `<option value="${esc(a.name)}">${esc(a.name)} (seen)</option>`); have.add(a.name);} });
     sel.insertAdjacentHTML("beforeend", `<option value="__custom__">Custom…</option>`);
-    const custom=$("fileSourceCustom");
     custom.classList.add("hidden");
     sel.onchange = ()=>{ if(sel.value==="__custom__") custom.classList.remove("hidden"); else custom.classList.add("hidden"); };
     sel.value="CIBC Bank Account";
@@ -572,6 +454,14 @@
 
   $("importBtn").onclick = async ()=>{ $("impBackdrop").style.display="flex"; $("impStatus").textContent="Select a CSV to begin."; $("impPreview").style.display="none"; $("csvFile").value=""; $("countPill").textContent="Parsed — · Valid — · Skipped — · Debits — · Credits —"; await populateSourceOptions(); };
   $("closeImport").onclick = ()=>{ $("impBackdrop").style.display="none"; };
+
+  let __valid=[]; let __skipped=[];
+  function detectDelimiter(sample){ const c=(sample.match(/,/g)||[]).length, s=(sample.match(/;/g)||[]).length, t=(sample.match(/\t/g)||[]).length; if(Math.max(c,s,t)===s) return ";"; if(Math.max(c,s,t)===t) return "\t"; return ","; }
+  function parseLine(line, delim){ const out=[]; let cur='',q=false; for(let i=0;i<line.length;i++){ const ch=line[i]; if(ch==='"'){ if(q&&line[i+1]==='"'){cur+='"';i++;} else q=!q; } else if(ch===delim && !q){ out.push(cur); cur=''; } else cur+=ch; } out.push(cur); return out.map(x=>x.trim()); }
+  function parseCSV(text){ const sample=text.split(/\r?\n/).slice(0,8).join("\n"); const delim=detectDelimiter(sample); const lines=text.replace(/\r\n/g,"\n").replace(/\r/g,"\n").split("\n"); const rows=lines.map(l=> l.trim()==="" ? null : parseLine(l,delim)); return { rows, delim }; }
+  function isDateLike(s){ if(!s) return false; const t=String(s).trim(); if(/^\d{4}[-/]\d{2}[-/]\d{2}$/.test(t)) return true; const d=new Date(t); return !isNaN(d.valueOf()); }
+  function toISO(s){ if(!s) return null; const t=String(s).trim(); if(/^\d{4}[-/]\d{2}[-/]\d{2}$/.test(t)) return t.replace(/\//g,"-"); const d=new Date(t); if(isNaN(d.valueOf())) return null; return d.toISOString().slice(0,10); }
+  function parseNum(s){ if(s==null) return null; let v=String(s).trim(); if(!v) return null; const paren=/^\(.*\)$/.test(v); if(paren) v=v.replace(/[()]/g,""); v=v.replace(/\$/g,"").replace(/,/g,""); const n=Number(v); if(Number.isNaN(n)) return null; return paren?-Math.abs(n):n; }
 
   $("csvFile").addEventListener("change", async (e)=>{
     __valid=[]; __skipped=[];
@@ -620,92 +510,47 @@
     __valid = __valid.map(v=>({...v, source: chosen}));
     $("impStatus").className="muted small"; $("impStatus").textContent=`Importing ${__valid.length} transactions…`;
 
-    const rowsIns = __valid.map(v=>({
+    const rowsToInsert = __valid.map(v=>({
       txn_date: v.date, post_date: v.date, description: v.desc,
       amount: v.amount, direction: v.direction, category: "Uncategorized",
       source_account_name: v.source, currency:"CAD", imported_via:"csv"
     }));
     try{
-      for(let i=0;i<rowsIns.length;i+=300){
-        const chunk=rowsIns.slice(i,i+300);
+      for(let i=0;i<rowsToInsert.length;i+=300){
+        const chunk=rowsToInsert.slice(i,i+300);
         const { error } = await sb.from("transactions").insert(chunk);
         if(error) throw error;
-        $("impStatus").textContent=`Importing ${rowsIns.length}… ${Math.min(i+300,rowsIns.length)}/${rowsIns.length}`;
+        $("impStatus").textContent=`Importing ${rowsToInsert.length}… ${Math.min(i+300,rowsToInsert.length)}/${rowsToInsert.length}`;
       }
-      $("impStatus").className="ok small"; $("impStatus").textContent=`✅ Imported ${rowsIns.length}.`;
+      $("impStatus").className="ok small"; $("impStatus").textContent=`✅ Imported ${rowsToInsert.length}.`;
       $("impBackdrop").style.display="none"; await loadTransactions();
     }catch(err){ $("impStatus").className="err small"; $("impStatus").textContent=String(err.message||err); }
   };
 
-  // ---------- Deep-link + banner ----------
-  async function handleDeepLink(){
-    const hash = window.location.hash || '';
-    const rcpMatch = hash.match(/focus_receipt=([0-9a-f-]{36})/i);
-    if(rcpMatch){
-      try{
-        const meta = await fetchReceiptMeta(rcpMatch[1]);
-        pendingReceipt = { id: meta.id, date: meta.receipt_date?.slice(0,10) || null, total: +meta.total || 0 };
-        $("linkBanner").classList.remove('hidden');
-        $("bannerRid").textContent = pendingReceipt.id.slice(0,8);
-        $("bannerMeta").textContent = `${money(pendingReceipt.total)} on ${pendingReceipt.date||'—'}`;
-      }catch(_){}
-    }
-    await loadTransactions();
-  }
+  // Export
+  $("exportBtn").onclick = async ()=>{
+    const { data, error } = await sb.from("transactions")
+      .select("txn_date,description,amount,direction,category,source_account_name")
+      .order("txn_date",{ascending:false});
+    if(error){ alert(error.message); return; }
+    const rows=[["Date","Description","Amount","Type","Category","Source"], ...data.map(r=>[
+      r.txn_date||"", (r.description||"").replace(/[\r\n]+/g," "), r.amount, r.direction, r.category||"", r.source_account_name||""
+    ])];
+    const csv=rows.map(r=>r.map(cell=>{ const s=String(cell??""); return /[",\n;]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; }).join(",")).join("\n");
+    const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="transactions_export.csv"; a.click(); URL.revokeObjectURL(a.href);
+  };
 
-  // expose for onclicks
-  window.openLinkPicker = openLinkPicker;
-
-  // UI wire-up
+  // Filters
   $("applyBtn").onclick = loadTransactions;
   $("quickSearch").addEventListener("input", ()=>{ clearTimeout(window.__qsT); window.__qsT=setTimeout(loadTransactions,150); });
-  window.addEventListener('load', handleDeepLink);
 
-  // ---------- Upload modal handlers (same as earlier) ----------
-  let currentTxn=null;
-  function applyCategoryOptions(selected){
-    const opts=CATEGORY_OPTIONS.map(c=>`<option value="${esc(c)}"${c===selected?' selected':''}>${esc(c)}</option>`).join("");
-    $("upCategory").innerHTML=opts;
-    if(selected && CATEGORY_OPTIONS.includes(selected)) $("upCategory").value=selected;
-    else if(CATEGORY_OPTIONS.includes("Uncategorized")) $("upCategory").value="Uncategorized";
+  // Init
+  async function init(){
+    await readLinkContextFromURL(); // sets linkReceipt if present & valid
+    await loadTransactions();
   }
-  window.openUpload = async (id)=>{
-    const { data: row, error } = await sb.from("transactions").select("id, txn_date, description, amount, source_account_name, category").eq("id", id).single();
-    if(error || !row){ alert("Transaction not found."); return; }
-    currentTxn={ id:row.id, desc:row.description||"", date:(row.txn_date||"").slice(0,10), amt:Number(row.amount)||0, source:row.source_account_name||"", category:row.category||"Uncategorized" };
-    $("upDesc").textContent = `${currentTxn.desc} — ${money(currentTxn.amt)} on ${currentTxn.date}`;
-    $("uploadFile").value=""; $("uploadError").textContent=""; $("uploadStatus").textContent="";
-    $("upVendor").value=currentTxn.desc; $("upDate").value=currentTxn.date; $("upTotal").value=currentTxn.amt?currentTxn.amt.toFixed(2):""; $("upTax").value="0.00"; $("upSource").value=currentTxn.source;
-    applyCategoryOptions(currentTxn.category); $("uploadBackdrop").style.display="flex";
-  };
-  $("cancelUpload").onclick = ()=>{ $("uploadBackdrop").style.display="none"; };
-  function valNumber(el){ const n=Number(el.value); return Number.isFinite(n)?n:NaN; }
-  $("confirmUpload").onclick = async ()=>{
-    $("uploadError").textContent=""; $("uploadStatus").textContent="";
-    const vendor=$("upVendor").value.trim(), date=$("upDate").value, total=valNumber($("upTotal")), tax=valNumber($("upTax")), cat=$("upCategory").value, src=$("upSource").value.trim(), file=$("uploadFile").files[0];
-    if(!vendor || !date || !src || !file || !Number.isFinite(total) || !Number.isFinite(tax)){ $("uploadError").textContent="Please complete all fields."; return; }
-    if(total<0 || tax<0){ $("uploadError").textContent="Amounts must be zero or positive."; return; }
-    if(tax>total){ $("uploadError").textContent="Tax cannot exceed Total."; return; }
-    $("uploadStatus").textContent="Uploading image…";
-    const filename=`${Date.now()}_${file.name}`;
-    const { error: upErr } = await sb.storage.from("receipts-warm").upload(filename, file);
-    if(upErr){ $("uploadStatus").textContent=""; $("uploadError").textContent="Upload failed: "+upErr.message; return; }
-    const imageUrl=`https://advihqhjjlxumgdlbwui.supabase.co/storage/v1/object/public/receipts-warm/${filename}`;
-    $("uploadStatus").textContent="Saving receipt…";
-    const { data: orgRow } = await sb.from("orgs").select("id").limit(1).single();
-    const org_id = orgRow?.id || null;
-    const { data: rIns, error: rErr } = await sb.from("receipts").insert([{
-      org_id, account_id:null, image_url:imageUrl, size_bytes:file.size||0,
-      receipt_date:date, total:total, tax:tax, category:cat||null, vendor:vendor,
-      source:src, notes:`Uploaded from transaction view for txn ${currentTxn?.id}`, entered_by:"You"
-    }]).select("id").single();
-    if(rErr){ $("uploadStatus").textContent=""; $("uploadError").textContent="Insert failed: "+rErr.message; return; }
-    const receipt_id=rIns?.id; if(receipt_id && currentTxn?.id){
-      await sb.from("matches").insert([{ org_id, transaction_id: currentTxn.id, receipt_id, matched_amount: total, confidence: 1, method:"manual", match_type:"exact" }]);
-    }
-    $("uploadStatus").textContent="✅ Saved & linked!";
-    setTimeout(async ()=>{ $("uploadBackdrop").style.display="none"; await loadTransactions(); }, 700);
-  };
+  init();
 })();
 </script>
 <script src="roles.js"></script>
