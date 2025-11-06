@@ -98,6 +98,9 @@
       <span class="kpill">Total: <b id="countAll">0</b></span>
       <span class="kpill">Matched: <b id="countMatched">0</b></span>
       <span class="kpill">Unmatched: <b id="countUnmatched">0</b></span>
+
+      <span class="spacer"></span>
+      <button id="exportBtn" class="ghost">⬇️ Export CSV</button>
     </div>
     <p id="status" class="muted" style="margin-top:6px"></p>
   </div>
@@ -257,7 +260,6 @@ function render(rows){
   $("ftTax").textContent=money(taxSum);
   $("ftTotal").textContent=money(totalSum);
 
-  // hook up action buttons
   tbody.querySelectorAll("button[data-act]").forEach(btn=>{
     const id=btn.getAttribute("data-id");
     const act=btn.getAttribute("data-act");
@@ -303,7 +305,7 @@ function applyFilters(){
   render(rows);
 }
 
-/* ---------- Edit (prompt-based, locked lists) ---------- */
+/* ---------- Edit ---------- */
 async function openEdit(id){
   const rec = ALL.find(r=>r.id===id); if(!rec) return;
 
@@ -356,6 +358,50 @@ async function loadReceipts(){
 }
 
 loadReceipts();
+
+/* ---------- Export CSV (uses v_receipts_for_export so Vendor = bank name when linked) ---------- */
+$("exportBtn").onclick = async ()=>{
+  try {
+    const { data, error } = await sb
+      .from("v_receipts_for_export")
+      .select("receipt_date, export_vendor, total, tax, category, source, notes")
+      .order("receipt_date",{ascending:false});
+
+    if(error){
+      alert("Export failed: " + error.message);
+      return;
+    }
+
+    const rows = [
+      ["Date","Vendor","Total","Tax","Category","Source","Notes"],
+      ...data.map(r=>[
+        (r.receipt_date||"").slice(0,10),
+        r.export_vendor||"",
+        r.total??0,
+        r.tax??0,
+        r.category||"",
+        r.source||"",
+        (r.notes||"").replace(/[\r\n]+/g," "),
+      ])
+    ];
+
+    const csv = rows.map(r =>
+      r.map(cell=>{
+        const s = String(cell??"");
+        return /[",\n;]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;
+      }).join(",")
+    ).join("\n");
+
+    const blob = new Blob([csv],{type:"text/csv;charset=utf-8"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "receipts_export.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch(e) {
+    alert("Export error: " + (e.message||e));
+  }
+};
 </script>
 </body>
 </html>
