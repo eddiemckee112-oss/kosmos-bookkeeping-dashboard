@@ -6,6 +6,7 @@
   <title>Kosmos — Receipts</title>
 
   <link rel="stylesheet" href="style.css" />
+  <script src="config.js"></script> <!-- NEW: AI toggle -->
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <style>
     .uploader{display:grid;grid-template-columns:1fr 1fr;gap:16px}
@@ -41,7 +42,7 @@
 
 <main class="container">
   <h2>🧾 Receipts</h2>
-  <p class="muted">Upload, edit, delete, and link receipts. Category/Source are fixed dropdowns. “Match Now” opens Transactions in linking mode.</p>
+  <p class="muted">Upload, edit, delete, and link receipts. Category/Source fixed. “Match Now” opens Transactions linking mode.</p>
 
   <!-- Upload -->
   <div class="card">
@@ -74,6 +75,7 @@
 
         <p id="upMsg" class="muted" style="margin-top:8px"></p>
         <div class="row" style="justify-content:flex-end;margin-top:8px;gap:8px">
+          <button id="scanBtn" class="ghost" type="button">🤖 Scan with AI</button>
           <button id="clearBtn" class="ghost" type="button">Clear</button>
           <button id="uploadBtn" type="button">Upload Receipt</button>
         </div>
@@ -81,7 +83,7 @@
     </div>
   </div>
 
-  <!-- Filters -->
+  <!-- Filters + table -->
   <div class="card">
     <div class="toolbar">
       <select id="filterMode">
@@ -90,22 +92,16 @@
         <option value="matched">Matched</option>
         <option value="recent">Recently added</option>
       </select>
-
       <input id="search" placeholder="Search vendor/notes/source…" style="padding:.5rem .7rem;border:1px solid #cfcfcf;border-radius:10px;min-width:220px" />
       <button id="applyFilter">Apply</button>
-
       <span class="spacer"></span>
       <span class="kpill">Total: <b id="countAll">0</b></span>
       <span class="kpill">Matched: <b id="countMatched">0</b></span>
       <span class="kpill">Unmatched: <b id="countUnmatched">0</b></span>
-
-      <span class="spacer"></span>
-      <button id="exportBtn" class="ghost">⬇️ Export CSV</button>
     </div>
     <p id="status" class="muted" style="margin-top:6px"></p>
   </div>
 
-  <!-- Table -->
   <div class="card" style="overflow:auto">
     <table id="recTable" style="min-width:1100px">
       <thead>
@@ -184,43 +180,63 @@ $("clearBtn").onclick = ()=>{
   $("tax").value="0.00"; $("upMsg").textContent="";
   initUploadForm();
 };
-$("uploadBtn").onclick = async ()=>{
-  const f=$("file").files?.[0];
-  if(!f) return $("upMsg").textContent="Choose a file first.";
 
-  const payload = {
-    vendor:$("vendor").value.trim(),
-    receipt_date:$("rdate").value,
-    total:Number($("total").value||0),
-    tax:Number($("tax").value||0),
-    category:$("category").value,
-    source:$("source").value,
-    notes:($("notes").value||"").trim()||null
-  };
-  if(!payload.vendor || !payload.receipt_date || !payload.total || !payload.category || !payload.source){
-    $("upMsg").textContent="All fields required."; return;
+/* ---------- AI Scan (prefill) ---------- */
+(function setupAiButton(){
+  const cfg = (window.KOSMOS_CFG||{});
+  if (!cfg.AI_MODE || cfg.AI_MODE === "off") {
+    // hide scan button if AI disabled
+    $("scanBtn").style.display = "none";
+    return;
   }
+  // otherwise wire it up
+  $("scanBtn").onclick = async ()=>{
+    try{
+      const f=$("file").files?.[0];
+      if(!f) { $("upMsg").textContent="Choose a file first (so AI can read it)."; return; }
 
-  $("upMsg").textContent="Uploading image…";
-  const fname=`r_${Date.now()}_${(f.name||'img').replace(/[^\w.\-]+/g,'_')}`;
-  const { data:upRes, error:upErr }=await sb.storage.from("receipts-warm").upload(fname,f,{contentType:f.type||"image/jpeg"});
-  if(upErr) return $("upMsg").textContent=upErr.message;
-  const imageUrl=`https://advihqhjjlxumgdlbwui.supabase.co/storage/v1/object/public/receipts-warm/${fname}`;
+      $("upMsg").textContent="Uploading image for AI…";
+      const fname=`r_${Date.now()}_${(f.name||'img').replace(/[^\w.\-]+/g,'_')}`;
+      const up = await sb.storage.from("receipts-warm").upload(fname,f,{contentType:f.type||"image/jpeg"});
+      if(up.error){ $("upMsg").textContent=up.error.message; return; }
+      const imageUrl=`https://advihqhjjlxumgdlbwui.supabase.co/storage/v1/object/public/receipts-warm/${fname}`;
 
-  const { error:insErr }=await sb.from("receipts").insert({
-    image_url:imageUrl, size_bytes:f.size||0,
-    receipt_date:payload.receipt_date, total:payload.total, tax:payload.tax,
-    category:payload.category, vendor:payload.vendor, source:payload.source,
-    notes:payload.notes, entered_by:"You"
-  });
-  if(insErr) return $("upMsg").textContent=insErr.message;
+      $("upMsg").textContent="Thinking (AI)…";
+      const hints = {
+        hint_vendor: $("vendor").value || null,
+        hint_amount: Number($("total").value || 0) || null,
+        hint_date: $("rdate").value || null,
+        source: $("source").value || null
+      };
 
-  $("upMsg").textContent="Uploaded.";
-  $("clearBtn").click();
-  await loadReceipts();
-};
+      // call unified Edge Function — it handles local/openai/off
+      const aiRes = await fetch(`${location.origin}/functions/v1/ai-suggest`, {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ image_url: imageUrl, ...hints })
+      });
+      const payload = await aiRes.json();
+      if(!payload?.ok){ $("upMsg").textContent = payload?.error || "AI error."; return; }
 
-/* ---------- Row actions ---------- */
+      const s = payload.suggestions || {};
+      if(s.vendor) $("vendor").value = s.vendor;
+      if(s.receipt_date) $("rdate").value = s.receipt_date;
+      if(typeof s.total === "number") $("total").value = String(s.total.toFixed(2));
+      if(typeof s.tax === "number") $("tax").value = String(s.tax.toFixed(2));
+      if(s.category && CATEGORIES.includes(s.category)) $("category").value = s.category;
+      if(s.source && SOURCES.includes(s.source)) $("source").value = s.source;
+
+      $("upMsg").textContent = `AI suggestions applied${typeof s.confidence==="number" ? ` (conf ${Math.round(s.confidence*100)}%)` : ""}. Review & Upload.`;
+      $("file").dataset.aiUploadedName = fname;
+    }catch(e){
+      $("upMsg").textContent = e?.message || String(e);
+    }
+  };
+})();
+</script>
+
+<script>
+/* ---------- Row actions etc. (unchanged) ---------- */
 function badge(rec){ return MATCHES.has(rec.id) ? `<span class="badge ok">Matched</span>` : `<span class="badge muted">Unmatched</span>`; }
 function actions(rec){
   const open = rec.image_url ? `<a class="linkbtn" href="${esc(rec.image_url)}" target="_blank" rel="noopener">Open</a>` : "";
@@ -282,7 +298,6 @@ function render(rows){
   });
 }
 
-/* ---------- Filters ---------- */
 $("applyFilter").onclick = applyFilters;
 $("search").oninput = ()=>{ clearTimeout(window.__t); window.__t=setTimeout(applyFilters,200); };
 function applyFilters(){
@@ -305,7 +320,6 @@ function applyFilters(){
   render(rows);
 }
 
-/* ---------- Edit ---------- */
 async function openEdit(id){
   const rec = ALL.find(r=>r.id===id); if(!rec) return;
 
@@ -356,52 +370,8 @@ async function loadReceipts(){
 
   applyFilters();
 }
-
 loadReceipts();
-
-/* ---------- Export CSV (uses v_receipts_for_export so Vendor = bank name when linked) ---------- */
-$("exportBtn").onclick = async ()=>{
-  try {
-    const { data, error } = await sb
-      .from("v_receipts_for_export")
-      .select("receipt_date, export_vendor, total, tax, category, source, notes")
-      .order("receipt_date",{ascending:false});
-
-    if(error){
-      alert("Export failed: " + error.message);
-      return;
-    }
-
-    const rows = [
-      ["Date","Vendor","Total","Tax","Category","Source","Notes"],
-      ...data.map(r=>[
-        (r.receipt_date||"").slice(0,10),
-        r.export_vendor||"",
-        r.total??0,
-        r.tax??0,
-        r.category||"",
-        r.source||"",
-        (r.notes||"").replace(/[\r\n]+/g," "),
-      ])
-    ];
-
-    const csv = rows.map(r =>
-      r.map(cell=>{
-        const s = String(cell??"");
-        return /[",\n;]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;
-      }).join(",")
-    ).join("\n");
-
-    const blob = new Blob([csv],{type:"text/csv;charset=utf-8"});
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "receipts_export.csv";
-    a.click();
-    URL.revokeObjectURL(a.href);
-  } catch(e) {
-    alert("Export error: " + (e.message||e));
-  }
-};
 </script>
+<script src="roles.js"></script>
 </body>
 </html>
