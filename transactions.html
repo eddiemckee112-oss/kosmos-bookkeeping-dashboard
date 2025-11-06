@@ -15,7 +15,7 @@
     .status-pill.ok{background:#ecfdf5;border-color:#a7f3d0}
     .status-pill.dim{opacity:.75}
     .upload-btn{font-size:.8rem;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#f9f9f9;cursor:pointer}
-    .cat-select,.src-select{min-width:170px}
+    .cat-select{min-width:150px}
     .save-mark{font-size:12px;margin-left:6px;opacity:0;transition:opacity .2s}
     .save-mark.show{opacity:1}
     .link{color:#2563eb;text-decoration:none}
@@ -26,6 +26,7 @@
     .grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
     .field{display:flex;flex-direction:column;gap:6px}
     .field label{font-weight:600}
+    .hl{outline:3px solid var(--brand);box-shadow:0 0 0 4px color-mix(in oklab, var(--brand) 18%, transparent)}
   </style>
 </head>
 <body>
@@ -112,7 +113,8 @@
     </div>
     <div class="row" style="gap:10px;align-items:center;margin-top:10px">
       <label for="fileSourceSelect"><b>Source for this file:</b></label>
-      <select id="fileSourceSelect" class="src-select"></select>
+      <select id="fileSourceSelect"></select>
+      <input id="fileSourceCustom" class="hidden" placeholder="Type custom source…"/>
     </div>
     <p id="impStatus" class="muted small" style="margin-top:10px;">Select a CSV to begin.</p>
     <div class="kpill small" id="countPill" style="display:inline-block;margin-top:6px;">Parsed — · Valid — · Skipped — · Debits — · Credits —</div>
@@ -142,9 +144,9 @@
     <div class="grid-3" style="margin-top:8px">
       <div class="field"><label>Total *</label><input id="upTotal" type="number" step="0.01" min="0"/></div>
       <div class="field"><label>Tax *</label><input id="upTax" type="number" step="0.01" min="0" placeholder="0.00"/></div>
-      <div class="field"><label>Category *</label><select id="upCategory" class="cat-select"></select></div>
+      <div class="field"><label>Category *</label><select id="upCategory"></select></div>
     </div>
-    <div class="field" style="margin-top:8px"><label>Source *</label><select id="upSource" class="src-select"></select></div>
+    <div class="field" style="margin-top:8px"><label>Source *</label><input id="upSource"/></div>
     <div class="field" style="margin-top:8px"><label>Image *</label><input id="uploadFile" type="file" accept="image/*" capture="environment"/></div>
 
     <p id="uploadError" class="err small" style="margin-top:6px"></p>
@@ -168,44 +170,18 @@
   const money = n => (n==null?0:n).toLocaleString(undefined,{style:"currency",currency:"CAD"});
   const esc = s => String(s??"").replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
 
-  /* ---------- LOCKED LISTS (same as Receipts) ---------- */
-  const CATEGORY_LIST = [
-    "Income",
-    "Bank Fees",
-    "Restaurant Food & Supplies",
-    "Utilities",
-    "Phone/Internet",
-    "Insurance",
-    "Rent",
-    "Fuel",
-    "Payroll",
-    "Professional Fees",
-    "Subscriptions",
-    "Software",
-    "Taxes",
-    "Meals & Entertainment",
-    "Lodging",
-    "Travel",
-    "Building Maintenance & Repairs",
-    "Miscellaneous",
-    "Other",
-    "Uncategorized"
+  // Locked categories (keep in sync with receipts)
+  const CATEGORY_OPTIONS = [
+    "Uncategorized","Income","Sales","Refunds",
+    "Restaurant (Food & Supplies)","Alcohol","Software","Subscriptions",
+    "Travel","Lodging","Fuel","Utilities","Phone/Internet","Office",
+    "Professional Fees","Bank Fees","Taxes","Insurance",
+    "Repairs & Maintenance","Building Maintenance","Miscellaneous","Other"
   ];
 
-  const SOURCE_LIST = [
-    "CIBC Bank Account",
-    "Rogers MasterCard",
-    "PC MasterCard",
-    "Cash"
-  ];
-
-  /* ---------- Category / Source selects ---------- */
   function renderCategorySelect(value, id){
-    const opts = CATEGORY_LIST.map(c=>`<option value="${esc(c)}"${c===value?' selected':''}>${esc(c)}</option>`).join("");
+    const opts = CATEGORY_OPTIONS.map(c=>`<option value="${esc(c)}"${c===value?' selected':''}>${esc(c)}</option>`).join("");
     return `<select class="cat-select" data-txn="${id}" onchange="updateCategory(this)">${opts}</select><span class="save-mark" id="sv_${id}">✓ saved</span>`;
-  }
-  function fillSourceSelect(el, selected){
-    el.innerHTML = SOURCE_LIST.map(s=>`<option value="${esc(s)}"${s===selected?' selected':''}>${esc(s)}</option>`).join("");
   }
   window.updateCategory = async (sel)=>{
     const id = sel.getAttribute("data-txn");
@@ -217,7 +193,7 @@
 
   function showError(msg){ $("pageError").textContent = msg||""; }
 
-  // --------- MAIN LOAD ----------
+  // --------- MAIN LOAD (safe, then enrich with matches) ----------
   async function loadTransactions(){
     showError("");
 
@@ -236,7 +212,7 @@
     if(error){ showError(error.message); $("txBody").innerHTML=""; $("rowsCount").textContent="Rows: 0"; return; }
     let rows = data || [];
 
-    // Matches
+    // 1) Enrich with match info using a second, safe query
     let matchMap = new Map(); // txn_id -> {receipt_id, confidence}
     let matchedIds = new Set();
     try{
@@ -250,15 +226,15 @@
           if(!matchMap.has(m.transaction_id)) matchMap.set(m.transaction_id, m);
         });
       }
-    }catch(e){ /* ignore */ }
+    }catch(e){ /* keep going */ }
 
-    // Filters
+    // 2) Apply filter variants
     if(type==="uncategorized") rows = rows.filter(r => !r.category || r.category==="Uncategorized");
     if(type==="no_source")     rows = rows.filter(r => !r.source_account_name);
     if(type==="matched")       rows = rows.filter(r => matchedIds.has(r.id));
     if(type==="unmatched")     rows = rows.filter(r => !matchedIds.has(r.id));
 
-    // Quick search
+    // 3) Quick search
     if(q){
       rows = rows.filter(r =>
         (r.description||"").toLowerCase().includes(q) ||
@@ -284,7 +260,7 @@
     $("chipMatched").textContent   = mat;
     $("chipUnmatched").textContent = unmat;
 
-    // duplicate signal: same date + amount + normalized description
+    // lightweight duplicate signal
     const norm = s => (s||"").toLowerCase().replace(/\s+/g," ").trim().slice(0,80);
     const keyOf = r => `${r.txn_date}|${(+r.amount||0).toFixed(2)}|${norm(r.description)}`;
     const freq = new Map();
@@ -292,7 +268,7 @@
     const dupes = rows.filter(r=> (freq.get(keyOf(r))||0)>1).length;
     $("chipDupes").textContent = dupes;
 
-    // Render rows
+    // Render rows (ensure data-id attribute)
     $("txBody").innerHTML = rows.map(r=>{
       const m = matchMap.get(r.id);
       const matched = !!m;
@@ -303,16 +279,13 @@
         ? `<a class="link" href="receipts.html#${esc(m.receipt_id||'')}" title="Open receipt">View</a>`
         : `<button class="upload-btn" onclick="openUpload('${r.id}')">📷 Upload</button>`;
 
-      // normalize category display default
-      const cat = CATEGORY_LIST.includes(r.category) ? r.category : "Uncategorized";
-
       return `
-        <tr>
+        <tr data-id="${r.id}">
           <td>${esc(r.txn_date||"")}</td>
           <td>${esc(r.description||"")}</td>
           <td class="right">${money(r.amount)}</td>
           <td>${esc(r.direction||"")}</td>
-          <td>${renderCategorySelect(cat, r.id)}</td>
+          <td>${renderCategorySelect(r.category||"Uncategorized", r.id)}</td>
           <td>${esc(r.source_account_name||"")}</td>
           <td>${statusHtml}</td>
           <td>${receiptHtml}</td>
@@ -350,20 +323,18 @@
   function parseNum(s){ if(s==null) return null; let v=String(s).trim(); if(!v) return null; const paren=/^\(.*\)$/.test(v); if(paren) v=v.replace(/[()]/g,""); v=v.replace(/\$/g,"").replace(/,/g,""); const n=Number(v); if(Number.isNaN(n)) return null; return paren?-Math.abs(n):n; }
 
   async function populateSourceOptions(){
-    const sel=$("fileSourceSelect");
-    sel.innerHTML="";
-    SOURCE_LIST.forEach(name=> sel.insertAdjacentHTML("beforeend", `<option value="${esc(name)}">${esc(name)}</option>`));
+    const sel=$("fileSourceSelect"), custom=$("fileSourceCustom"); sel.innerHTML="";
+    const fixed=["CIBC Bank Account","PC MasterCard","Rogers MasterCard","Cash"];
+    fixed.forEach(name=> sel.insertAdjacentHTML("beforeend", `<option value="${esc(name)}">${esc(name)}</option>`));
+    const { data: accs } = await sb.from("accounts").select("name").order("name");
+    const have=new Set(fixed); (accs||[]).forEach(a=>{ if(a?.name && !have.has(a.name)){ sel.insertAdjacentHTML("beforeend", `<option value="${esc(a.name)}">${esc(a.name)} (seen)</option>`); have.add(a.name);} });
+    sel.insertAdjacentHTML("beforeend", `<option value="__custom__">Custom…</option>`);
+    custom.classList.add("hidden");
+    sel.onchange = ()=>{ if(sel.value==="__custom__") custom.classList.remove("hidden"); else custom.classList.add("hidden"); };
     sel.value="CIBC Bank Account";
   }
 
-  $("importBtn").onclick = async ()=>{
-    $("impBackdrop").style.display="flex";
-    $("impStatus").textContent="Select a CSV to begin.";
-    $("impPreview").style.display="none";
-    $("csvFile").value="";
-    $("countPill").textContent="Parsed — · Valid — · Skipped — · Debits — · Credits —";
-    await populateSourceOptions();
-  };
+  $("importBtn").onclick = async ()=>{ $("impBackdrop").style.display="flex"; $("impStatus").textContent="Select a CSV to begin."; $("impPreview").style.display="none"; $("csvFile").value=""; $("countPill").textContent="Parsed — · Valid — · Skipped — · Debits — · Credits —"; await populateSourceOptions(); };
   $("closeImport").onclick = ()=>{ $("impBackdrop").style.display="none"; };
 
   $("csvFile").addEventListener("change", async (e)=>{
@@ -379,7 +350,8 @@
     const DATE_COL=0,DESC_COL=1,DEBIT_COL=2,CREDIT_COL=3;
     let debSum=0, credSum=0, valid=0;
 
-    const chosenSource = $("fileSourceSelect").value;
+    const srcSel=$("fileSourceSelect"), srcCustom=$("fileSourceCustom");
+    const previewSource = srcSel.value==="__custom__" ? srcCustom.value.trim() : srcSel.value;
 
     for(let i=start;i<nonBlank.length;i++){
       const r=nonBlank[i];
@@ -390,8 +362,7 @@
       if(cVal!=null && cVal>0){ amount=Math.abs(cVal); direction='credit'; credSum+=amount; }
       else if(dVal!=null && dVal!==0){ amount=Math.abs(dVal); direction='debit'; debSum+=amount; }
       else { __skipped.push({line:i+1,reason:'no debit/credit'}); continue; }
-      __valid.push({date, desc, amount, direction, source: chosenSource});
-      valid++;
+      __valid.push({date, desc, amount, direction, source: previewSource||null}); valid++;
     }
     const skippedCount=Math.max(parsed - (start>0?1:0) - valid, 0);
     $("countPill").textContent=`Parsed ${parsed} · Valid ${valid} · Skipped ${skippedCount} · Debits ${debSum.toFixed(2)} · Credits ${credSum.toFixed(2)}`;
@@ -407,6 +378,10 @@
 
   $("importGo").onclick = async ()=>{
     if(!__valid.length){ alert("No valid rows."); return; }
+    const sel=$("fileSourceSelect"), custom=$("fileSourceCustom");
+    let chosen = sel.value==="__custom__" ? custom.value.trim() : sel.value;
+    if(!chosen){ alert("Choose a Source for this file."); sel.focus(); return; }
+    __valid = __valid.map(v=>({...v, source: chosen}));
     $("impStatus").className="muted small"; $("impStatus").textContent=`Importing ${__valid.length} transactions…`;
 
     const rows = __valid.map(v=>({
@@ -426,10 +401,13 @@
     }catch(err){ $("impStatus").className="err small"; $("impStatus").textContent=String(err.message||err); }
   };
 
-  // ------------- Upload Modal -------------
+  // ------------- Upload Modal (attach receipt) ----------------
   let currentTxn=null;
-  function fillCategorySelect(el, selected){
-    el.innerHTML = CATEGORY_LIST.map(c=>`<option value="${esc(c)}"${c===selected?' selected':''}>${esc(c)}</option>`).join("");
+  function applyCategoryOptions(selected){
+    const opts=CATEGORY_OPTIONS.map(c=>`<option value="${esc(c)}"${c===selected?' selected':''}>${esc(c)}</option>`).join("");
+    $("upCategory").innerHTML=opts;
+    if(selected && CATEGORY_OPTIONS.includes(selected)) $("upCategory").value=selected;
+    else if(CATEGORY_OPTIONS.includes("Uncategorized")) $("upCategory").value="Uncategorized";
   }
   async function openUpload(id){
     const { data: row, error } = await sb.from("transactions").select("id, txn_date, description, amount, source_account_name, category").eq("id", id).single();
@@ -437,10 +415,8 @@
     currentTxn={ id:row.id, desc:row.description||"", date:(row.txn_date||"").slice(0,10), amt:Number(row.amount)||0, source:row.source_account_name||"", category:row.category||"Uncategorized" };
     $("upDesc").textContent = `${currentTxn.desc} — ${money(currentTxn.amt)} on ${currentTxn.date}`;
     $("uploadFile").value=""; $("uploadError").textContent=""; $("uploadStatus").textContent="";
-    $("upVendor").value=currentTxn.desc; $("upDate").value=currentTxn.date; $("upTotal").value=currentTxn.amt?currentTxn.amt.toFixed(2):""; $("upTax").value="0.00";
-    fillCategorySelect($("upCategory"), CATEGORY_LIST.includes(currentTxn.category)?currentTxn.category:"Uncategorized");
-    fillSourceSelect($("upSource"), SOURCE_LIST.includes(currentTxn.source)?currentTxn.source:"CIBC Bank Account");
-    $("uploadBackdrop").style.display="flex";
+    $("upVendor").value=currentTxn.desc; $("upDate").value=currentTxn.date; $("upTotal").value=currentTxn.amt?currentTxn.amt.toFixed(2):""; $("upTax").value="0.00"; $("upSource").value=currentTxn.source;
+    applyCategoryOptions(currentTxn.category); $("uploadBackdrop").style.display="flex";
   }
   window.openUpload=openUpload;
   $("cancelUpload").onclick = ()=>{ $("uploadBackdrop").style.display="none"; };
@@ -448,7 +424,7 @@
 
   $("confirmUpload").onclick = async ()=>{
     $("uploadError").textContent=""; $("uploadStatus").textContent="";
-    const vendor=$("upVendor").value.trim(), date=$("upDate").value, total=valNumber($("upTotal")), tax=valNumber($("upTax")), cat=$("upCategory").value, src=$("upSource").value, file=$("uploadFile").files[0];
+    const vendor=$("upVendor").value.trim(), date=$("upDate").value, total=valNumber($("upTotal")), tax=valNumber($("upTax")), cat=$("upCategory").value, src=$("upSource").value.trim(), file=$("uploadFile").files[0];
     if(!vendor || !date || !src || !file || !Number.isFinite(total) || !Number.isFinite(tax)){ $("uploadError").textContent="Please complete all fields."; return; }
     if(total<0 || tax<0){ $("uploadError").textContent="Amounts must be zero or positive."; return; }
     if(tax>total){ $("uploadError").textContent="Tax cannot exceed Total."; return; }
@@ -495,8 +471,66 @@
   $("applyBtn").onclick = loadTransactions;
   $("quickSearch").addEventListener("input", ()=>{ clearTimeout(window.__qsT); window.__qsT=setTimeout(loadTransactions,150); });
 
-  async function init(){ try{ await loadTransactions(); }catch(e){ showError("Start-up error: "+(e?.message||e)); console.error(e); } }
-  init();
+  // --------- Deep-link support from Receipts ---------
+  async function highlightRowById(txnId){
+    const tryFocus = ()=>{
+      const row = document.querySelector(`#txTable tbody tr[data-id="${txnId}"]`);
+      if(!row) return false;
+      row.scrollIntoView({behavior:'smooth', block:'center'});
+      row.classList.add('hl');
+      setTimeout(()=>row.classList.remove('hl'), 1500);
+      return true;
+    };
+    setTimeout(tryFocus, 150);
+  }
+
+  async function highlightCandidatesForReceipt(receiptId){
+    try{
+      const { data: r, error: rErr } = await sb.from('receipts')
+        .select('id, receipt_date, total')
+        .eq('id', receiptId).single();
+      if(rErr || !r){ return; }
+
+      const from = new Date(r.receipt_date); from.setDate(from.getDate()-5);
+      const to   = new Date(r.receipt_date); to.setDate(to.getDate()+5);
+      const fromISO = from.toISOString().slice(0,10);
+      const toISO   = to.toISOString().slice(0,10);
+
+      const { data: txns } = await sb.from('transactions')
+        .select('id, txn_date, amount')
+        .gte('txn_date', fromISO).lte('txn_date', toISO);
+
+      const candIds = (txns||[])
+        .filter(t => Math.abs((+t.amount||0) - (+r.total||0)) <= 0.01)
+        .map(t => t.id);
+
+      await loadTransactions();
+
+      candIds.forEach(id=>{
+        const row = document.querySelector(`#txTable tbody tr[data-id="${id}"]`);
+        if(row){ row.classList.add('hl'); setTimeout(()=>row.classList.remove('hl'), 2000); }
+      });
+
+      if(candIds.length===1){
+        const row = document.querySelector(`#txTable tbody tr[data-id="${candIds[0]}"]`);
+        if(row) row.scrollIntoView({behavior:'smooth', block:'center'});
+      }
+    }catch(e){ /* no-op */ }
+  }
+
+  async function handleDeepLink(){
+    const hash = window.location.hash || '';
+    const txnMatch = hash.match(/focus_txn=([0-9a-f-]{36})/i);
+    const rcpMatch = hash.match(/focus_receipt=([0-9a-f-]{36})/i);
+
+    await loadTransactions();
+
+    if(txnMatch){ await highlightRowById(txnMatch[1]); }
+    else if(rcpMatch){ await highlightCandidatesForReceipt(rcpMatch[1]); }
+  }
+
+  // Init
+  window.addEventListener('load', handleDeepLink);
 })();
 </script>
 <script src="roles.js"></script>
