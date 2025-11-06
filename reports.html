@@ -20,29 +20,13 @@
   </header>
 
   <main class="container">
-    <h2>📁 Accountant Exports</h2>
+    <h2>📁 Accountant Export</h2>
 
-    <!-- Receipts export -->
-    <div class="card" style="margin-bottom:16px">
-      <h3>Receipts Export</h3>
-      <p class="muted">
-        Uses <code>v_receipts_for_export</code> — Vendor automatically uses bank name if linked.
-        Image URLs are clickable for quick review.
-      </p>
-      <div class="row" style="margin-bottom:8px;">
-        <label>From</label><input type="date" id="rFrom" />
-        <label>To</label><input type="date" id="rTo" />
-        <button id="exportReceipts">⬇️ Export Receipts CSV</button>
-      </div>
-      <p id="rMsg" class="muted"></p>
-    </div>
-
-    <!-- Transactions export -->
     <div class="card">
-      <h3>Transactions Export (+Linked Receipts)</h3>
+      <h3>Transactions Export (+ Linked Receipts)</h3>
       <p class="muted">
-        Uses <code>v_transactions_with_receipts</code> — includes match status, linked receipt info, and clickable image links.
-        Amounts are signed: <b>credit = positive</b>, <b>debit = negative</b>.
+        Uses <code>v_transactions_with_receipts</code> — includes match status, linked receipt ID/vendor, and
+        <b>clickable receipt links</b>. Amounts are signed: <b>credit = positive</b>, <b>debit = negative</b>.
       </p>
       <div class="row" style="margin-bottom:8px;">
         <label>From</label><input type="date" id="tFrom" />
@@ -59,66 +43,15 @@
     const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
     const $=id=>document.getElementById(id);
-    const escCSV=v=>{
-      if(v==null)return"";
+    const escCSV=v=> {
+      if(v==null) return "";
       const s=String(v);
       return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;
     };
     const to2=n=> (isNaN(+n)?"":(+n).toFixed(2));
+    const linkFormula = url => url ? `=HYPERLINK("${url}", "View")` : "";
 
-    // Excel/Sheets clickable link
-    const makeLink = url => url ? `=HYPERLINK("${url}", "View")` : "";
-
-    // ---------- Receipts Export ----------
-    $("exportReceipts").onclick = async ()=>{
-      const msg=$("rMsg");
-      msg.className="muted"; msg.textContent="Building receipts export…";
-      const from=$("rFrom").value||"1900-01-01";
-      const to=$("rTo").value||"2100-12-31";
-
-      const {data,error}=await sb
-        .from("v_receipts_for_export")
-        .select("receipt_date, export_vendor, category, source, total, tax, notes, image_url")
-        .gte("receipt_date",from).lte("receipt_date",to)
-        .order("receipt_date",{ascending:true});
-
-      if(error){ msg.className="err"; msg.textContent=error.message; return; }
-      if(!data?.length){ msg.textContent="No receipts found for that range."; return; }
-
-      const rows=[];
-      let subtotal=0, taxTotal=0, grand=0;
-
-      for(const r of data){
-        const t=+r.total||0, tx=+r.tax||0, st=t-tx;
-        subtotal+=st; taxTotal+=tx; grand+=t;
-        rows.push([
-          r.receipt_date ? r.receipt_date.slice(0,10) : "",
-          r.export_vendor||"",
-          r.category||"",
-          r.source||"",
-          to2(st),
-          to2(tx),
-          to2(t),
-          (r.notes||"").replace(/[\r\n]+/g," "),
-          makeLink(r.image_url)
-        ]);
-      }
-      rows.push([]);
-      rows.push(["","","","Totals →",to2(subtotal),to2(taxTotal),to2(grand),"",""]);
-
-      const header=["Date","Vendor","Category","Source","Subtotal","Tax","Total","Notes","Image"];
-      const csv=[header,...rows].map(r=>r.map(escCSV).join(",")).join("\n");
-      const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement("a");
-      const today=new Date().toISOString().slice(0,10);
-      a.href=url; a.download=`kosmos_receipts_${today}.csv`;
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
-      msg.className="ok"; msg.textContent=`Exported ${data.length} receipts with clickable links.`;
-    };
-
-    // ---------- Transactions Export (signed amounts) ----------
+    // ---- Transactions Export (signed amounts + clickable receipt links)
     $("exportTxns").onclick = async ()=>{
       const msg=$("tMsg");
       msg.className="muted"; msg.textContent="Building transactions export…";
@@ -136,9 +69,8 @@
 
       const header=["Date","Description","Amount","Type","Category","Source","Matched","Receipt ID","Receipt Vendor","Receipt Image"];
       const rows=data.map(r=>{
-        // Force sign rule: credit = +, debit = -
         const base = Math.abs(+r.amount || 0);
-        const signed = (r.direction === "credit") ? base : -base;
+        const signed = (r.direction === "credit") ? base : -base; // credit = +, debit = -
         return [
           r.txn_date||"",
           (r.bank_description||"").replace(/[\r\n]+/g," "),
@@ -149,7 +81,7 @@
           r.receipt_id ? "Yes" : "No",
           r.receipt_id || "",
           r.receipt_vendor || "",
-          makeLink(r.receipt_image_url)
+          linkFormula(r.receipt_image_url)
         ];
       });
 
