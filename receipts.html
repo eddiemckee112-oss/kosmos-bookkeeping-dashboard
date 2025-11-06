@@ -15,23 +15,18 @@
     .imgbox input{width:100%}
     .imgbox img{max-width:100%;height:auto;border-radius:10px;margin-top:10px}
     .mutetip{font-size:.85rem;color:var(--muted)}
-    .grid-rec{display:grid;gap:12px}
-    @media (min-width:900px){.grid-rec{display:block}}
-
-    .r-cards{display:grid;gap:12px;grid-template-columns:repeat(1,minmax(0,1fr))}
-    @media (min-width:520px){.r-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
-    @media (min-width:900px){.r-cards{display:none}}
-
+    .right{text-align:right}
     .badge{display:inline-block;padding:4px 8px;border-radius:999px;border:1px solid var(--border);font-weight:600;font-size:.82rem}
     .badge.ok{background:#eef9f1;color:var(--ok);border-color:#cfe7d6}
     .badge.muted{background:#f6f7f8;color:var(--muted)}
-
     .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    .spacer{flex:1 1 auto}
-    .right{text-align:right}
-    .sticky-footer{display:flex;gap:10px;flex-wrap:wrap}
-    .kpill{display:inline-block;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:#fff}
-    .ghost{background:#fff;border:1px solid var(--border);border-radius:10px;padding:.45rem .7rem;cursor:pointer}
+    .kpill{display:inline-block;border:1px solid var(--border);border-radius:999px;padding:4px 10px;background:#fff}
+    .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.18);display:none;align-items:flex-start;justify-content:center;padding:40px 12px;z-index:50}
+    .modal{background:#fff;width:min(900px,100%);max-height:85vh;overflow:auto;border:1px solid var(--border);border-radius:16px;padding:16px}
+    .field{display:flex;flex-direction:column;gap:6px}
+    .grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+    .row-actions{display:flex;gap:8px;flex-wrap:wrap}
   </style>
 </head>
 <body>
@@ -47,41 +42,33 @@
 
 <main class="container">
   <h2>🧾 Receipts</h2>
-  <p class="muted">Manual upload (scanner off). Fill all required fields and upload an image. Role rules: staff upload only, managers edit, admins delete.</p>
+  <p class="muted">Manual upload (scanner off). Staff upload; managers/admins edit; admins delete.</p>
 
-  <!-- Upload Box -->
+  <!-- Upload -->
   <div class="card">
     <div class="uploader">
       <div class="imgbox">
         <input id="file" type="file" accept="image/*,.pdf" capture="environment" />
-        <div class="mutetip" style="margin-top:6px">Tip: On mobile this opens your camera. PDFs are allowed too.</div>
+        <div class="mutetip" style="margin-top:6px">Tip: On mobile this opens your camera. PDFs OK.</div>
         <img id="preview" alt="" />
       </div>
 
       <div>
-        <div class="grid grid-2">
-          <div><label>Vendor</label><input id="vendor" placeholder="e.g., NO FRILLS" required /></div>
-          <div><label>Date</label><input id="rdate" type="date" required /></div>
-          <div><label>Total</label><input id="total" type="number" step="0.01" placeholder="0.00" required /></div>
-          <div><label>Tax</label><input id="tax" type="number" step="0.01" value="0.00" required /></div>
-
-          <!-- LOCKED Category -->
-          <div>
-            <label>Category</label>
-            <select id="categorySel" required></select>
+        <div class="grid-2">
+          <div class="field"><label>Vendor *</label><input id="vendor" placeholder="e.g., NO FRILLS"/></div>
+          <div class="field"><label>Date *</label><input id="rdate" type="date"/></div>
+          <div class="field"><label>Total *</label><input id="total" type="number" step="0.01" min="0" placeholder="0.00"/></div>
+          <div class="field"><label>Tax *</label><input id="tax" type="number" step="0.01" min="0" value="0.00"/></div>
+          <div class="field">
+            <label>Category *</label>
+            <select id="category"></select>
           </div>
-
-          <!-- LOCKED Source -->
-          <div>
-            <label>Source</label>
-            <select id="sourceSel" required></select>
+          <div class="field">
+            <label>Source *</label>
+            <select id="source"></select>
           </div>
         </div>
-
-        <div style="margin-top:8px">
-          <label>Notes <span class="muted">(optional)</span></label>
-          <input id="notes" placeholder="Any notes…" />
-        </div>
+        <div class="field" style="margin-top:8px"><label>Notes <span class="muted">(optional)</span></label><input id="notes" placeholder="Any notes…"/></div>
 
         <p id="upMsg" class="muted" style="margin-top:8px"></p>
         <div class="row" style="justify-content:flex-end;margin-top:8px">
@@ -92,7 +79,7 @@
     </div>
   </div>
 
-  <!-- Filters/Counts -->
+  <!-- Filters -->
   <div class="card">
     <div class="toolbar">
       <select id="filterMode">
@@ -101,142 +88,165 @@
         <option value="matched">Matched</option>
         <option value="recent">Recently added</option>
       </select>
-
       <input id="search" placeholder="Search vendor/notes/source…" style="padding:.5rem .7rem;border:1px solid #cfcfcf;border-radius:10px;min-width:220px" />
       <button id="applyFilter">Apply</button>
-
-      <span class="spacer"></span>
-      <button id="deleteSelected" class="ghost admin-only">🗑️ Delete Selected</button>
+      <span class="kpill">Total: <b id="countAll">0</b></span>
+      <span class="kpill">Matched: <b id="countMatched">0</b></span>
+      <span class="kpill">Unmatched: <b id="countUnmatched">0</b></span>
+      <span class="spacer" style="flex:1 1 auto"></span>
+      <button id="matchNowBtn" class="ghost">🔎 Match Now (preview)</button>
     </div>
-    <div class="chips" style="margin-top:8px">
-      <span class="chip">Total: <b id="countAll">0</b></span>
-      <span class="chip">Matched: <b id="countMatched">0</b></span>
-      <span class="chip">Unmatched: <b id="countUnmatched">0</b></span>
-    </div>
-    <p id="status" class="muted" style="margin-top:6px"></p>
   </div>
 
   <!-- Table -->
-  <div class="grid-rec">
-    <div class="r-cards" id="cards"></div>
-
-    <div class="card" style="overflow:auto">
-      <table id="recTable">
-        <thead>
-          <tr>
-            <th style="width:40px"><input type="checkbox" id="selectAll" /></th>
-            <th style="min-width:110px;">Date</th>
-            <th style="min-width:180px;">Vendor</th>
-            <th class="right" style="min-width:110px;">Total</th>
-            <th class="right" style="min-width:90px;">Tax</th>
-            <th style="min-width:140px;">Category</th>
-            <th style="min-width:140px;">Source</th>
-            <th style="min-width:120px;">Status</th>
-            <th style="min-width:220px;">Notes</th>
-            <th style="min-width:260px;">Actions</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-        <tfoot>
-          <tr><td colspan="10">
-            <div class="sticky-footer">
-              <span class="kpill">Rows: <b id="ftRows">0</b></span>
-              <span class="kpill">Subtotal: <b id="ftSubtotal">$0.00</b></span>
-              <span class="kpill">Tax: <b id="ftTax">$0.00</b></span>
-              <span class="kpill">Total: <b id="ftTotal">$0.00</b></span>
-            </div>
-          </td></tr>
-        </tfoot>
-      </table>
-    </div>
+  <div class="card" style="overflow:auto">
+    <table id="recTable">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Vendor</th>
+          <th class="right">Total</th>
+          <th class="right">Tax</th>
+          <th>Category</th>
+          <th>Source</th>
+          <th>Status</th>
+          <th>Notes</th>
+          <th>Image</th>
+          <th style="min-width:180px">Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+      <tfoot>
+        <tr><td colspan="10">
+          <div class="row" style="gap:12px;justify-content:flex-end">
+            <span class="kpill">Rows: <b id="ftRows">0</b></span>
+            <span class="kpill">Subtotal: <b id="ftSubtotal">$0.00</b></span>
+            <span class="kpill">Tax: <b id="ftTax">$0.00</b></span>
+            <span class="kpill">Total: <b id="ftTotal">$0.00</b></span>
+          </div>
+        </td></tr>
+      </tfoot>
+    </table>
   </div>
 </main>
 
+<!-- Edit Modal -->
+<div id="editBackdrop" class="modal-backdrop">
+  <div class="modal">
+    <h3>Edit Receipt</h3>
+    <p id="editStatus" class="small muted" style="margin-top:-6px"></p>
+
+    <div class="grid-2" style="margin-top:10px">
+      <div class="field"><label>Vendor *</label><input id="edVendor"/></div>
+      <div class="field"><label>Date *</label><input id="edDate" type="date"/></div>
+    </div>
+    <div class="grid-3" style="margin-top:10px">
+      <div class="field"><label>Total *</label><input id="edTotal" type="number" step="0.01" min="0"/></div>
+      <div class="field"><label>Tax *</label><input id="edTax" type="number" step="0.01" min="0"/></div>
+      <div class="field"><label>Category *</label><select id="edCategory"></select></div>
+    </div>
+    <div class="grid-2" style="margin-top:10px">
+      <div class="field"><label>Source *</label><select id="edSource"></select></div>
+      <div class="field"><label>Replace Image (optional)</label><input id="edFile" type="file" accept="image/*,.pdf"/></div>
+    </div>
+    <div class="field" style="margin-top:10px"><label>Notes</label><input id="edNotes"/></div>
+
+    <div class="row" style="justify-content:flex-end;margin-top:14px;gap:8px">
+      <button id="edCancel" class="ghost">Cancel</button>
+      <button id="edSave">Save changes</button>
+    </div>
+  </div>
+</div>
+
 <script>
-/* ---------- Supabase ---------- */
 const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-/* ---------- Helpers ---------- */
 const $ = id => document.getElementById(id);
 const tbody = document.querySelector("#recTable tbody");
-const cards = $("cards");
 let all = [];
 let matches = new Map();
-const selected = new Set();
+let currentEdit = null;
 
-function money(n){ const v=Number(n)||0; return `$${v.toFixed(2)}`; }
-function esc(s){ return String(s??"").replace(/[&<>]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m])); }
-
-/* ---- LOCKED OPTIONS ---- */
-const FIXED_SOURCES = ["CIBC Bank Account","PC MasterCard","Rogers MasterCard","Cash"];
-const FIXED_CATEGORIES = [
-  "Uncategorized","Income",
-  "Food & Supplies",
-  "Utilities","Phone/Internet",
-  "Software","Subscriptions",
+// Locked lists
+const CATEGORY_LIST = [
+  "Uncategorized","Income","Sales","Refunds",
+  "Restaurant (Food & Supplies)","Alcohol","Software","Subscriptions",
+  "Travel","Lodging","Fuel","Utilities","Phone/Internet","Office",
   "Professional Fees","Bank Fees","Taxes","Insurance",
-  "Repairs & Maintenance","Office","Meals & Entertainment",
-  "Lodging","Travel",
-  "Building Maintenance","Miscellaneous","Other"
+  "Repairs & Maintenance","Building Maintenance","Miscellaneous","Other"
 ];
+const SOURCE_LIST = ["CIBC Bank Account","PC MasterCard","Rogers MasterCard","Cash"];
 
-/* Default form values + dropdowns */
-function initFormDefaults(){
-  $("rdate").value = new Date().toISOString().slice(0,10);
-  $("sourceSel").innerHTML = FIXED_SOURCES.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("");
-  $("categorySel").innerHTML = FIXED_CATEGORIES.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");
+function fillSelect(el, arr, val){
+  el.innerHTML = arr.map(c=>`<option value="${c}">${c}</option>`).join("");
+  if(val && arr.includes(val)) el.value = val;
 }
+function money(n){ const v=Number(n)||0; return `$${v.toFixed(2)}`; }
+function esc(s){ return String(s??"").replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[m])); }
 
-/* ---------- Upload flow ---------- */
+function todayISO(){ const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); }
+
+// Upload form
 $("file").addEventListener("change", e=>{
   const f=e.target.files?.[0];
   $("preview").src = f ? URL.createObjectURL(f) : "";
   $("upMsg").textContent = f ? `Selected: ${f.name}` : "";
 });
-
 $("clearBtn").onclick = ()=>{
   $("file").value=""; $("preview").src="";
   ["vendor","total","tax","notes"].forEach(id=>$(id).value="");
-  $("tax").value="0.00"; $("upMsg").textContent="";
-  $("rdate").value = new Date().toISOString().slice(0,10);
-  $("categorySel").value = "Uncategorized";
-  $("sourceSel").value = FIXED_SOURCES[0];
+  $("rdate").value=todayISO();
+  $("tax").value="0.00";
+  $("upMsg").textContent="";
+  fillSelect($("category"), CATEGORY_LIST);
+  fillSelect($("source"), SOURCE_LIST);
 };
+$("rdate").value = todayISO();
+fillSelect($("category"), CATEGORY_LIST);
+fillSelect($("source"), SOURCE_LIST);
 
 $("uploadBtn").onclick = async ()=>{
   const f=$("file").files?.[0];
-  if(!f) return $("upMsg").textContent="Choose a file first.";
+  if(!f){ $("upMsg").textContent="Choose a file first."; return; }
 
   const data = {
     vendor:$("vendor").value.trim(),
     receipt_date:$("rdate").value,
     total:Number($("total").value||0),
     tax:Number($("tax").value||0),
-    category:$("categorySel").value,
-    source:$("sourceSel").value,
-    notes:$("notes").value.trim()||null
+    category:$("category").value,
+    source:$("source").value,
+    notes:($("notes").value||"").trim()||null
   };
-  if(!data.vendor||!data.receipt_date||!data.total||!data.category||!data.source)
-    return $("upMsg").textContent="All fields required.";
+  if(!data.vendor||!data.receipt_date||!data.category||!data.source || !(data.total>=0) || !(data.tax>=0)){
+    $("upMsg").textContent="Please complete all required fields.";
+    return;
+  }
+  if(data.tax>data.total){ $("upMsg").textContent="Tax cannot exceed Total."; return; }
 
   $("upMsg").textContent="Uploading…";
   const fname=`r_${Date.now()}_${(f.name||'img').replace(/[^\w.\-]+/g,'_')}`;
   const { data:upRes, error:upErr }=await sb.storage.from("receipts-warm").upload(fname,f,{contentType:f.type||"image/jpeg"});
-  if(upErr) return $("upMsg").textContent=upErr.message;
+  if(upErr){ $("upMsg").textContent=upErr.message; return; }
   const { data:pub }=sb.storage.from("receipts-warm").getPublicUrl(upRes.path);
   data.image_url=pub?.publicUrl||null; data.size_bytes=f.size||0;
 
   const { error:insErr }=await sb.from("receipts").insert(data);
-  if(insErr) return $("upMsg").textContent=insErr.message;
-  $("upMsg").textContent="Uploaded."; $("clearBtn").click(); loadReceipts();
+  if(insErr){ $("upMsg").textContent=insErr.message; return; }
+  $("upMsg").textContent="Uploaded.";
+  $("clearBtn").click();
+  loadReceipts();
 };
 
-/* ---------- Load + render ---------- */
+// Load + render
+$("applyFilter").onclick = applyFilters;
+$("search").oninput = ()=>{ clearTimeout(window.__t); window.__t=setTimeout(applyFilters,200); };
+
 async function loadReceipts(){
   const { data: recs, error: rErr } = await sb.from("receipts").select("*").order("created_at",{ascending:false});
-  if(rErr){ tbody.innerHTML=`<tr><td colspan="10">${rErr.message}</td></tr>`; return; }
+  if(rErr){ tbody.innerHTML=`<tr><td colspan="10">${esc(rErr.message)}</td></tr>`; return; }
   all = recs||[];
 
   const { data: mx } = await sb.from("matches").select("receipt_id, transaction_id");
@@ -246,12 +256,9 @@ async function loadReceipts(){
     arr.push(m.transaction_id);
     matches.set(m.receipt_id,arr);
   });
+
   applyFilters();
 }
-
-/* Filters */
-$("applyFilter").onclick = applyFilters;
-$("search").oninput = ()=>{ clearTimeout(window.__t); window.__t=setTimeout(applyFilters,200); };
 
 function applyFilters(){
   const mode=$("filterMode").value;
@@ -267,95 +274,23 @@ function applyFilters(){
   render(rows);
 }
 
-/* ---------- Match Now logic ---------- */
-function pad(n){ return String(n).padStart(2,"0"); }
-function isoDate(dt){ return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`; }
-
-async function matchNow(receiptId){
-  try{
-    // 1) Load the receipt
-    const { data: r, error: rErr } = await sb.from("receipts")
-      .select("id, receipt_date, total")
-      .eq("id", receiptId).single();
-    if(rErr || !r){ alert(rErr?.message || "Receipt not found."); return; }
-
-    const amt = Number(r.total||0);
-    if(!Number.isFinite(amt) || amt<=0){ alert("Receipt total missing/invalid."); return; }
-
-    const d = new Date(r.receipt_date);
-    if(isNaN(d)) { alert("Receipt date missing/invalid."); return; }
-    const dMin = new Date(d); dMin.setDate(dMin.getDate()-5);
-    const dMax = new Date(d); dMax.setDate(dMax.getDate()+5);
-
-    // 2) Find candidate transactions with same amount in window
-    const { data: txs, error: tErr } = await sb.from("transactions")
-      .select("id, txn_date, amount, description")
-      .gte("txn_date", isoDate(dMin))
-      .lte("txn_date", isoDate(dMax))
-      .eq("amount", amt);
-    if(tErr){ alert(tErr.message); return; }
-    if(!txs || !txs.length){ alert("No candidate transactions found in ±5 days with exact amount."); return; }
-
-    // 3) Exclude already-matched transactions
-    const ids = txs.map(t=>t.id);
-    const { data: mx } = await sb.from("matches").select("transaction_id").in("transaction_id", ids);
-    const taken = new Set((mx||[]).map(m=>m.transaction_id));
-    const free  = txs.filter(t => !taken.has(t.id));
-    if(!free.length){ alert("All candidate transactions are already matched."); return; }
-
-    // 4) Pick closest-by-date (prefer exact date)
-    const rDay = String(r.receipt_date||"").slice(0,10);
-    let best = free.find(t=> (t.txn_date||"").slice(0,10) === rDay);
-    if(!best){
-      const diffDays = (td)=> Math.abs((new Date(td).getTime() - d.getTime())/86400000);
-      best = free.slice().sort((a,b)=> diffDays(a.txn_date) - diffDays(b.txn_date))[0];
-    }
-    const confidence = ((best.txn_date||"").slice(0,10) === rDay) ? 0.99 : 0.95;
-
-    // 5) Insert match (org_id left null unless you want to set it)
-    const { error: insErr } = await sb.from("matches").insert([{
-      org_id: null,
-      transaction_id: best.id,
-      receipt_id: r.id,
-      matched_amount: amt,
-      confidence: confidence,
-      method: "manual",
-      match_type: "amount+date±5d"
-    }]);
-    if(insErr){ alert(insErr.message); return; }
-
-    alert("✅ Matched to: " + (best.description || best.id));
-    await loadReceipts();
-  }catch(e){
-    alert("Match failed: " + (e?.message || e));
-  }
-}
-
-/* ---------- Render ---------- */
 function render(rows){
   $("countAll").textContent=all.length;
   let m=0; all.forEach(r=>{if(matches.has(r.id))m++;});
   $("countMatched").textContent=m; $("countUnmatched").textContent=all.length-m;
 
-  if(!rows.length){tbody.innerHTML=`<tr><td colspan="10">No receipts.</td></tr>`;return;}
+  if(!rows.length){tbody.innerHTML=`<tr><td colspan="10">No receipts.</td></tr>`; $("ftRows").textContent=0; $("ftSubtotal").textContent="$0.00"; $("ftTax").textContent="$0.00"; $("ftTotal").textContent="$0.00"; return;}
+
   let subtotal=0,taxSum=0,totalSum=0;
   tbody.innerHTML=rows.map(r=>{
     subtotal+=Number(r.total||0)-Number(r.tax||0);
     taxSum+=Number(r.tax||0);
     totalSum+=Number(r.total||0);
     const status=matches.has(r.id)?`<span class="badge ok">Matched</span>`:`<span class="badge muted">Unmatched</span>`;
-    const img=r.image_url?`<img src="${esc(r.image_url)}" width="44" height="44" style="object-fit:cover;border-radius:8px;border:1px solid var(--border)" />`:"";
-    const delBtn = `<button class="ghost btnDel admin-only" data-id="${r.id}">Delete</button>`;
-
-    const actions = `
-      ${img}
-      <a class="badge" href="${esc(r.image_url||'#')}" target="_blank" rel="noopener">Open</a>
-      <button class="ghost btnMatch" data-id="${r.id}">Match Now</button>
-      ${delBtn}
-    `;
-
+    const img=r.image_url?`<a class="badge" href="${esc(r.image_url)}" target="_blank" rel="noopener">Open</a>`:"—";
+    const editBtn = `<button class="ghost" onclick="openEdit('${r.id}')">Edit</button>`;
+    const delBtn  = `<button class="ghost admin-only" onclick="deleteReceipt('${r.id}')">Delete</button>`;
     return `<tr data-id="${r.id}">
-      <td><input type="checkbox" class="sel" data-id="${r.id}" ${selected.has(r.id)?"checked":""}></td>
       <td>${esc((r.receipt_date||"").slice(0,10))}</td>
       <td>${esc(r.vendor||"")}</td>
       <td class="right">${money(r.total||0)}</td>
@@ -364,48 +299,84 @@ function render(rows){
       <td>${esc(r.source||"")}</td>
       <td>${status}</td>
       <td>${esc(r.notes||"")}</td>
-      <td>${actions}</td>
+      <td>${img}</td>
+      <td><div class="row-actions">${editBtn}${delBtn}</div></td>
     </tr>`;
   }).join("");
 
   $("ftRows").textContent=rows.length; $("ftSubtotal").textContent=money(subtotal); $("ftTax").textContent=money(taxSum); $("ftTotal").textContent=money(totalSum);
-
-  // Wire Delete
-  document.querySelectorAll(".btnDel").forEach(btn=>{
-    btn.onclick=async()=>{
-      const id=btn.dataset.id;
-      if(!window.can||!window.can("delete:any")) return alert("Only admins can delete receipts.");
-      if(!confirm("Delete this receipt?"))return;
-      await sb.from("receipts").delete().eq("id",id);
-      loadReceipts();
-    };
-  });
-
-  // Wire Match Now
-  document.querySelectorAll(".btnMatch").forEach(btn=>{
-    btn.onclick = ()=> matchNow(btn.dataset.id);
-  });
 }
 
-/* ---------- Bulk delete & select all ---------- */
-$("deleteSelected").onclick = async()=>{
-  if(!window.can||!window.can("delete:any")) return alert("Admins only.");
-  if(!selected.size) return;
-  if(!confirm(`Delete ${selected.size} receipts?`)) return;
-  await sb.from("receipts").delete().in("id",[...selected]);
-  selected.clear(); loadReceipts();
-};
-$("selectAll").onchange = e=>{
-  if(e.target.checked) all.forEach(r=>selected.add(r.id)); else selected.clear();
-  applyFilters();
+// Edit / Delete
+async function openEdit(id){
+  const { data: r, error } = await sb.from("receipts").select("*").eq("id", id).single();
+  if(error||!r){ alert(error?.message||"Receipt not found"); return; }
+  currentEdit = r;
+  $("editStatus").textContent = r.image_url ? "Current image attached." : "No image attached.";
+  $("edVendor").value = r.vendor||"";
+  $("edDate").value = (r.receipt_date||"").slice(0,10) || todayISO();
+  $("edTotal").value = Number(r.total||0).toFixed(2);
+  $("edTax").value   = Number(r.tax||0).toFixed(2);
+  $("edNotes").value = r.notes||"";
+  fillSelect($("edCategory"), CATEGORY_LIST, r.category||"Uncategorized");
+  fillSelect($("edSource"), SOURCE_LIST, r.source||SOURCE_LIST[0]);
+  $("edFile").value = "";
+  $("editBackdrop").style.display="flex";
+}
+$("edCancel").onclick = ()=>{ $("editBackdrop").style.display="none"; currentEdit=null; };
+
+$("edSave").onclick = async ()=>{
+  if(!currentEdit) return;
+  const patch = {
+    vendor: $("edVendor").value.trim(),
+    receipt_date: $("edDate").value,
+    total: Number($("edTotal").value||0),
+    tax: Number($("edTax").value||0),
+    category: $("edCategory").value,
+    source: $("edSource").value,
+    notes: ($("edNotes").value||"").trim() || null
+  };
+  if(!patch.vendor || !patch.receipt_date || !(patch.total>=0) || !(patch.tax>=0) || !patch.category || !patch.source){
+    alert("Please complete all required fields."); return;
+  }
+  if(patch.tax>patch.total){ alert("Tax cannot exceed Total."); return; }
+
+  const f = $("edFile").files?.[0];
+  if(f){
+    $("editStatus").textContent="Uploading new image…";
+    const fname=`r_${Date.now()}_${(f.name||'img').replace(/[^\w.\-]+/g,'_')}`;
+    const { data:upRes, error:upErr }=await sb.storage.from("receipts-warm").upload(fname,f,{contentType:f.type||"image/jpeg"});
+    if(upErr){ alert(upErr.message); return; }
+    const { data:pub }=sb.storage.from("receipts-warm").getPublicUrl(upRes.path);
+    patch.image_url = pub?.publicUrl || null;
+    patch.size_bytes = f.size || 0;
+  }
+
+  $("editStatus").textContent="Saving…";
+  const { error } = await sb.from("receipts").update(patch).eq("id", currentEdit.id);
+  if(error){ $("editStatus").textContent=""; alert(error.message); return; }
+
+  $("editStatus").textContent="Saved.";
+  setTimeout(()=>{ $("editBackdrop").style.display="none"; currentEdit=null; }, 300);
+  loadReceipts();
 };
 
-/* ---------- Start ---------- */
-initFormDefaults();
+async function deleteReceipt(id){
+  if(!confirm("Delete this receipt?")) return;
+  const { error } = await sb.from("receipts").delete().eq("id", id);
+  if(error){ alert(error.message); return; }
+  loadReceipts();
+}
+
+// “Match now” shortcut: just navigates to the saved SQL in Studio (preview)
+// (Keep using your saved “Match Now (1-tap)” in Studio for bulk auto-match.)
+$("matchNowBtn").onclick = ()=>{ alert("Use the saved SQL 'Match Now (1-tap)' in Supabase Studio for bulk matching. This page focuses on upload/edit/delete."); };
+
+// Init
 loadReceipts();
 </script>
 
-<!-- Role/Session Guard -->
+<!-- Role/Session Guard (hides admin-only buttons if not admin) -->
 <script src="roles.js"></script>
 </body>
 </html>
