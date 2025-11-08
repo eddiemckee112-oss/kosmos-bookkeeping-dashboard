@@ -27,6 +27,15 @@
     .danger{color:#b91c1c}
     .linkbtn{padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:#fff;cursor:pointer}
     .dim{opacity:.65}
+    /* chat bubble */
+    #kosmos-chat-btn{position:fixed;right:18px;bottom:18px;border:none;border-radius:999px;padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.15);background:#111;color:#fff;cursor:pointer;z-index:9999}
+    #kosmos-chat{position:fixed;right:18px;bottom:70px;width:340px;max-width:90vw;height:480px;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.18);display:none;flex-direction:column;overflow:hidden;z-index:9999}
+    #kc-head{padding:10px 12px;border-bottom:1px solid #eee;font-weight:600}
+    #kc-log{flex:1;overflow:auto;padding:12px;font-size:14px;line-height:1.45;background:#fafafa;display:flex;flex-direction:column}
+    #kc-log .me{align-self:flex-end;background:#e9f5ff;border-radius:10px;padding:8px 10px;margin:6px 0;max-width:85%}
+    #kc-log .ai{align-self:flex-start;background:#fff;border:1px solid #eee;border-radius:10px;padding:8px 10px;margin:6px 0;max-width:85%}
+    #kc-row{display:flex;gap:8px;padding:10px;border-top:1px solid #eee;background:#fff}
+    #kc-row input{flex:1;border:1px solid #ddd;border-radius:10px;padding:10px}
   </style>
 </head>
 <body>
@@ -75,6 +84,7 @@
 
         <p id="upMsg" class="muted" style="margin-top:8px"></p>
         <div class="row" style="justify-content:flex-end;margin-top:8px;gap:8px">
+          <button id="scanBtn" class="ghost" type="button">🤖 Scan with AI</button>
           <button id="clearBtn" class="ghost" type="button">Clear</button>
           <button id="uploadBtn" type="button">Upload Receipt</button>
         </div>
@@ -155,7 +165,7 @@ let MATCHES = new Map();
 
 const money = n => (Number(n)||0).toLocaleString(undefined,{style:'currency',currency:'CAD'});
 function esc(s){ return String(s??"").replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
-function setUpMsg(msg){ $("upMsg").textContent = msg || ""; }
+const setUpMsg = msg => ($("upMsg").textContent = msg || "");
 
 /* ---------- Populate dropdowns & defaults ---------- */
 function initUploadForm(){
@@ -168,7 +178,7 @@ function initUploadForm(){
 }
 initUploadForm();
 
-/* ---------- Upload + AI ---------- */
+/* ---------- Upload helpers ---------- */
 async function uploadToWarmBucket(file) {
   const fname = `r_${Date.now()}_${(file.name||"img").replace(/[^\w.\-]+/g,"_")}`;
   const up = await sb.storage.from("receipts-warm").upload(fname, file, {
@@ -178,7 +188,7 @@ async function uploadToWarmBucket(file) {
   return { fname, url: `https://advihqhjjlxumgdlbwui.supabase.co/storage/v1/object/public/receipts-warm/${fname}` };
 }
 
-// ✅ Fixed version with Supabase headers
+/* ---------- AI call (with proper headers) ---------- */
 async function callAiSuggest(payload) {
   const SUPABASE_URL  = "https://advihqhjjlxumgdlbwui.supabase.co";
   const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
@@ -206,16 +216,28 @@ function applySuggestions(s){
   if (s.source && SOURCES.includes(s.source)) $("source").value = s.source;
 }
 
-$("file").addEventListener("change", async (e)=>{
-  const f = e.target.files?.[0];
+/* ---------- Upload area events ---------- */
+$("file").addEventListener("change", e=>{
+  const f=e.target.files?.[0];
   $("preview").src = f ? URL.createObjectURL(f) : "";
   setUpMsg(f ? `Selected: ${f.name}` : "");
-  if (!f) return;
+});
 
-  const aiMode = (window.KOSMOS_CFG?.AI_MODE) || "on";
-  if (aiMode === "off") return;
+$("clearBtn").onclick = ()=>{
+  $("file").value=""; $("preview").src="";
+  delete $("file").dataset.aiUploadedName;
+  delete $("file").dataset.aiImageUrl;
+  ["vendor","total","tax","notes"].forEach(id=>$(id).value="");
+  $("tax").value="0.00"; setUpMsg("");
+  initUploadForm();
+};
 
+/* Scan with AI (explicit button) */
+$("scanBtn").onclick = async ()=>{
   try{
+    const f=$("file").files?.[0];
+    if(!f){ setUpMsg("Choose a file first (so AI can read it)."); return; }
+
     setUpMsg("Uploading image for AI…");
     const { fname, url } = await uploadToWarmBucket(f);
     $("file").dataset.aiUploadedName = fname;
@@ -234,22 +256,12 @@ $("file").addEventListener("change", async (e)=>{
 
     const conf = typeof s.confidence === "number" ? ` (conf ${Math.round(s.confidence*100)}%)` : "";
     setUpMsg(`AI suggestions applied${conf}. Review & click Upload.`);
-  }catch(err){
-    setUpMsg(String(err?.message || err || "AI failed"));
+  }catch(e){
+    setUpMsg(e?.message || String(e));
   }
-});
-
-/* ---------- Clear ---------- */
-$("clearBtn").onclick = ()=>{
-  $("file").value=""; $("preview").src="";
-  delete $("file").dataset.aiUploadedName;
-  delete $("file").dataset.aiImageUrl;
-  ["vendor","total","tax","notes"].forEach(id=>$(id).value="");
-  $("tax").value="0.00"; setUpMsg("");
-  initUploadForm();
 };
 
-/* ---------- Upload (insert row) ---------- */
+/* ---------- Upload (insert) ---------- */
 $("uploadBtn").onclick = async ()=>{
   try{
     const vendor = ($("vendor").value||"").trim();
@@ -289,7 +301,7 @@ $("uploadBtn").onclick = async ()=>{
   }
 };
 
-/* ---------- Table + actions ---------- */
+/* ---------- Table, actions, load ---------- */
 function badge(rec){ return MATCHES.has(rec.id) ? `<span class="badge ok">Matched</span>` : `<span class="badge muted">Unmatched</span>`; }
 function actions(rec){
   const open = rec.image_url ? `<a class="linkbtn" href="${esc(rec.image_url)}" target="_blank" rel="noopener">Open</a>` : "";
@@ -334,4 +346,156 @@ function render(rows){
     const act=btn.getAttribute("data-act");
     if(act==="del"){
       btn.onclick = async ()=>{
-       
+        if(!confirm("Delete this receipt?")) return;
+        await sb.from("matches").delete().eq("receipt_id", id);
+        await sb.from("receipts").delete().eq("id", id);
+        loadReceipts();
+      };
+    } else if(act==="edit"){
+      btn.onclick = ()=> openEdit(id);
+    } else if(act==="match"){
+      btn.onclick = ()=>{
+        sessionStorage.setItem('linkReceipt', id);
+        location.href = 'transactions.html?linkReceipt=' + encodeURIComponent(id);
+      };
+    }
+  });
+}
+
+$("applyFilter").onclick = applyFilters;
+$("search").oninput = ()=>{ clearTimeout(window.__t); window.__t=setTimeout(applyFilters,200); };
+function applyFilters(){
+  const mode=$("filterMode").value;
+  const q = ($("search").value||"").toLowerCase().trim();
+  let rows = ALL.slice();
+  rows = rows.filter(r=>{
+    const hasMatch = MATCHES.has(r.id);
+    if(mode==="matched") return hasMatch;
+    if(mode==="unmatched") return !hasMatch;
+    return true;
+  });
+  if(q){
+    rows = rows.filter(r =>
+      (r.vendor||"").toLowerCase().includes(q) ||
+      (r.notes||"").toLowerCase().includes(q) ||
+      (r.source||"").toLowerCase().includes(q)
+    );
+  }
+  render(rows);
+}
+
+async function openEdit(id){
+  const rec = ALL.find(r=>r.id===id); if(!rec) return;
+
+  const vendor = prompt("Vendor", rec.vendor||""); if(vendor===null) return;
+  const date   = prompt("Date (YYYY-MM-DD)", (rec.receipt_date||"").slice(0,10)); if(date===null) return;
+
+  const totalStr  = prompt("Total", String(rec.total||0)); if(totalStr===null) return;
+  const taxStr    = prompt("Tax", String(rec.tax||0)); if(taxStr===null) return;
+
+  const cat = prompt(`Category (choose one exactly):\n${CATEGORIES.join(", ")}`, rec.category||"");
+  if(cat===null) return;
+  if(!CATEGORIES.includes(cat)) return alert("Category must be one of the fixed options.");
+
+  const src = prompt(`Source (choose one exactly):\n${SOURCES.join(", ")}`, rec.source||"");
+  if(src===null) return;
+  if(!SOURCES.includes(src)) return alert("Source must be one of the fixed options.");
+
+  const notes  = prompt("Notes", rec.notes||""); if(notes===null) return;
+
+  const upd = {
+    vendor: vendor.trim(),
+    receipt_date: date,
+    total: Number(totalStr)||0,
+    tax: Number(taxStr)||0,
+    category: cat,
+    source: src,
+    notes: notes.trim()
+  };
+  const { error } = await sb.from("receipts").update(upd).eq("id", id);
+  if(error){ alert(error.message); return; }
+  await loadReceipts();
+}
+
+/* ---------- Load receipts & matches ---------- */
+async function loadReceipts(){
+  const { data: recs, error: rErr } = await sb.from("receipts")
+    .select("id, receipt_date, total, tax, category, vendor, source, notes, image_url, created_at")
+    .order("created_at",{ascending:false});
+  if(rErr){ tbody.innerHTML=`<tr><td colspan="9">${rErr.message}</td></tr>`; return; }
+  ALL = recs||[];
+
+  const { data: mx } = await sb.from("matches").select("receipt_id, transaction_id");
+  MATCHES.clear(); (mx||[]).forEach(m=>{
+    const arr = MATCHES.get(m.receipt_id)||[];
+    arr.push(m.transaction_id);
+    MATCHES.set(m.receipt_id, arr);
+  });
+
+  applyFilters();
+}
+document.addEventListener("DOMContentLoaded", loadReceipts);
+</script>
+
+<script src="roles.js"></script>
+
+<!-- ====== Floating chat (talks to your ai-chat Edge Function) ====== -->
+<button id="kosmos-chat-btn">💬 Chat</button>
+<div id="kosmos-chat">
+  <div id="kc-head">Kosmos AI</div>
+  <div id="kc-log"></div>
+  <div id="kc-row">
+    <input id="kc-input" placeholder="Ask about receipts, transactions…"/>
+    <button id="kc-send">Send</button>
+  </div>
+</div>
+<script>
+(function(){
+  const ENDPOINT = "https://advihqhjjlxumgdlbwui.supabase.co/functions/v1/ai-chat";
+  const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
+
+  const btn=document.getElementById("kosmos-chat-btn");
+  const box=document.getElementById("kosmos-chat");
+  const log=document.getElementById("kc-log");
+  const input=document.getElementById("kc-input");
+  const send=document.getElementById("kc-send");
+
+  btn.onclick=()=>{ box.style.display = box.style.display==="flex"?"none":"flex"; if(box.style.display!=="flex") box.style.display="flex"; };
+
+  const history = JSON.parse(localStorage.getItem("kosmos_chat_history")||"[]");
+  const push = (role, content)=>{ history.push({role, content}); localStorage.setItem("kosmos_chat_history", JSON.stringify(history)); render(); }
+  const esc = s => String(s||"").replace(/[&<>]/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;" }[m]));
+  function render(){
+    log.innerHTML="";
+    history.forEach(m=>{
+      const div=document.createElement("div");
+      div.className = m.role==="user"?"me":"ai";
+      div.innerHTML = esc(m.content);
+      log.appendChild(div);
+    });
+    log.scrollTop = log.scrollHeight;
+  }
+  render();
+  if(history.length===0){ push("assistant","Hey! I’m your Kosmos AI. Ask me to match receipts, check vendors, or explain a transaction."); }
+
+  async function talk(q){
+    push("user", q);
+    input.value="";
+    try{
+      const res = await fetch(ENDPOINT,{
+        method:"POST",
+        headers:{ "Authorization":"Bearer "+ANON_KEY, "Content-Type":"application/json" },
+        body: JSON.stringify({ messages: history })
+      });
+      const data = await res.json().catch(()=>({}));
+      const reply = (data && (data.reply || data.raw?.choices?.[0]?.message?.content)) || "No reply.";
+      push("assistant", reply);
+    }catch(e){ push("assistant","(Error) "+(e?.message||e)); }
+  }
+  send.onclick = ()=> input.value.trim() && talk(input.value.trim());
+  input.addEventListener("keydown",e=>{ if(e.key==="Enter" && input.value.trim()) talk(input.value.trim()); });
+})();
+</script>
+<!-- ====== /floating chat ====== -->
+</body>
+</html>
