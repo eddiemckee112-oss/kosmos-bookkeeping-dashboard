@@ -185,11 +185,9 @@ $("clearBtn").onclick = ()=>{
 (function setupAiButton(){
   const cfg = (window.KOSMOS_CFG||{});
   if (!cfg.AI_MODE || cfg.AI_MODE === "off") {
-    // hide scan button if AI disabled
     $("scanBtn").style.display = "none";
     return;
   }
-  // otherwise wire it up
   $("scanBtn").onclick = async ()=>{
     try{
       const f=$("file").files?.[0];
@@ -209,7 +207,6 @@ $("clearBtn").onclick = ()=>{
         source: $("source").value || null
       };
 
-      // call unified Edge Function — it handles local/openai/off
       const aiRes = await fetch(`${location.origin}/functions/v1/ai-suggest`, {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
@@ -373,5 +370,76 @@ async function loadReceipts(){
 loadReceipts();
 </script>
 <script src="roles.js"></script>
+
+<!-- ====== ADD: Tiny floating chat (calls your ai-chat Edge Function) ====== -->
+<style>
+  #kosmos-chat-btn{position:fixed;right:18px;bottom:18px;border:none;border-radius:999px;padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.15);background:#111;color:#fff;cursor:pointer;z-index:9999}
+  #kosmos-chat{position:fixed;right:18px;bottom:70px;width:340px;max-width:90vw;height:480px;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.18);display:none;flex-direction:column;overflow:hidden;z-index:9999}
+  #kc-head{padding:10px 12px;border-bottom:1px solid #eee;font-weight:600}
+  #kc-log{flex:1;overflow:auto;padding:12px;font-size:14px;line-height:1.45;background:#fafafa;display:flex;flex-direction:column}
+  #kc-log .me{align-self:flex-end;background:#e9f5ff;border-radius:10px;padding:8px 10px;margin:6px 0;max-width:85%}
+  #kc-log .ai{align-self:flex-start;background:#fff;border:1px solid #eee;border-radius:10px;padding:8px 10px;margin:6px 0;max-width:85%}
+  #kc-row{display:flex;gap:8px;padding:10px;border-top:1px solid #eee;background:#fff}
+  #kc-row input{flex:1;border:1px solid #ddd;border-radius:10px;padding:10px}
+</style>
+
+<button id="kosmos-chat-btn">💬 Chat</button>
+<div id="kosmos-chat">
+  <div id="kc-head">Kosmos AI</div>
+  <div id="kc-log"></div>
+  <div id="kc-row">
+    <input id="kc-input" placeholder="Ask about receipts, transactions…"/>
+    <button id="kc-send">Send</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  const ENDPOINT = "https://advihqhjjlxumgdlbwui.supabase.co/functions/v1/ai-chat";
+  const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
+
+  const btn=document.getElementById("kosmos-chat-btn");
+  const box=document.getElementById("kosmos-chat");
+  const log=document.getElementById("kc-log");
+  const input=document.getElementById("kc-input");
+  const send=document.getElementById("kc-send");
+
+  btn.onclick=()=>{ box.style.display = box.style.display==="flex"?"none":"flex"; if(box.style.display==="flex") box.style.display="flex"; };
+
+  const history = JSON.parse(localStorage.getItem("kosmos_chat_history")||"[]");
+  const push = (role, content)=>{ history.push({role, content}); localStorage.setItem("kosmos_chat_history", JSON.stringify(history)); render(); }
+  const esc = s => String(s||"").replace(/[&<>]/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;" }[m]));
+  function render(){
+    log.innerHTML="";
+    history.forEach(m=>{
+      const div=document.createElement("div");
+      div.className = m.role==="user"?"me":"ai";
+      div.innerHTML = esc(m.content);
+      log.appendChild(div);
+    });
+    log.scrollTop = log.scrollHeight;
+  }
+  render();
+  if(history.length===0){ push("assistant","Hey! I’m your Kosmos AI. Ask me to match receipts, check vendors, or explain a transaction."); }
+
+  async function talk(q){
+    push("user", q);
+    input.value="";
+    try{
+      const res = await fetch(ENDPOINT,{
+        method:"POST",
+        headers:{ "Authorization":"Bearer "+ANON_KEY, "Content-Type":"application/json" },
+        body: JSON.stringify({ messages: history })
+      });
+      const data = await res.json().catch(()=>({}));
+      const reply = (data && (data.reply || data.raw?.choices?.[0]?.message?.content)) || "No reply.";
+      push("assistant", reply);
+    }catch(e){ push("assistant","(Error) "+(e?.message||e)); }
+  }
+  send.onclick = ()=> input.value.trim() && talk(input.value.trim());
+  input.addEventListener("keydown",e=>{ if(e.key==="Enter" && input.value.trim()) talk(input.value.trim()); });
+})();
+</script>
+<!-- ====== /floating chat ====== -->
 </body>
 </html>
