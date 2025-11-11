@@ -14,7 +14,7 @@
     .badge{display:inline-block;padding:4px 8px;border-radius:999px;border:1px solid var(--border);font-weight:600;font-size:.82rem}
     .badge.ok{background:#eef9f1;color:var(--ok);border-color:#cfe7d6}
     .badge.muted{background:#f6f7f8;color:var(--muted)}
-    .linkbtn{padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:#fff;cursor:pointer}
+    .linkbtn{padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:#fff;cursor:pointer;opacity:1;transition:none}
     .imgthumb{height:40px;width:auto;border-radius:6px;vertical-align:middle}
     .previewbox{display:flex;align-items:center;gap:8px}
   </style>
@@ -99,7 +99,7 @@ function receiptPreview(txid){
   if(!r) return "(missing)";
   return `
     <div class="previewbox">
-      ${r.image_url ? `<a href="${esc(r.image_url)}" target="_blank"><img class="imgthumb" src="${esc(r.image_url)}" alt=""></a>` : ""}
+      ${r.image_url ? `<a href="${esc(r.image_url)}" target="_blank" rel="noopener"><img class="imgthumb" src="${esc(r.image_url)}" alt=""></a>` : ""}
       <span>${esc(r.vendor || "Receipt")}</span>
     </div>`;
 }
