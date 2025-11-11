@@ -25,7 +25,7 @@
     .editgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
     .editgrid .full{grid-column:1/-1}
     .danger{color:#b91c1c}
-    .linkbtn{padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:#fff;cursor:pointer}
+    .linkbtn{padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:#fff;cursor:pointer;opacity:1;transition:none}
     .dim{opacity:.65}
     #kosmos-chat-btn{position:fixed;right:18px;bottom:18px;border:none;border-radius:999px;padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.15);background:#111;color:#fff;cursor:pointer;z-index:9999}
     #kosmos-chat{position:fixed;right:18px;bottom:70px;width:340px;max-width:90vw;height:480px;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.18);display:none;flex-direction:column;overflow:hidden;z-index:9999}
@@ -248,9 +248,16 @@ $("uploadBtn").onclick=async()=>{
 };
 
 /* ---------- Table render ---------- */
-function badge(rec){return MATCHES.has(rec.id)?`<span class="badge ok">Matched</span>`:`<span class="badge muted">Unmatched</span>`;}
+function badge(rec){
+  if ((rec.source || "").toLowerCase().includes("cash")) {
+    return `<span class="badge ok">Matched (Cash)</span>`;
+  }
+  return MATCHES.has(rec.id)
+    ? `<span class="badge ok">Matched</span>`
+    : `<span class="badge muted">Unmatched</span>`;
+}
 function actions(rec){
-  const open=rec.image_url?`<a class="linkbtn" href="${esc(rec.image_url)}" target="_blank">Open</a>`:"";
+  const open=rec.image_url?`<a class="linkbtn" href="${esc(rec.image_url)}" target="_blank" rel="noopener">Open</a>`:"";
   const matchBtn=`<button class="linkbtn" data-act="match" data-id="${rec.id}">Match Now</button>`;
   const editBtn=`<button class="linkbtn" data-act="edit" data-id="${rec.id}">Edit</button>`;
   const delBtn=`<button class="linkbtn danger" data-act="del" data-id="${rec.id}">Delete</button>`;
@@ -259,7 +266,7 @@ function actions(rec){
 
 function render(rows){
   $("countAll").textContent=ALL.length;
-  let m=0;ALL.forEach(r=>{if(MATCHES.has(r.id))m++;});
+  let m=0;ALL.forEach(r=>{if(MATCHES.has(r.id) || (r.source||"").toLowerCase().includes("cash")) m++;});
   $("countMatched").textContent=m;$("countUnmatched").textContent=ALL.length-m;
   if(!rows.length){tbody.innerHTML=`<tr><td colspan="9">No receipts.</td></tr>`;return;}
 
