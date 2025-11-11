@@ -27,7 +27,6 @@
     .danger{color:#b91c1c}
     .linkbtn{padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:#fff;cursor:pointer}
     .dim{opacity:.65}
-    /* chat bubble */
     #kosmos-chat-btn{position:fixed;right:18px;bottom:18px;border:none;border-radius:999px;padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.15);background:#111;color:#fff;cursor:pointer;z-index:9999}
     #kosmos-chat{position:fixed;right:18px;bottom:70px;width:340px;max-width:90vw;height:480px;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.18);display:none;flex-direction:column;overflow:hidden;z-index:9999}
     #kc-head{padding:10px 12px;border-bottom:1px solid #eee;font-weight:600}
@@ -38,6 +37,7 @@
     #kc-row input{flex:1;border:1px solid #ddd;border-radius:10px;padding:10px}
   </style>
 </head>
+
 <body>
 <header>
   <h1>Kosmos Bookkeeping</h1>
@@ -51,7 +51,7 @@
 
 <main class="container">
   <h2>🧾 Receipts</h2>
-  <p class="muted">Upload, edit, delete, and link receipts. Category/Source fixed. “Match Now” opens Transactions linking mode.</p>
+  <p class="muted">Upload, edit, delete, and link receipts. “Match Now” opens Transactions linking mode.</p>
 
   <!-- Upload -->
   <div class="card">
@@ -68,18 +68,9 @@
           <div><label>Date</label><input id="rdate" type="date" /></div>
           <div><label>Total</label><input id="total" type="number" step="0.01" placeholder="0.00" /></div>
           <div><label>Tax</label><input id="tax" type="number" step="0.01" value="0.00" /></div>
-          <div>
-            <label>Category</label>
-            <select id="category"></select>
-          </div>
-          <div>
-            <label>Source</label>
-            <select id="source"></select>
-          </div>
-          <div class="full">
-            <label>Notes <span class="muted">(optional)</span></label>
-            <input id="notes" placeholder="Any notes…"/>
-          </div>
+          <div><label>Category</label><select id="category"></select></div>
+          <div><label>Source</label><select id="source"></select></div>
+          <div class="full"><label>Notes</label><input id="notes" placeholder="Any notes…" /></div>
         </div>
 
         <p id="upMsg" class="muted" style="margin-top:8px"></p>
@@ -115,15 +106,8 @@
     <table id="recTable" style="min-width:1100px">
       <thead>
         <tr>
-          <th style="min-width:110px;">Date</th>
-          <th style="min-width:180px;">Vendor</th>
-          <th class="right" style="min-width:110px;">Total</th>
-          <th class="right" style="min-width:90px;">Tax</th>
-          <th style="min-width:180px;">Category</th>
-          <th style="min-width:160px;">Source</th>
-          <th style="min-width:120px;">Status</th>
-          <th style="min-width:220px;">Notes</th>
-          <th style="min-width:280px;">Actions</th>
+          <th>Date</th><th>Vendor</th><th class="right">Total</th><th class="right">Tax</th>
+          <th>Category</th><th>Source</th><th>Status</th><th>Notes</th><th>Actions</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -148,7 +132,7 @@ const sb = supabase.createClient(
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY"
 );
 
-/* ---------- Fixed options ---------- */
+/* ---------- Dropdown options ---------- */
 const CATEGORIES = [
   "Uncategorized","Income","Bank Fees","Fuel","Utilities","Phone/Internet","Insurance",
   "Professional Fees","Software","Subscriptions","Repairs & Maintenance","Office",
@@ -164,10 +148,10 @@ let ALL = [];
 let MATCHES = new Map();
 
 const money = n => (Number(n)||0).toLocaleString(undefined,{style:'currency',currency:'CAD'});
-function esc(s){ return String(s??"").replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+function esc(s){ return String(s??"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 const setUpMsg = msg => ($("upMsg").textContent = msg || "");
 
-/* ---------- Populate dropdowns & defaults ---------- */
+/* ---------- Populate form ---------- */
 function initUploadForm(){
   $("category").innerHTML = CATEGORIES.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");
   $("source").innerHTML   = SOURCES.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("");
@@ -178,151 +162,111 @@ function initUploadForm(){
 }
 initUploadForm();
 
-/* ---------- Upload helpers ---------- */
-async function uploadToWarmBucket(file) {
+/* ---------- File + AI ---------- */
+async function uploadToWarmBucket(file){
   const fname = `r_${Date.now()}_${(file.name||"img").replace(/[^\w.\-]+/g,"_")}`;
-  const up = await sb.storage.from("receipts-warm").upload(fname, file, {
-    contentType: file.type || "image/jpeg",
-  });
-  if (up.error) throw new Error(up.error.message);
-  return { fname, url: `https://advihqhjjlxumgdlbwui.supabase.co/storage/v1/object/public/receipts-warm/${fname}` };
+  const up = await sb.storage.from("receipts-warm").upload(fname,file,{contentType:file.type||"image/jpeg"});
+  if(up.error) throw new Error(up.error.message);
+  return { fname, url:`https://advihqhjjlxumgdlbwui.supabase.co/storage/v1/object/public/receipts-warm/${fname}` };
 }
 
-/* ---------- AI call (with proper headers) ---------- */
-async function callAiSuggest(payload) {
-  const SUPABASE_URL  = "https://advihqhjjlxumgdlbwui.supabase.co";
+async function callAiSuggest(payload){
+  const SUPABASE_URL = "https://advihqhjjlxumgdlbwui.supabase.co";
   const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
-
   const r = await fetch(`${SUPABASE_URL}/functions/v1/ai-suggest`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer " + SUPABASE_ANON,
-      "apikey": SUPABASE_ANON
-    },
-    body: JSON.stringify(payload)
+    method:"POST",
+    headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_ANON,"apikey":SUPABASE_ANON},
+    body:JSON.stringify(payload)
   });
-  let json; try { json = await r.json(); } catch {}
-  if (!r.ok || !json?.ok) throw new Error(json?.error || `AI error (${r.status})`);
-  return json.suggestions || {};
+  const json = await r.json().catch(()=>{});
+  if(!r.ok||!json?.ok) throw new Error(json?.error||`AI error (${r.status})`);
+  return json.suggestions||{};
 }
 
 function applySuggestions(s){
-  if (s.vendor) $("vendor").value = s.vendor;
-  if (s.receipt_date) $("rdate").value = s.receipt_date;
-  if (typeof s.total === "number") $("total").value = String(s.total.toFixed(2));
-  if (typeof s.tax === "number") $("tax").value = String(s.tax.toFixed(2));
-  if (s.category && CATEGORIES.includes(s.category)) $("category").value = s.category;
-  if (s.source && SOURCES.includes(s.source)) $("source").value = s.source;
+  if(s.vendor) $("vendor").value = s.vendor;
+  if(s.receipt_date) $("rdate").value = s.receipt_date;
+  if(typeof s.total==="number") $("total").value = s.total.toFixed(2);
+  if(typeof s.tax==="number") $("tax").value = s.tax.toFixed(2);
+  if(s.category && CATEGORIES.includes(s.category)) $("category").value = s.category;
+  if(s.source && SOURCES.includes(s.source)) $("source").value = s.source;
 }
 
-/* ---------- Upload area events ---------- */
-$("file").addEventListener("change", e=>{
+/* ---------- Upload events ---------- */
+$("file").addEventListener("change",e=>{
   const f=e.target.files?.[0];
-  $("preview").src = f ? URL.createObjectURL(f) : "";
-  setUpMsg(f ? `Selected: ${f.name}` : "");
+  $("preview").src=f?URL.createObjectURL(f):"";
+  setUpMsg(f?`Selected: ${f.name}`:"");
 });
 
-$("clearBtn").onclick = ()=>{
-  $("file").value=""; $("preview").src="";
-  delete $("file").dataset.aiUploadedName;
-  delete $("file").dataset.aiImageUrl;
+$("clearBtn").onclick=()=>{
+  $("file").value="";$("preview").src="";
   ["vendor","total","tax","notes"].forEach(id=>$(id).value="");
-  $("tax").value="0.00"; setUpMsg("");
+  $("tax").value="0.00";setUpMsg("");
   initUploadForm();
 };
 
-/* Scan with AI (explicit button) */
-$("scanBtn").onclick = async ()=>{
+$("scanBtn").onclick=async()=>{
   try{
     const f=$("file").files?.[0];
-    if(!f){ setUpMsg("Choose a file first (so AI can read it)."); return; }
-
+    if(!f){setUpMsg("Choose a file first.");return;}
     setUpMsg("Uploading image for AI…");
-    const { fname, url } = await uploadToWarmBucket(f);
-    $("file").dataset.aiUploadedName = fname;
-    $("file").dataset.aiImageUrl = url;
-
+    const {url}=await uploadToWarmBucket(f);
+    $("file").dataset.aiImageUrl=url;
     setUpMsg("Reading receipt with AI…");
-    const hints = {
-      image_url: url,
-      hint_vendor: $("vendor").value || null,
-      hint_amount: Number($("total").value || 0) || null,
-      hint_date: $("rdate").value || null,
-      source: $("source").value || null
-    };
-    const s = await callAiSuggest(hints);
+    const hints={image_url:url,hint_vendor:$("vendor").value||null,hint_amount:Number($("total").value||0)||null,hint_date:$("rdate").value||null,source:$("source").value||null};
+    const s=await callAiSuggest(hints);
     applySuggestions(s);
-
-    const conf = typeof s.confidence === "number" ? ` (conf ${Math.round(s.confidence*100)}%)` : "";
-    setUpMsg(`AI suggestions applied${conf}. Review & click Upload.`);
-  }catch(e){
-    setUpMsg(e?.message || String(e));
-  }
+    setUpMsg(`AI suggestions applied.`);
+  }catch(e){setUpMsg(e?.message||String(e));}
 };
 
-/* ---------- Upload (insert) ---------- */
-$("uploadBtn").onclick = async ()=>{
+$("uploadBtn").onclick=async()=>{
   try{
-    const vendor = ($("vendor").value||"").trim();
-    const receipt_date = $("rdate").value;
-    const total = Number($("total").value||0);
-    const tax = Number($("tax").value||0);
-    const category = $("category").value;
-    const source = $("source").value;
-    const notes = ($("notes").value||"").trim();
+    const vendor=($("vendor").value||"").trim();
+    const receipt_date=$("rdate").value;
+    const total=Number($("total").value||0);
+    const tax=Number($("tax").value||0);
+    const category=$("category").value;
+    const source=$("source").value;
+    const notes=($("notes").value||"").trim();
+    if(!vendor||!receipt_date||!category||!source||isNaN(total)){setUpMsg("Please fill all fields.");return;}
 
-    if(!vendor || !receipt_date || !category || !source || isNaN(total)){
-      setUpMsg("Please fill Vendor, Date, Total, Category and Source."); return;
-    }
-
-    let image_url = $("file").dataset.aiImageUrl || "";
+    let image_url=$("file").dataset.aiImageUrl||"";
     if(!image_url){
-      const f = $("file").files?.[0];
-      if (f){
-        setUpMsg("Uploading image…");
-        const up = await uploadToWarmBucket(f);
-        image_url = up.url;
-      }
+      const f=$("file").files?.[0];
+      if(f){setUpMsg("Uploading image…");const up=await uploadToWarmBucket(f);image_url=up.url;}
     }
 
     setUpMsg("Saving receipt…");
-    const { error } = await sb.from("receipts").insert([{
-      vendor, receipt_date, total, tax, category, source, notes,
-      image_url: image_url || null
-    }]);
+    const {error}=await sb.from("receipts").insert([{vendor,receipt_date,total,tax,category,source,notes,image_url:image_url||null}]);
     if(error) throw error;
-
     setUpMsg("Saved!");
     $("clearBtn").click();
     await loadReceipts();
-  }catch(e){
-    setUpMsg(e?.message || String(e));
-  }
+  }catch(e){setUpMsg(e?.message||String(e));}
 };
 
-/* ---------- Table, actions, load ---------- */
-function badge(rec){ return MATCHES.has(rec.id) ? `<span class="badge ok">Matched</span>` : `<span class="badge muted">Unmatched</span>`; }
+/* ---------- Table render ---------- */
+function badge(rec){return MATCHES.has(rec.id)?`<span class="badge ok">Matched</span>`:`<span class="badge muted">Unmatched</span>`;}
 function actions(rec){
-  const open = rec.image_url ? `<a class="linkbtn" href="${esc(rec.image_url)}" target="_blank" rel="noopener">Open</a>` : "";
-  const matchBtn = `<button class="linkbtn" data-act="match" data-id="${rec.id}">Match Now</button>`;
-  const editBtn  = `<button class="linkbtn" data-act="edit" data-id="${rec.id}">Edit</button>`;
-  const delBtn   = `<button class="linkbtn danger" data-act="del" data-id="${rec.id}">Delete</button>`;
+  const open=rec.image_url?`<a class="linkbtn" href="${esc(rec.image_url)}" target="_blank">Open</a>`:"";
+  const matchBtn=`<button class="linkbtn" data-act="match" data-id="${rec.id}">Match Now</button>`;
+  const editBtn=`<button class="linkbtn" data-act="edit" data-id="${rec.id}">Edit</button>`;
+  const delBtn=`<button class="linkbtn danger" data-act="del" data-id="${rec.id}">Delete</button>`;
   return `${open} ${matchBtn} ${editBtn} ${delBtn}`;
 }
 
 function render(rows){
   $("countAll").textContent=ALL.length;
-  let m=0; ALL.forEach(r=>{ if(MATCHES.has(r.id)) m++;});
-  $("countMatched").textContent=m; $("countUnmatched").textContent=ALL.length-m;
-
-  if(!rows.length){ tbody.innerHTML=`<tr><td colspan="9">No receipts.</td></tr>`; return; }
+  let m=0;ALL.forEach(r=>{if(MATCHES.has(r.id))m++;});
+  $("countMatched").textContent=m;$("countUnmatched").textContent=ALL.length-m;
+  if(!rows.length){tbody.innerHTML=`<tr><td colspan="9">No receipts.</td></tr>`;return;}
 
   let subtotal=0,taxSum=0,totalSum=0;
-  tbody.innerHTML = rows.map(r=>{
-    subtotal += (+r.total||0) - (+r.tax||0);
-    taxSum   += (+r.tax||0);
-    totalSum += (+r.total||0);
+  tbody.innerHTML=rows.map(r=>{
+    subtotal+=(+r.total||0)-(+r.tax||0);
+    taxSum+=(+r.tax||0);totalSum+=(+r.total||0);
     return `<tr data-id="${r.id}">
       <td>${esc((r.receipt_date||"").slice(0,10))}</td>
       <td>${esc(r.vendor||"")}</td>
@@ -332,8 +276,7 @@ function render(rows){
       <td>${esc(r.source||"")}</td>
       <td>${badge(r)}</td>
       <td>${esc(r.notes||"")}</td>
-      <td>${actions(r)}</td>
-    </tr>`;
+      <td>${actions(r)}</td></tr>`;
   }).join("");
 
   $("ftRows").textContent=rows.length;
@@ -342,160 +285,62 @@ function render(rows){
   $("ftTotal").textContent=money(totalSum);
 
   tbody.querySelectorAll("button[data-act]").forEach(btn=>{
-    const id=btn.getAttribute("data-id");
-    const act=btn.getAttribute("data-act");
-    if(act==="del"){
-      btn.onclick = async ()=>{
-        if(!confirm("Delete this receipt?")) return;
-        await sb.from("matches").delete().eq("receipt_id", id);
-        await sb.from("receipts").delete().eq("id", id);
-        loadReceipts();
-      };
-    } else if(act==="edit"){
-      btn.onclick = ()=> openEdit(id);
-    } else if(act==="match"){
-      btn.onclick = ()=>{
-        sessionStorage.setItem('linkReceipt', id);
-        location.href = 'transactions.html?linkReceipt=' + encodeURIComponent(id);
-      };
-    }
+    const id=btn.dataset.id,act=btn.dataset.act;
+    if(act==="del"){btn.onclick=async()=>{if(!confirm("Delete this receipt?"))return;await sb.from("matches").delete().eq("receipt_id",id);await sb.from("receipts").delete().eq("id",id);loadReceipts();};}
+    else if(act==="edit"){btn.onclick=()=>openEdit(id);}
+    else if(act==="match"){btn.onclick=()=>{sessionStorage.setItem('linkReceipt',id);location.href='transactions.html?linkReceipt='+encodeURIComponent(id);};}
   });
 }
 
-$("applyFilter").onclick = applyFilters;
-$("search").oninput = ()=>{ clearTimeout(window.__t); window.__t=setTimeout(applyFilters,200); };
-function applyFilters(){
-  const mode=$("filterMode").value;
-  const q = ($("search").value||"").toLowerCase().trim();
-  let rows = ALL.slice();
-  rows = rows.filter(r=>{
-    const hasMatch = MATCHES.has(r.id);
-    if(mode==="matched") return hasMatch;
-    if(mode==="unmatched") return !hasMatch;
-    return true;
-  });
-  if(q){
-    rows = rows.filter(r =>
-      (r.vendor||"").toLowerCase().includes(q) ||
-      (r.notes||"").toLowerCase().includes(q) ||
-      (r.source||"").toLowerCase().includes(q)
-    );
-  }
-  render(rows);
-}
-
+/* ---------- Guided Edit ---------- */
 async function openEdit(id){
-  const rec = ALL.find(r=>r.id===id); if(!rec) return;
+  const rec=ALL.find(r=>r.id===id);
+  if(!rec)return;
 
-  const vendor = prompt("Vendor", rec.vendor||""); if(vendor===null) return;
-  const date   = prompt("Date (YYYY-MM-DD)", (rec.receipt_date||"").slice(0,10)); if(date===null) return;
+  const vendor=prompt("Vendor",rec.vendor||"");
+  if(vendor===null)return;
 
-  const totalStr  = prompt("Total", String(rec.total||0)); if(totalStr===null) return;
-  const taxStr    = prompt("Tax", String(rec.tax||0)); if(taxStr===null) return;
+  const date=prompt("Date (YYYY-MM-DD)",(rec.receipt_date||"").slice(0,10));
+  if(date===null)return;
 
-  const cat = prompt(`Category (choose one exactly):\n${CATEGORIES.join(", ")}`, rec.category||"");
-  if(cat===null) return;
-  if(!CATEGORIES.includes(cat)) return alert("Category must be one of the fixed options.");
+  const totalStr=prompt("Total",String(rec.total||0));
+  if(totalStr===null)return;
 
-  const src = prompt(`Source (choose one exactly):\n${SOURCES.join(", ")}`, rec.source||"");
-  if(src===null) return;
-  if(!SOURCES.includes(src)) return alert("Source must be one of the fixed options.");
+  const taxStr=prompt("Tax",String(rec.tax||0));
+  if(taxStr===null)return;
 
-  const notes  = prompt("Notes", rec.notes||""); if(notes===null) return;
+  const catIndex=prompt("Choose Category (enter number):\n"+CATEGORIES.map((c,i)=>`${i+1}. ${c}`).join("\n"),CATEGORIES.indexOf(rec.category)+1);
+  if(catIndex===null)return;
+  const cat=CATEGORIES[Number(catIndex)-1];
+  if(!CATEGORIES.includes(cat))return alert("Invalid category.");
 
-  const upd = {
-    vendor: vendor.trim(),
-    receipt_date: date,
-    total: Number(totalStr)||0,
-    tax: Number(taxStr)||0,
-    category: cat,
-    source: src,
-    notes: notes.trim()
-  };
-  const { error } = await sb.from("receipts").update(upd).eq("id", id);
-  if(error){ alert(error.message); return; }
+  const srcIndex=prompt("Choose Source (enter number):\n"+SOURCES.map((s,i)=>`${i+1}. ${s}`).join("\n"),SOURCES.indexOf(rec.source)+1);
+  if(srcIndex===null)return;
+  const src=SOURCES[Number(srcIndex)-1];
+  if(!SOURCES.includes(src))return alert("Invalid source.");
+
+  const notes=prompt("Notes",rec.notes||"");
+  if(notes===null)return;
+
+  const upd={vendor:vendor.trim(),receipt_date:date,total:Number(totalStr)||0,tax:Number(taxStr)||0,category:cat,source:src,notes:notes.trim()};
+  const {error}=await sb.from("receipts").update(upd).eq("id",id);
+  if(error){alert(error.message);return;}
   await loadReceipts();
 }
 
-/* ---------- Load receipts & matches ---------- */
+/* ---------- Load ---------- */
 async function loadReceipts(){
-  const { data: recs, error: rErr } = await sb.from("receipts")
-    .select("id, receipt_date, total, tax, category, vendor, source, notes, image_url, created_at")
-    .order("created_at",{ascending:false});
-  if(rErr){ tbody.innerHTML=`<tr><td colspan="9">${rErr.message}</td></tr>`; return; }
-  ALL = recs||[];
+  const {data:recs,error:rErr}=await sb.from("receipts").select("id,receipt_date,total,tax,category,vendor,source,notes,image_url,created_at").order("created_at",{ascending:false});
+  if(rErr){tbody.innerHTML=`<tr><td colspan='9'>${rErr.message}</td></tr>`;return;}
+  ALL=recs||[];
 
-  const { data: mx } = await sb.from("matches").select("receipt_id, transaction_id");
-  MATCHES.clear(); (mx||[]).forEach(m=>{
-    const arr = MATCHES.get(m.receipt_id)||[];
-    arr.push(m.transaction_id);
-    MATCHES.set(m.receipt_id, arr);
-  });
-
-  applyFilters();
+  const {data:mx}=await sb.from("matches").select("receipt_id,transaction_id");
+  MATCHES.clear();(mx||[]).forEach(m=>{const arr=MATCHES.get(m.receipt_id)||[];arr.push(m.transaction_id);MATCHES.set(m.receipt_id,arr);});
+  render(ALL);
 }
-document.addEventListener("DOMContentLoaded", loadReceipts);
+document.addEventListener("DOMContentLoaded",loadReceipts);
 </script>
 
 <script src="roles.js"></script>
-
-<!-- ====== Floating chat (talks to your ai-chat Edge Function) ====== -->
-<button id="kosmos-chat-btn">💬 Chat</button>
-<div id="kosmos-chat">
-  <div id="kc-head">Kosmos AI</div>
-  <div id="kc-log"></div>
-  <div id="kc-row">
-    <input id="kc-input" placeholder="Ask about receipts, transactions…"/>
-    <button id="kc-send">Send</button>
-  </div>
-</div>
-<script>
-(function(){
-  const ENDPOINT = "https://advihqhjjlxumgdlbwui.supabase.co/functions/v1/ai-chat";
-  const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY";
-
-  const btn=document.getElementById("kosmos-chat-btn");
-  const box=document.getElementById("kosmos-chat");
-  const log=document.getElementById("kc-log");
-  const input=document.getElementById("kc-input");
-  const send=document.getElementById("kc-send");
-
-  btn.onclick=()=>{ box.style.display = box.style.display==="flex"?"none":"flex"; if(box.style.display!=="flex") box.style.display="flex"; };
-
-  const history = JSON.parse(localStorage.getItem("kosmos_chat_history")||"[]");
-  const push = (role, content)=>{ history.push({role, content}); localStorage.setItem("kosmos_chat_history", JSON.stringify(history)); render(); }
-  const esc = s => String(s||"").replace(/[&<>]/g,m=>({ "&":"&amp;","<":"&lt;",">":"&gt;" }[m]));
-  function render(){
-    log.innerHTML="";
-    history.forEach(m=>{
-      const div=document.createElement("div");
-      div.className = m.role==="user"?"me":"ai";
-      div.innerHTML = esc(m.content);
-      log.appendChild(div);
-    });
-    log.scrollTop = log.scrollHeight;
-  }
-  render();
-  if(history.length===0){ push("assistant","Hey! I’m your Kosmos AI. Ask me to match receipts, check vendors, or explain a transaction."); }
-
-  async function talk(q){
-    push("user", q);
-    input.value="";
-    try{
-      const res = await fetch(ENDPOINT,{
-        method:"POST",
-        headers:{ "Authorization":"Bearer "+ANON_KEY, "Content-Type":"application/json" },
-        body: JSON.stringify({ messages: history })
-      });
-      const data = await res.json().catch(()=>({}));
-      const reply = (data && (data.reply || data.raw?.choices?.[0]?.message?.content)) || "No reply.";
-      push("assistant", reply);
-    }catch(e){ push("assistant","(Error) "+(e?.message||e)); }
-  }
-  send.onclick = ()=> input.value.trim() && talk(input.value.trim());
-  input.addEventListener("keydown",e=>{ if(e.key==="Enter" && input.value.trim()) talk(input.value.trim()); });
-})();
-</script>
-<!-- ====== /floating chat ====== -->
 </body>
 </html>
