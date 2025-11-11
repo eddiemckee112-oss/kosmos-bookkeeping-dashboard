@@ -1,120 +1,76 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Kosmos Bookkeeping — Transactions</title>
-  <link rel="stylesheet" href="style.css"/>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Kosmos — Transactions</title>
+
+  <link rel="stylesheet" href="style.css" />
+  <script src="config.js"></script>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <style>
-    .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     .right{text-align:right}
-    .muted{color:var(--muted)} .err{color:#b91c1c} .ok{color:var(--ok)}
-    .status-pill{font-size:.75rem;padding:4px 10px;border-radius:999px;border:1px solid var(--border);background:#fff;white-space:nowrap}
-    .status-pill.ok{background:#ecfdf5;border-color:#a7f3d0}
-    .status-pill.dim{opacity:.75}
-    .upload-btn{font-size:.8rem;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#f9f9f9;cursor:pointer}
-    .pill{padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:#fff}
-    .hl{outline:3px solid var(--brand);box-shadow:0 0 0 4px color-mix(in oklab, var(--brand) 18%, transparent)}
+    .badge{display:inline-block;padding:4px 8px;border-radius:999px;border:1px solid var(--border);font-weight:600;font-size:.82rem}
+    .badge.ok{background:#eef9f1;color:var(--ok);border-color:#cfe7d6}
+    .badge.muted{background:#f6f7f8;color:var(--muted)}
     .linkbtn{padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:#fff;cursor:pointer}
-    .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.18);display:none;align-items:flex-start;justify-content:center;padding:40px 12px;z-index:50}
-    .modal{background:#fff;width:min(1000px,100%);max-height:85vh;overflow:auto;border:1px solid var(--border);border-radius:16px;padding:16px}
-    .hidden{display:none}
-    .grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    .grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-    .field{display:flex;flex-direction:column;gap:6px}
-    .field label{font-weight:600}
-    .kpill{padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:#fff}
-    .chiprow{display:flex;gap:10px;flex-wrap:wrap}
-    .dim{opacity:.55}
-    .inline-note{font-size:.85rem}
+    .imgthumb{height:40px;width:auto;border-radius:6px;vertical-align:middle}
+    .previewbox{display:flex;align-items:center;gap:8px}
   </style>
 </head>
+
 <body>
 <header>
   <h1>Kosmos Bookkeeping</h1>
   <nav>
     <a href="index.html">Dashboard</a>
     <a href="receipts.html">Receipts</a>
-    <a class="active" href="transactions.html">Transactions</a>
+    <a href="transactions.html" class="active">Transactions</a>
     <a href="reports.html">Reports</a>
   </nav>
 </header>
 
 <main class="container">
-  <h2>💳 Transactions</h2>
-  <div class="kpill inline-note" id="linkBanner" style="display:none;">
-    Linking receipt <b id="linkRecId"></b> — Tip: rows with same amount & ±5 days show a <b>Link to this</b> button.
-    <button id="clearLink" class="ghost" style="margin-left:8px">Clear</button>
-  </div>
-
-  <div class="card" style="margin-bottom:14px;">
-    <div class="toolbar">
-      <label>Date Range:</label>
-      <input id="fromDate" type="date"/><span>–</span><input id="toDate" type="date"/>
-      <select id="typeFilter" title="Filter">
-        <option value="all">All</option>
-        <option value="debit">Debits only</option>
-        <option value="credit">Credits only</option>
-        <option value="uncategorized">Uncategorized</option>
-        <option value="no_source">No Source</option>
-        <option value="matched">Matched only</option>
-        <option value="unmatched">Unmatched only</option>
-      </select>
-      <button id="applyBtn">Apply</button>
-      <input id="quickSearch" placeholder="Search description/category/source…" style="flex:1;min-width:240px"/>
-      <button id="importBtn" class="ghost">📥 Import CSV</button>
-      <button id="exportBtn" class="ghost">⬇️ Export CSV</button>
-      <span class="spacer"></span>
-      <button id="chooseReceipt" class="linkbtn">Choose receipt…</button>
-      <button id="clearChoose" class="ghost dim">Clear</button>
-    </div>
-    <div class="chiprow" style="margin-top:10px;">
-      <span class="pill">Matched: <b id="chipMatched">—</b></span>
-      <span class="pill">Unmatched: <b id="chipUnmatched">—</b></span>
-      <span class="pill">Uncategorized: <b id="chipUncat">—</b></span>
-      <span class="pill">No Source: <b id="chipNoSource">—</b></span>
-      <span class="pill">Duplicates: <b id="chipDupes">—</b></span>
-    </div>
-    <div id="pageError" class="err small" style="margin-top:6px"></div>
-  </div>
+  <h2>🏦 Transactions</h2>
+  <p class="muted">View, filter, and link transactions to receipts.</p>
 
   <div class="card">
-    <table id="txTable" style="min-width:1100px;">
+    <div class="toolbar">
+      <select id="filterMode">
+        <option value="all">All</option>
+        <option value="unmatched">Unmatched</option>
+        <option value="matched">Matched</option>
+        <option value="recent">Recently added</option>
+      </select>
+      <input id="search" placeholder="Search description/vendor…" style="padding:.5rem .7rem;border:1px solid #cfcfcf;border-radius:10px;min-width:220px" />
+      <button id="applyFilter">Apply</button>
+      <span class="spacer"></span>
+      <span class="kpill">Total: <b id="countAll">0</b></span>
+      <span class="kpill">Matched: <b id="countMatched">0</b></span>
+      <span class="kpill">Unmatched: <b id="countUnmatched">0</b></span>
+    </div>
+  </div>
+
+  <div class="card" style="overflow:auto">
+    <table id="txnTable" style="min-width:1100px">
       <thead>
         <tr>
           <th>Date</th>
           <th>Description</th>
           <th class="right">Amount</th>
-          <th>Type</th>
+          <th>Direction</th>
           <th>Category</th>
           <th>Source</th>
+          <th>Linked Receipt</th>
           <th>Status</th>
-          <th>Receipt</th>
+          <th>Actions</th>
         </tr>
       </thead>
-      <tbody id="txBody"></tbody>
+      <tbody></tbody>
     </table>
-    <div class="muted" id="rowsCount" style="margin-top:8px">Rows: 0</div>
   </div>
 </main>
-
-<!-- Choose-existing-receipt modal -->
-<div id="chooseBackdrop" class="modal-backdrop">
-  <div class="modal">
-    <h3>Link Existing Receipt</h3>
-    <p class="muted small" id="chooseHint">Showing recent <b>unmatched</b> receipts.</p>
-    <div class="card" style="max-height:55vh;overflow:auto;margin-top:8px;">
-      <table style="width:100%;border-collapse:collapse;">
-        <thead><tr><th>Date</th><th>Vendor</th><th class="right">Total</th><th>Category</th><th>Source</th><th>Action</th></tr></thead>
-        <tbody id="chooseBody"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
-      </table>
-    </div>
-    <div class="row" style="justify-content:flex-end;margin-top:12px">
-      <button id="closeChoose" class="ghost">Close</button>
-    </div>
-  </div>
-</div>
 
 <script>
 /* ---------- Supabase ---------- */
@@ -123,294 +79,122 @@ const sb = supabase.createClient(
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkdmlocWhqamx4dW1nZGxid3VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMTg0MzIsImV4cCI6MjA3NjU5NDQzMn0.kVlaPQg2_o9DGJYv22Dgca7veok4drF6kgLPy2wPBeY"
 );
 
-/* ---------- Fixed options ---------- */
-const CATEGORIES = [
-  "Uncategorized","Income","Bank Fees","Fuel","Utilities","Phone/Internet","Insurance",
-  "Professional Fees","Software","Subscriptions","Repairs & Maintenance","Office",
-  "Meals & Entertainment","Travel","Lodging","Building Maintenance","Building Miscellaneous",
-  "Restaurant (Food & Supplies)","Taxes","Other"
-];
-const SOURCES = ["CIBC Bank Account","Rogers MasterCard","PC MasterCard","Cash"];
-
 /* ---------- Helpers ---------- */
 const $ = id => document.getElementById(id);
-const esc = s => String(s??"").replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
-const money = n => (Number(n)||0).toLocaleString(undefined,{style:"currency",currency:"CAD"});
+const tbody = document.querySelector("#txnTable tbody");
+let ALL = [];
+let RECEIPTS = new Map();
+let MATCHES = new Map();
 
-/* ---------- Linking mode state ---------- */
-let LINK_RECEIPT_ID = null;
-let LINK_RECEIPT_ROW = null;
-let CHOSEN_RECEIPT_ID = null;
+const money = n => (Number(n)||0).toLocaleString(undefined,{style:'currency',currency:'CAD'});
+function esc(s){ return String(s??"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
-/* ---------- Data caches ---------- */
-let ROWS = [];
-let MATCHMAP = new Map();
-let UNMATCHED_RECEIPTS = [];
+/* ---------- Rendering ---------- */
+function badge(id){return MATCHES.has(id)?`<span class="badge ok">Matched</span>`:`<span class="badge muted">Unmatched</span>`;}
 
-/* ---------- UI: banner & controls ---------- */
-function setLinkBanner() {
-  const id = LINK_RECEIPT_ID || CHOSEN_RECEIPT_ID;
-  $("linkBanner").style.display = id ? "inline-block" : "none";
-  $("linkRecId").textContent = id || "";
-}
-$("clearLink").onclick = () => {
-  LINK_RECEIPT_ID = null;
-  LINK_RECEIPT_ROW = null;
-  CHOSEN_RECEIPT_ID = null;
-  sessionStorage.removeItem("linkReceipt");
-  const url = new URL(location.href); url.searchParams.delete("linkReceipt"); history.replaceState({}, "", url);
-  setLinkBanner();
-  renderRows();
-};
-
-/* Read linking intent from URL/session */
-(function readLinkingIntent(){
-  const url = new URL(location.href);
-  LINK_RECEIPT_ID = url.searchParams.get("linkReceipt") || sessionStorage.getItem("linkReceipt") || null;
-  if (LINK_RECEIPT_ID) sessionStorage.setItem("linkReceipt", LINK_RECEIPT_ID);
-})();
-
-/* ---------- Category select in-table ---------- */
-function renderCategorySelect(value, id){
-  const opts = CATEGORIES.map(c=>`<option value="${esc(c)}"${c===value?' selected':''}>${esc(c)}</option>`).join("");
-  return `<select class="cat-select" data-txn="${id}" onchange="updateCategory(this)">${opts}</select>`;
-}
-window.updateCategory = async (sel)=>{
-  const id = sel.getAttribute("data-txn");
-  await sb.from("transactions").update({ category: sel.value||null }).eq("id", id);
-};
-
-/* ---------- Data load ---------- */
-async function loadTransactions(){
-  $("pageError").textContent = "";
-
-  let q = sb.from("transactions")
-    .select("id, txn_date, description, amount, direction, category, source_account_name")
-    .order("txn_date",{ascending:false});
-
-  const from = $("fromDate").value || null, to = $("toDate").value || null, type = $("typeFilter").value;
-  if(from) q = q.gte("txn_date", from);
-  if(to)   q = q.lte("txn_date", to);
-  if(type==="debit")  q = q.eq("direction","debit");
-  if(type==="credit") q = q.eq("direction","credit");
-
-  const { data, error } = await q;
-  if(error){ $("pageError").textContent = error.message; ROWS=[]; renderRows(); return; }
-  ROWS = data || [];
-
-  /* matches for these transactions */
-  MATCHMAP.clear();
-  if(ROWS.length){
-    const ids = ROWS.map(r=>r.id);
-    const { data: mm } = await sb.from("matches").select("transaction_id, receipt_id, confidence").in("transaction_id", ids);
-    (mm||[]).forEach(m=> MATCHMAP.set(m.transaction_id, m));
-  }
-
-  /* if linking via receipt, fetch it for amount/date hints */
-  if(LINK_RECEIPT_ID){
-    const { data: r } = await sb.from("receipts").select("id, receipt_date, total, vendor").eq("id", LINK_RECEIPT_ID).single();
-    LINK_RECEIPT_ROW = r || null;
-  }
-
-  renderRows();
+function receiptPreview(txid){
+  const rid = MATCHES.get(txid);
+  if(!rid) return "";
+  const r = RECEIPTS.get(rid);
+  if(!r) return "(missing)";
+  return `
+    <div class="previewbox">
+      ${r.image_url ? `<a href="${esc(r.image_url)}" target="_blank"><img class="imgthumb" src="${esc(r.image_url)}" alt=""></a>` : ""}
+      <span>${esc(r.vendor || "Receipt")}</span>
+    </div>`;
 }
 
-/* ---------- Render table ---------- */
-function renderRows(){
-  const q = ($("quickSearch").value||"").toLowerCase().trim();
-  const type = $("typeFilter").value;
-
-  let rows = ROWS.slice();
-
-  if(type==="uncategorized") rows = rows.filter(r => !r.category || r.category==="Uncategorized");
-  if(type==="no_source")     rows = rows.filter(r => !r.source_account_name);
-  if(type==="matched")       rows = rows.filter(r => MATCHMAP.has(r.id));
-  if(type==="unmatched")     rows = rows.filter(r => !MATCHMAP.has(r.id));
-
-  if(q){
-    rows = rows.filter(r =>
-      (r.description||"").toLowerCase().includes(q) ||
-      (r.category||"").toLowerCase().includes(q) ||
-      (r.source_account_name||"").toLowerCase().includes(q)
-    );
-  }
-
-  /* chips */
-  const uncat = rows.filter(r => !r.category || r.category==="Uncategorized").length;
-  const noSrc = rows.filter(r => !r.source_account_name).length;
-  const mat   = rows.filter(r => MATCHMAP.has(r.id)).length;
-  const unmat = rows.length - mat;
-  $("chipUncat").textContent     = uncat;
-  $("chipNoSource").textContent  = noSrc;
-  $("chipMatched").textContent   = mat;
-  $("chipUnmatched").textContent = unmat;
-
-  /* dupes */
-  const norm = s => (s||"").toLowerCase().replace(/\s+/g," ").trim().slice(0,80);
-  const keyOf = r => `${r.txn_date}|${(+r.amount||0).toFixed(2)}|${norm(r.description)}`;
-  const freq = new Map(); rows.forEach(r=>{ const k=keyOf(r); freq.set(k,(freq.get(k)||0)+1); });
-  $("chipDupes").textContent = rows.filter(r=> (freq.get(keyOf(r))||0)>1).length;
-
-  /* link banner & compatibility */
-  setLinkBanner();
-  let recAmt = null, recDate = null;
-  if (LINK_RECEIPT_ROW) {
-    recAmt  = Number(LINK_RECEIPT_ROW.total)||0;
-    recDate = (LINK_RECEIPT_ROW.receipt_date||"").slice(0,10);
-  }
-
-  $("txBody").innerHTML = rows.map(r=>{
-    const matched = MATCHMAP.has(r.id);
-    const statusHtml = matched
-      ? `<span class="status-pill ok">Matched</span>`
-      : `<span class="status-pill dim">Unmatched</span>`;
-
-    const candidateActive = (LINK_RECEIPT_ROW || CHOSEN_RECEIPT_ID) && !matched;
-    const amtOk  = recAmt==null || Math.abs((Number(r.amount)||0) - recAmt) < 0.01;
-    const dateOk = recDate==null || Math.abs((new Date(r.txn_date) - new Date(recDate))/(1000*60*60*24)) <= 5;
-    const isCompatible = candidateActive && amtOk && dateOk;
-
-    let linkCell = "";
-    if(isCompatible){
-      linkCell = `<button class="linkbtn" data-link="${r.id}">Link to this</button>`;
-    }else if(matched){
-      const m = MATCHMAP.get(r.id);
-      linkCell = `<a class="linkbtn" href="receipts.html#${esc(m.receipt_id||'')}">View</a>`;
-    }else{
-      linkCell = `<button class="upload-btn" data-upload="${r.id}">📷 Upload</button>`;
-    }
-
-    const trClass = isCompatible ? ' class="hl"' : "";
-
-    return `
-      <tr${trClass}>
-        <td>${esc(r.txn_date||"")}</td>
-        <td>${esc(r.description||"")}</td>
-        <td class="right">${money(r.amount)}</td>
-        <td>${esc(r.direction||"")}</td>
-        <td>${renderCategorySelect(r.category||"Uncategorized", r.id)}</td>
-        <td>${esc(r.source_account_name||"")}</td>
-        <td>${statusHtml}</td>
-        <td>${linkCell}</td>
-      </tr>
-    `;
-  }).join("");
-
-  $("rowsCount").textContent = `Rows: ${rows.length}`;
-
-  document.querySelectorAll("[data-upload]").forEach(b=>{
-    b.onclick = () => openUpload(b.getAttribute("data-upload"));
-  });
-  document.querySelectorAll("[data-link]").forEach(b=>{
-    b.onclick = () => linkNow(b.getAttribute("data-link"));
-  });
-}
-
-/* ---------- Link logic with explicit error surfacing ---------- */
-async function linkNow(transaction_id){
-  try{
-    const receipt_id = LINK_RECEIPT_ID || CHOSEN_RECEIPT_ID;
-    if(!receipt_id){ alert("No receipt selected."); return; }
-
-    const { data: tx, error: tErr } = await sb.from("transactions")
-      .select("id, amount")
-      .eq("id", transaction_id)
-      .single();
-    if(tErr || !tx){ alert("Transaction not found."); return; }
-
-    const { error } = await sb
-      .from("matches")
-      .insert([{
-        transaction_id: tx.id,
-        receipt_id,
-        matched_amount: Number(tx.amount)||0,
-        confidence: 0.98,
-        method: LINK_RECEIPT_ID ? "linking-mode" : "manual",
-        match_type: "exact"
-      }])
-      .select("id")
-      .single();
-
-    if(error){
-      alert("Link failed: " + error.message);
-      return;
-    }
-
-    if(LINK_RECEIPT_ID){ $("clearLink").click(); }
-    CHOSEN_RECEIPT_ID = null;
-    $("chooseReceipt").textContent = "Choose receipt…";
-    await loadTransactions();
-  }catch(e){
-    alert("Unexpected error: " + (e?.message||e));
+function actions(txid){
+  const rid = sessionStorage.getItem('linkReceipt');
+  if(rid){
+    return `<button class="linkbtn" data-act="link" data-id="${txid}">Link to This</button>`;
+  } else {
+    return `<button class="linkbtn danger" data-act="unlink" data-id="${txid}">Unlink</button>`;
   }
 }
 
-/* ---------- Upload redirect ---------- */
-async function openUpload(id){
-  sessionStorage.setItem("linkToTxnAfterUpload", id);
-  location.href = "receipts.html";
-}
+function render(rows){
+  $("countAll").textContent=ALL.length;
+  let matchedCount = 0;
+  rows.forEach(r=>{if(MATCHES.has(r.id)) matchedCount++;});
+  $("countMatched").textContent = matchedCount;
+  $("countUnmatched").textContent = ALL.length - matchedCount;
 
-/* ---------- Choose-existing-receipt modal ---------- */
-$("chooseReceipt").onclick = async ()=>{
-  await loadUnmatchedReceipts();
-  $("chooseBackdrop").style.display = "flex";
-};
-$("closeChoose").onclick  = ()=> $("chooseBackdrop").style.display = "none";
-$("clearChoose").onclick  = ()=>{ CHOSEN_RECEIPT_ID=null; $("chooseReceipt").textContent="Choose receipt…"; renderRows(); };
+  if(!rows.length){
+    tbody.innerHTML = `<tr><td colspan="9">No transactions found.</td></tr>`;
+    return;
+  }
 
-async function loadUnmatchedReceipts(){
-  const { data: mx } = await sb.from("matches").select("receipt_id");
-  const matched = new Set((mx||[]).map(m=>m.receipt_id));
-  const { data: recs } = await sb.from("receipts")
-    .select("id, receipt_date, vendor, total, category, source")
-    .order("receipt_date",{ascending:false})
-    .limit(200);
-  UNMATCHED_RECEIPTS = (recs||[]).filter(r=> !matched.has(r.id));
-
-  $("chooseBody").innerHTML = UNMATCHED_RECEIPTS.map(r=>`
+  tbody.innerHTML = rows.map(r => `
     <tr>
-      <td>${esc((r.receipt_date||"").slice(0,10))}</td>
-      <td>${esc(r.vendor||"")}</td>
-      <td class="right">${money(r.total||0)}</td>
+      <td>${esc((r.txn_date||"").slice(0,10))}</td>
+      <td>${esc(r.description||"")}</td>
+      <td class="right">${money(r.amount)}</td>
+      <td>${esc(r.direction)}</td>
       <td>${esc(r.category||"")}</td>
-      <td>${esc(r.source||"")}</td>
-      <td><button class="linkbtn" data-choose="${r.id}">Use this</button></td>
-    </tr>
-  `).join("") || `<tr><td colspan="6" class="muted">No unmatched receipts.</td></tr>`;
+      <td>${esc(r.source_account_name||"")}</td>
+      <td>${receiptPreview(r.id)}</td>
+      <td>${badge(r.id)}</td>
+      <td>${actions(r.id)}</td>
+    </tr>`).join("");
 
-  document.querySelectorAll("[data-choose]").forEach(b=>{
-    b.onclick = ()=>{
-      CHOSEN_RECEIPT_ID = b.getAttribute("data-choose");
-      $("chooseReceipt").textContent = "Chosen ✔";
-      $("chooseBackdrop").style.display = "none";
-      LINK_RECEIPT_ID = null; LINK_RECEIPT_ROW = null; setLinkBanner();
-      renderRows();
-    };
+  tbody.querySelectorAll("button[data-act]").forEach(btn=>{
+    const act=btn.dataset.act,id=btn.dataset.id;
+    if(act==="link") btn.onclick=()=>linkReceiptToTxn(id);
+    if(act==="unlink") btn.onclick=()=>unlinkReceiptFromTxn(id);
   });
 }
 
-/* ---------- Export CSV ---------- */
-$("exportBtn").onclick = async ()=>{
-  const { data, error } = await sb.from("transactions")
-    .select("txn_date,description,amount,direction,category,source_account_name")
-    .order("txn_date",{ascending:false});
-  if(error){ alert(error.message); return; }
-  const rows=[["Date","Description","Amount","Type","Category","Source"], ...data.map(r=>[
-    r.txn_date||"", (r.description||"").replace(/[\r\n]+/g," "), r.amount, r.direction, r.category||"", r.source_account_name||""
-  ])];
-  const csv=rows.map(r=>r.map(cell=>{ const s=String(cell??""); return /[",\n;]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; }).join(",")).join("\n");
-  const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
-  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="transactions_export.csv"; a.click(); URL.revokeObjectURL(a.href);
-};
+/* ---------- Data Loading ---------- */
+async function loadData(){
+  const { data: txns, error: tErr } = await sb.from("transactions").select("id, txn_date, description, amount, direction, category, source_account_name, created_at").order("txn_date",{ascending:false});
+  if(tErr){tbody.innerHTML=`<tr><td colspan="9">${tErr.message}</td></tr>`;return;}
+  ALL = txns||[];
 
-$("applyBtn").onclick = loadTransactions;
-$("quickSearch").addEventListener("input", ()=>{ clearTimeout(window.__qsT); window.__qsT=setTimeout(loadTransactions,150); });
+  const { data: recs } = await sb.from("receipts").select("id,vendor,image_url");
+  RECEIPTS.clear(); (recs||[]).forEach(r => RECEIPTS.set(r.id, r));
 
-/* ---------- Init ---------- */
-(async function init(){
-  try{ await loadTransactions(); }catch(e){ $("pageError").textContent = "Start-up error: " + (e?.message||e); }
-})();
+  const { data: mx } = await sb.from("matches").select("transaction_id, receipt_id");
+  MATCHES.clear(); (mx||[]).forEach(m => MATCHES.set(m.transaction_id, m.receipt_id));
+
+  render(ALL);
+}
+
+/* ---------- Filtering ---------- */
+$("applyFilter").onclick = applyFilters;
+$("search").oninput = ()=>{clearTimeout(window.__t);window.__t=setTimeout(applyFilters,200);};
+function applyFilters(){
+  const mode=$("filterMode").value;
+  const q=($("search").value||"").toLowerCase().trim();
+  let rows=ALL.slice();
+  if(mode==="matched") rows=rows.filter(r=>MATCHES.has(r.id));
+  else if(mode==="unmatched") rows=rows.filter(r=>!MATCHES.has(r.id));
+  if(q){rows=rows.filter(r=>(r.description||"").toLowerCase().includes(q));}
+  render(rows);
+}
+
+/* ---------- Linking / Unlinking ---------- */
+async function linkReceiptToTxn(txnId){
+  const rid=sessionStorage.getItem("linkReceipt");
+  if(!rid){alert("No receipt selected.");return;}
+  const { error } = await sb.from("matches").insert([{ transaction_id: txnId, receipt_id: rid, matched_amount: 0, confidence: 1.0, method: "manual", match_type: "manual" }]);
+  if(error){alert(error.message);return;}
+  sessionStorage.removeItem("linkReceipt");
+  await loadData();
+  alert("Receipt linked successfully!");
+  location.href="receipts.html";
+}
+
+async function unlinkReceiptFromTxn(txnId){
+  const { error } = await sb.from("matches").delete().eq("transaction_id",txnId);
+  if(error){alert(error.message);return;}
+  await loadData();
+}
+
+/* ---------- Auto Load ---------- */
+document.addEventListener("DOMContentLoaded",loadData);
 </script>
+
+<script src="roles.js"></script>
 </body>
 </html>
