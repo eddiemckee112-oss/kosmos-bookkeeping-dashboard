@@ -14,7 +14,11 @@
     .badge{display:inline-block;padding:4px 8px;border-radius:999px;border:1px solid var(--border);font-weight:600;font-size:.82rem}
     .badge.ok{background:#eef9f1;color:var(--ok);border-color:#cfe7d6}
     .badge.muted{background:#f6f7f8;color:var(--muted)}
-    .linkbtn{padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:#fff;cursor:pointer;opacity:1;transition:none}
+    /* Always-visible, high-contrast action buttons */
+    .linkbtn{padding:6px 12px;border:1px solid #111;border-radius:999px;background:#111;color:#fff;cursor:pointer;opacity:1;transition:opacity .15s ease}
+    .linkbtn:hover{opacity:.85}
+    .linkbtn.light{background:#fff;color:#111;border-color:#ccc}
+    .linkbtn.danger{background:#b91c1c;border-color:#b91c1c;color:#fff}
     .imgthumb{height:40px;width:auto;border-radius:6px;vertical-align:middle}
     .previewbox{display:flex;align-items:center;gap:8px}
   </style>
@@ -104,13 +108,22 @@ function receiptPreview(txid){
     </div>`;
 }
 
+/* Actions logic:
+   - If transaction ALREADY matched -> show "Unlink"
+   - Else if a receipt is selected (coming from 'Match Now') -> "Link to This"
+   - Else -> show "Upload Receipt" (go to receipts page)
+*/
 function actions(txid){
-  const rid = sessionStorage.getItem('linkReceipt');
-  if(rid){
-    return `<button class="linkbtn" data-act="link" data-id="${txid}">Link to This</button>`;
-  } else {
+  const hasMatch = MATCHES.has(txid);
+  const selectedReceipt = sessionStorage.getItem('linkReceipt');
+
+  if(hasMatch){
     return `<button class="linkbtn danger" data-act="unlink" data-id="${txid}">Unlink</button>`;
   }
+  if(selectedReceipt){
+    return `<button class="linkbtn" data-act="link" data-id="${txid}">Link to This</button>`;
+  }
+  return `<a class="linkbtn light" href="receipts.html">Upload Receipt</a>`;
 }
 
 function render(rows){
